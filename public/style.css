@@ -25,6 +25,10 @@ html, body {
   font-size: 14px;
 }
 
+html {
+  zoom: 1.5;
+}
+
 body {
   background:
     repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px),
@@ -32,7 +36,7 @@ body {
   overflow: hidden;
 }
 
-#app { display: flex; flex-direction: column; height: 100vh; }
+#app { display: flex; flex-direction: column; height: calc(100vh / 1.5); }
 
 /* top bar */
 #topbar {
@@ -224,8 +228,12 @@ h3.pane {
 }
 #overlay.hidden { display: none; }
 .overlay-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: min(680px, 92vw);
-  max-height: 88vh;
+  max-height: calc(88vh / 1.5);
   overflow-y: auto;
   background: var(--panel);
   border: 2px solid var(--amb-dim);

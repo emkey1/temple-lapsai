@@ -194,15 +194,16 @@ function showCamp(g) {
     '<div id="camp-list"></div>' +
     '<div class="row"><button class="mini" id="btn-camp-close">ROAM AGAIN</button></div>';
   els.overlay.appendChild(box);
+  overlayShow(box);
   const list = box.querySelector('#camp-list');
   for (const d of g.availableDungeons()) {
     const b = document.createElement('button');
     b.textContent = (g.isDungeonCleared(d.id) ? '[DONE] ' : '') + d.name + ' · ' + d.floors + ' floors';
     b.style.margin = '3px';
-    b.onclick = () => { box.remove(); g.enterDungeon(d.id); };
+    b.onclick = () => { overlayHideAll(); box.remove(); g.enterDungeon(d.id); };
     list.appendChild(b);
   }
-  box.querySelector('#btn-camp-close').onclick = () => { box.remove(); g.loadFloor(g.state.player.floorIdx); };
+  box.querySelector('#btn-camp-close').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx); };
 }
 
 /* ---------------- character creation ---------------- */

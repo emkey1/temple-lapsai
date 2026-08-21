@@ -271,14 +271,15 @@ export class Game {
   }
 
   resolveMonsterPool(d, floorIdx) {
-    let pool = [];
-    if (d.monsterWeights) {
-      pool = d.monsterWeights.map((id) => this.monsterTemplate(id)).filter(Boolean);
+    let templates = (d.monsterWeights || []).map((id) => this.monsterTemplate(id)).filter(Boolean);
+    if (d.bossId) templates = templates.filter((m) => m.id !== d.bossId);
+    if (!templates.length) {
+      templates = monstersForFloor(floorIdx, d.threat || 0).map((x) => x.m);
     }
-    if (!pool.length) {
-      pool = monstersForFloor(floorIdx, d.threat || 0).map((x) => x.m);
-    }
-    return pool;
+    const sorted = [...templates].sort((a, b) => a.tier - b.tier);
+    const share = Math.min(1, 0.3 + floorIdx * 0.25);
+    const cut = Math.max(1, Math.ceil(sorted.length * share));
+    return cut >= sorted.length ? sorted : sorted.slice(0, cut);
   }
 
   pickItem(floorIdx, rng) {
