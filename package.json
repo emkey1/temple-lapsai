@@ -1,0 +1,13 @@
+{
+  "name": "temple-of-lapsai-clone",
+  "version": "1.0.0",
+  "description": "A turn-based retro top-down homage to the Temple of Lapsai, with LLM-driven world expansion.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

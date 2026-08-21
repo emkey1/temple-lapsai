@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a08">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0a08'/%3E%3Ctext x='8' y='12' font-family='Courier,monospace' font-size='12' fill='%23b88a3a' text-anchor='middle'%3E%26%23x3B1%3B%3C/text%3E%3C/svg%3E">
+<title>Temple of Lapsai — Turn-Based Homage</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="crt"></div>
+    <h1>TEMPLE <span class="acc">of</span> LAPSAI</h1>
+    <div id="location">—</div>
+    <div class="spacer"></div>
+    <div id="topstatus">—</div>
+  </header>
+
+  <div id="main">
+    <section id="viewport">
+      <canvas id="game"></canvas>
+      <div id="hud-overlay">
+        <div id="hud-hp" class="hudbar"><span class="hud-label">HP</span><div class="bar"><i id="hp-fill"></i></div><b id="hp-text"></b></div>
+        <div id="hud-pow" class="hudbar"><span class="hud-label">PWR</span><div class="bar"><i id="pow-fill"></i></div><b id="pow-text"></b></div>
+      </div>
+    </section>
+
+    <aside id="side">
+      <div id="sheets-tabs">
+        <button class="tab active" data-tab="stats">STAT SHEET</button>
+        <button class="tab" data-tab="gear">GEAR</button>
+        <button class="tab" data-tab="codex">CODEX</button>
+        <button class="tab" data-tab="library">LIBRARY</button>
+      </div>
+
+      <section id="tab-stats" class="tabpanel active">
+        <div id="stat-block"></div>
+        <div id="abilities-block"></div>
+      </section>
+
+      <section id="tab-gear" class="tabpanel">
+        <div id="equipment-block"></div>
+        <div id="inventory-block"></div>
+        <div id="belt-block"></div>
+      </section>
+
+      <section id="tab-codex" class="tabpanel">
+        <div id="dungeon-codex"></div>
+      </section>
+
+      <section id="tab-library" class="tabpanel">
+        <div id="library-block"></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer id="log"></footer>
+</div>
+
+<!-- Overlays -->
+<div id="overlay" class="hidden">
+  <div id="boot" class="overlay-card hidden">
+    <h2>TEMPLE <span class="acc">of</span> LAPSAI</h2>
+    <p class="sub">A turn-based homage. Below the ruined temple the old halls still breathe. Find treasure, slay the old things, and carve your name. When the world grows thin, consult the Library to have new depths written.</p>
+    <div class="row">
+      <button id="btn-new">NEW ADVENTURER</button>
+      <button id="btn-continue">CONTINUE (LOAD SAVE)</button>
+    </div>
+    <p class="tiny" id="save-note"></p>
+  </div>
+
+  <div id="charcreate" class="overlay-card hidden">
+    <h2>FORGE <span class="acc">YOUR</span> ADVENTURER</h2>
+    <div class="row">
+      <div class="col">
+        <h3>CLASS</h3>
+        <div id="class-picker"></div>
+      </div>
+      <div class="col">
+        <h3>ATTRIBUTES <button id="btn-reroll" class="mini">REROLL</button></h3>
+        <div id="attr-grid"></div>
+        <p class="tiny" id="class-bonus"></p>
+      </div>
+    </div>
+    <div id="char-name-row" class="row">
+      <label>NAME <input id="char-name" maxlength="20" placeholder="e.g. Marlyle" autocomplete="off"></label>
+      <button id="btn-enter">DESCEND</button>
+    </div>
+  </div>
+
+  <div id="library-overlay" class="overlay-card hidden">
+    <h2>THE BLACK LIBRARY</h2>
+    <p class="sub">Here the Lore-Weavers (an LLM oracle) write new depths into being. Without an oracle configured, scribes conjure lesser works by candlelight.</p>
+    <div class="lib-status" id="lib-status"></div>
+    <div class="row" id="lib-actions"></div>
+    <div id="lib-preload-zone">
+      <h3>ORACLE FOCUS</h3>
+      <textarea id="lib-focus" rows="3" placeholder="Optional creative direction, e.g. 'a flooded crypt where the dead whisper recipes'"></textarea>
+    </div>
+    <div id="lib-result" class="scrolly"></div>
+    <div class="row"><button id="btn-library-close">CLOSE</button></div>
+  </div>
+
+  <div id="item-detail" class="overlay-card hidden"></div>
+
+  <div id="death" class="overlay-card hidden">
+    <h2 class="death">THOU ART SLAIN</h2>
+    <p id="death-msg"></p>
+    <div class="row">
+      <button id="btn-resurrect">RISE AGAIN (pay half your gold)</button>
+      <button id="btn-roster">NEW ADVENTURER</button>
+    </div>
+  </div>
+
+  <div id="dungeon-arrival" class="overlay-card hidden">
+    <h2 id="arrival-title"></h2>
+    <p id="arrival-flavor" class="flavor"></p>
+    <button id="btn-arrival-ok">FORGE ONWARD</button>
+  </div>
+
+  <div id="victory" class="overlay-card hidden">
+    <h2 class="gold">THE DEPTHS REMEMBER YOU</h2>
+    <p id="victory-msg"></p>
+    <button id="btn-victory-ok">ROSTER</button>
+  </div>
+
+  <div id="dialogue" class="overlay-card hidden">
+    <h2 id="dlg-name"></h2>
+    <div id="dlg-log" class="dlg-log"></div>
+    <div class="row">
+      <input id="dlg-input" maxlength="200" placeholder="Say something… (Enter to speak, ESC to depart)" autocomplete="off">
+      <button id="dlg-send">SPEAK</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
