@@ -9,11 +9,17 @@ import {
   scaleDice, randomTreasureValue, getDungeon,
 } from './base.js';
 import {
-  T, W, H, isTravelable, isWall, isDoor, generateFloor,
+  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
 import { beatAt, arcForDungeon, setFlag, getFlag } from './world.js';
 import { evaluateDice, rngIntId, dist1, applyMagic, deepItem } from './dice.js';
+
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/* Turns a monster keeps hunting after it last had the player in sight. Without
+ * a limit, anything that ever woke up stays awake forever and holds the stairs. */
+const AGGRO_MEMORY = 12;
 
 /* ---------------- Character creation ---------------- */
 
@@ -85,12 +91,100 @@ export class Game {
 
   newState() {
     this.state = {
-      version: 1,
+      version: 2,
       seed: (Math.random() + 1).toString(36).slice(2, 8),
       player: null,
       created: Date.now(),
       totalKills: 0,
+      floors: {},
     };
+  }
+
+  /* ---- floor memory ----
+   * A floor regenerates identically from its seed, so the save only has to
+   * record what the player changed: what they killed, took, dropped, opened
+   * and saw. Without this, every trip down the stairs restocked the level. */
+
+  floorKey(dungeonId, floorIdx) {
+    return dungeonId + ':' + floorIdx;
+  }
+
+  floorMemo(dungeonId, floorIdx, create = false) {
+    if (!this.state.floors) this.state.floors = {};
+    const key = this.floorKey(dungeonId, floorIdx);
+    if (!this.state.floors[key] && create) {
+      this.state.floors[key] = { killed: [], taken: [], doors: [], dropped: [], seen: null };
+    }
+    return this.state.floors[key] || null;
+  }
+
+  currentMemo() {
+    const p = this.state.player;
+    if (!p || !p.dungeonId) return null;
+    return this.floorMemo(p.dungeonId, p.floorIdx, true);
+  }
+
+  rememberKill(m) {
+    const memo = this.currentMemo();
+    if (memo && Number.isInteger(m.idx) && !memo.killed.includes(m.idx)) memo.killed.push(m.idx);
+  }
+
+  rememberTake(entry) {
+    const memo = this.currentMemo();
+    if (memo && Number.isInteger(entry.idx) && !memo.taken.includes(entry.idx)) memo.taken.push(entry.idx);
+  }
+
+  rememberDoor(x, y) {
+    const memo = this.currentMemo();
+    const key = x + ',' + y;
+    if (memo && !memo.doors.includes(key)) memo.doors.push(key);
+  }
+
+  rememberDrop(item, x, y) {
+    const memo = this.currentMemo();
+    if (memo) memo.dropped.push({ i: item, x, y });
+  }
+
+  forgetDrop(entry) {
+    const memo = this.currentMemo();
+    if (!memo || !memo.dropped.length) return;
+    const at = memo.dropped.findIndex((d) => d.x === entry.x && d.y === entry.y && d.i && entry.i && d.i.uid === entry.i.uid);
+    if (at >= 0) memo.dropped.splice(at, 1);
+  }
+
+  /* Explored tiles, one row per string. Cheap to store and trivial to read. */
+  snapshotFloor() {
+    const p = this.state.player;
+    if (!p || !p.dungeonId || !this.currentFloor || !this.seen) return;
+    const memo = this.currentMemo();
+    if (!memo) return;
+    memo.seen = this.seen.map((row) => row.map((v) => (v ? '1' : '0')).join(''));
+  }
+
+  applyFloorMemo(floor, memo) {
+    if (!memo) return;
+    if (memo.killed.length) {
+      const dead = new Set(memo.killed);
+      floor.monsters = floor.monsters.filter((m) => !dead.has(m.idx));
+    }
+    if (memo.taken.length) {
+      const gone = new Set(memo.taken);
+      floor.items = floor.items.filter((it) => !gone.has(it.idx));
+    }
+    for (const key of memo.doors) {
+      const [x, y] = key.split(',').map(Number);
+      if (floor.tiles[y] && floor.tiles[y][x] !== undefined) floor.tiles[y][x] = T.DOOR_O;
+    }
+    for (const d of memo.dropped) floor.items.push({ i: d.i, x: d.x, y: d.y, auto: false });
+  }
+
+  restoreSeen(memo) {
+    if (!memo || !Array.isArray(memo.seen)) return false;
+    for (let y = 0; y < H && y < memo.seen.length; y++) {
+      const row = memo.seen[y] || '';
+      for (let x = 0; x < W; x++) this.seen[y][x] = row[x] === '1';
+    }
+    return true;
   }
 
   /* ---- registry lookups (base + expansions merged) ---- */
@@ -136,7 +230,7 @@ export class Game {
     const st = p.stats;
     const sbonus = {};
     let toHit = c.toHitBonus;
-    let ac = 10 + c.acBonus;
+    let ac = 10 - c.acBonus;   /* descending AC: lower is harder to hit */
     let dmg = { dice: 1, sides: 4, bonus: c.dmgBonus };
     let crit = c.critBonus;
     let regen = 0;
@@ -159,9 +253,13 @@ export class Game {
       eff[k] = Math.max(3, Math.min(18, (st[k] || 10) + (sbonus[k] || 0)));
     }
     toHit += abilityMod(eff.dex) + abilityMod(eff.str);
-    ac += abilityMod(eff.dex);
+    /* Monsters used to scale on player level while the player scaled on loot
+     * alone, so levelling up made the game harder. Grow with level too. */
+    toHit += Math.floor((p.level - 1) / 2);
+    ac -= abilityMod(eff.dex);
     dmg.bonus += abilityMod(eff.str);
     if (eqWeapon) dmg = { dice: eqWeapon.dice, sides: eqWeapon.sides, bonus: (eqWeapon.bonus || 0) + abilityMod(eff.str) };
+    dmg.bonus += Math.floor((p.level - 1) / 3);
     if (p.cls === 'thief') crit = Math.max(crit, 0.15);
     let maxp = c.powerBase + this.equipmentPower();
     if (c.powerPerInt) maxp += abilityMod(eff.int);
@@ -238,9 +336,13 @@ export class Game {
     const p = this.state.player;
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
+    this.snapshotFloor();   /* remember the floor we are stepping off */
     p.floorIdx = floorIdx;
     const isLast = floorIdx >= d.floors - 1;
     const boss = isLast ? (this.monsterTemplate(d.bossId) || null) : null;
+    /* No boss means bossesSlain is never set, which means the dungeon can never
+     * be cleared and the next one never unlocks. Say so rather than shrug. */
+    if (isLast && !boss) console.warn(`[lapsai] dungeon "${d.id}" has no boss for bossId "${d.bossId}" — it cannot be cleared`);
     const pool = this.resolveMonsterPool(d, floorIdx);
     const npcs = npcsForDungeonFloor(d.id, floorIdx);
     const floor = generateFloor({
@@ -252,12 +354,15 @@ export class Game {
     if (boss && p.bossesSlain[d.id] && floor.monsters) {
       floor.monsters = floor.monsters.filter((m) => m.boss !== true);
     }
+    const memo = this.floorMemo(d.id, floorIdx);
+    this.applyFloorMemo(floor, memo);
     this.currentFloor = floor;
     p.x = floor.up.x;
     p.y = floor.up.y;
     p.pending = undefined;
     this.seen = Array.from({ length: H }, () => Array(W).fill(false));
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
+    this.restoreSeen(memo);   /* the map you drew stays drawn */
     this.secretsRevealed = false;
     this.turn = 0;
     this.beatAt('enter', floorIdx);
@@ -271,7 +376,12 @@ export class Game {
   }
 
   resolveMonsterPool(d, floorIdx) {
-    let templates = (d.monsterWeights || []).map((id) => this.monsterTemplate(id)).filter(Boolean);
+    let templates = (d.monsterWeights || []).map((id) => {
+      const t = this.monsterTemplate(id);
+      /* A silently dropped id used to cost a dungeon its whole bestiary. */
+      if (!t) console.warn(`[lapsai] dungeon "${d.id}" lists unknown monster id "${id}"`);
+      return t;
+    }).filter(Boolean);
     if (d.bossId) templates = templates.filter((m) => m.id !== d.bossId);
     if (!templates.length) {
       templates = monstersForFloor(floorIdx, d.threat || 0).map((x) => x.m);
@@ -352,17 +462,13 @@ export class Game {
 
   inBounds(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
 
-  revealSecretsIfPossible() {
-    if (this.secretsRevealed || this.derived().seeSecrets) this.revealSecrets();
-  }
-
   revealSecrets() {
     if (this.secretsRevealed) return;
     const floor = this.currentFloor;
     let n = 0;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        if (floor.tiles[y][x] === T.SECRET) { floor.tiles[y][x] = T.DOOR_O; n++; }
+        if (floor.tiles[y][x] === T.SECRET) { floor.tiles[y][x] = T.DOOR_O; this.rememberDoor(x, y); n++; }
       }
     }
     if (n) this.log('You note ' + n + ' hidden door' + (n === 1 ? '' : 's') + '.');
@@ -385,7 +491,10 @@ export class Game {
       turn = this.tryMove(dx, dy);
     } else if (k === 'g') {
       const got = this.tryPickup(p.x, p.y, true);
-      if (got) { this.uiLog('Looted.'); }
+      /* Nothing to take is not nothing to learn: say what is here instead, so
+       * the key teaches itself the first time someone presses it. */
+      if (got) this.uiLog('Looted.');
+      else this.lookAround();
     } else if (k === ' ' || k === 'x') {
       this.endPlayerTurn();
     } else {
@@ -414,29 +523,63 @@ export class Game {
     }
     if (tile === T.DOOR_C) {
       floor.tiles[ny][nx] = T.DOOR_O;
+      this.rememberDoor(nx, ny);
       for (const m of floor.monsters) if (dist1(m, { x: nx, y: ny }) <= 10 && !m.boss) { m.aggro = true; }
       this.log('A heavy door groans open.');
       return true;
     }
     if (!isTravelable(tile)) {
-      if (tile === T.WALL && !this.derived().seeSecrets) { this.log('The way is blocked.'); }
-      else if (tile === T.WATER) { this.log('Black water blocks the way.'); }
-      else { this.log('You cannot pass here.'); }
-      if (tile === T.WALL && this.canFindSecretAt(nx, ny)) { this.revealSecretsIfPossible(); }
+      /* Searching happens where you push, not floor-wide: bumping a wall gives
+       * one roll against the tile in front of you. */
+      if (tile === T.SECRET && this.searchSecretAt(nx, ny)) return true;
+      this.log(tile === T.WALL || tile === T.SECRET ? 'The way is blocked.' : 'You cannot pass here.');
       return false;
     }
     p.x = nx; p.y = ny;
+    if (isSlowGoing(tile)) this.wadeInto(nx, ny);
     this.stepOn(nx, ny);
-    this.revealSecretsIfPossible();
     return true;
   }
 
-  canFindSecretAt(x, y) {
-    const th = this.derived();
-    if (th.seeSecrets) return true;
+  /* Water is crossable, but you flounder: the turn costs double and the noise
+   * carries. Making it impassable was severing whole sewer floors. */
+  wadeInto(x, y) {
+    this.log('You wade into black water — slow going, and loud.');
+    this.wading = true;
+    let roused = 0;
+    for (const m of (this.currentFloor.monsters || [])) {
+      if (!m.aggro && dist1(m, { x, y }) <= 6) { m.aggro = true; m.lastSeen = this.turn; roused++; }
+    }
+    if (roused) this.log('Something in the dark hears the splashing.');
+  }
+
+  /* One roll against one tile. Thieves are better at it; True Seeing skips it. */
+  searchSecretAt(x, y) {
     const p = this.state.player;
-    if (!p) return false;
-    return p.cls === 'thief' && p.level >= 1;
+    const floor = this.currentFloor;
+    if (!p || !floor || floor.tiles[y][x] !== T.SECRET) return false;
+    if (this.derived().seeSecrets) { this.revealSecretAt(x, y); return true; }
+    const odds = Math.min(0.85, (p.cls === 'thief' ? 0.35 : 0.12) + p.level * 0.03);
+    if (!this.rngOfTurn().chance(odds)) {
+      this.log('You run your hands over the stone and find nothing — yet.');
+      return true;   /* the search itself costs the turn */
+    }
+    this.revealSecretAt(x, y);
+    return true;
+  }
+
+  revealSecretAt(x, y) {
+    const floor = this.currentFloor;
+    if (!floor || floor.tiles[y][x] !== T.SECRET) return;
+    floor.tiles[y][x] = T.DOOR_O;
+    this.rememberDoor(x, y);
+    this.log('A seam in the stone gives — a hidden door!');
+  }
+
+  canFindSecretAt(x, y) {
+    const floor = this.currentFloor;
+    if (!floor || floor.tiles[y] === undefined || floor.tiles[y][x] !== T.SECRET) return false;
+    return this.derived().seeSecrets;
   }
 
   stepOn(x, y) {
@@ -444,7 +587,10 @@ export class Game {
     const tile = floor.tiles[y][x];
     const p = this.state.player;
     if (tile === T.DOWN) {
-      if ((floor.monsters || []).some((m) => m.aggro)) { this.log('Something in the dark bars the descent.'); return; }
+      /* Only something at your heels stops you — anything further off can be
+       * outrun, and anything walled off must not hold the stairs forever. */
+      const atYourHeels = (floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist1(m, p) <= 2);
+      if (atYourHeels) { this.log('Something at your heels bars the descent.'); return; }
       this.log('You descend.');
       if (this.ui.prepareTransition) this.ui.prepareTransition();
       this.loadFloor(p.floorIdx + 1);
@@ -464,9 +610,61 @@ export class Game {
     for (const it of here) {
       if (it.auto) {
         this.pickupItem(it.i);
+        this.rememberTake(it);
+        this.forgetDrop(it);
         floor.items = floor.items.filter((f) => f !== it);
       }
     }
+    this.reportUnderfoot();
+  }
+
+  /* ---- looking around ----
+   * The controls only existed in the README. These three report what is here
+   * and name the key for it, at the moment the player needs to know. */
+
+  itemsUnderfoot() {
+    const p = this.state.player;
+    return ((this.currentFloor && this.currentFloor.items) || []).filter((it) => it.x === p.x && it.y === p.y);
+  }
+
+  reportUnderfoot() {
+    const here = this.itemsUnderfoot();
+    if (!here.length) return false;
+    const names = here.map((it) => (it.i && it.i.name) || 'something').join(', ');
+    this.log('Underfoot: ' + names + '. Press G to take ' + (here.length > 1 ? 'them' : 'it') + '.');
+    return true;
+  }
+
+  lookAround() {
+    const floor = this.currentFloor;
+    const p = this.state.player;
+    if (!floor) return;
+    if (this.reportUnderfoot()) return;
+
+    const GROUND = {
+      [T.UP]: 'You stand on the stair up. Step onto it again to climb.',
+      [T.DOWN]: 'You stand on the stair down. Step onto it again to descend.',
+      [T.DOOR_O]: 'You stand in an open doorway.',
+      [T.DEN]: 'Worn flagstones, scored by something heavy.',
+      [T.ALTAR]: 'A cold altar stands here.',
+      [T.WATER]: 'Black water laps at your boots.',
+    };
+    this.log(GROUND[floor.tiles[p.y][p.x]] || 'Bare stone underfoot — nothing to take here.');
+
+    const compass = (it) => {
+      const dx = it.x - p.x, dy = it.y - p.y;
+      const ns = dy < 0 ? 'north' : dy > 0 ? 'south' : '';
+      const ew = dx < 0 ? 'west' : dx > 0 ? 'east' : '';
+      return ns + ew || 'here';
+    };
+    const near = ((floor.items) || [])
+      .filter((it) => dist1(it, p) > 0 && dist1(it, p) <= 3 && this.vis[it.y] && this.vis[it.y][it.x])
+      .slice(0, 3)
+      .map((it) => ((it.i && it.i.name) || 'something') + ' to the ' + compass(it));
+    if (near.length) this.log('Within reach: ' + near.join('; ') + '.');
+
+    const npc = ((floor.npcs) || []).find((n) => dist1(n, p) <= 1);
+    if (npc) this.log((npc.tpl ? npc.tpl.name : 'Someone') + ' stands beside you — walk into them to speak.');
   }
 
   tryPickup(x, y, manual) {
@@ -475,7 +673,12 @@ export class Game {
     let got = 0;
     for (const it of here) {
       if (manual || it.auto) {
-        if (this.pickupItem(it.i)) { got++; floor.items = floor.items.filter((f) => f !== it); }
+        if (this.pickupItem(it.i)) {
+          got++;
+          this.rememberTake(it);
+          this.forgetDrop(it);
+          floor.items = floor.items.filter((f) => f !== it);
+        }
       }
     }
     return got > 0;
@@ -556,6 +759,7 @@ export class Game {
       p.gold += g;
       this.log('You strip ' + g + ' gold from the corpse.');
     }
+    this.rememberKill(m);
     floor.monsters = floor.monsters.filter((x) => x !== m);
   }
 
@@ -613,6 +817,13 @@ export class Game {
     if (this.dying) return;
     this.resolveMonsters();
     if (this.dying) return;
+    /* Wading costs the turn twice over: everything else gets a second move. */
+    if (this.wading) {
+      this.wading = false;
+      this.turn++;
+      this.resolveMonsters();
+      if (this.dying) return;
+    }
     if (this.pendingCleave) { this.pendingCleave = false; }
     this.computeVisibility();
     this.turn++;
@@ -638,25 +849,58 @@ export class Game {
     for (const m of (this.currentFloor && this.currentFloor.monsters || [])) if (m.fleeing) { m.fleeing = false; }
   }
 
+  /* One BFS out from the player per turn. Every monster then walks downhill on
+   * it, which routes them around corners instead of stalling against a wall. */
+  playerDistanceField() {
+    const floor = this.currentFloor;
+    const p = this.state.player;
+    const dist = Array.from({ length: H }, () => Array(W).fill(-1));
+    if (!floor) return dist;
+    dist[p.y][p.x] = 0;
+    const queue = [[p.x, p.y]];
+    for (let i = 0; i < queue.length; i++) {
+      const [x, y] = queue[i];
+      const d = dist[y][x] + 1;
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.inBounds(nx, ny) || dist[ny][nx] !== -1) continue;
+        const t = floor.tiles[ny][nx];
+        /* Monsters cross open ground and open doors; closed and secret doors
+         * stop them, same as the old step-by-step chase intended. */
+        if (!isTravelable(t) || t === T.SECRET) continue;
+        dist[ny][nx] = d;
+        queue.push([nx, ny]);
+      }
+    }
+    return dist;
+  }
+
   resolveMonsters() {
     const floor = this.currentFloor;
     const p = this.state.player;
     const der = this.derived();
     const alive = (floor.monsters || []).filter((m) => m.hp > 0);
     const rng = this.rngOfTurn();
+    const field = this.playerDistanceField();
     for (const m of rng.shuffle(alive)) {
       if (m.hp <= 0) continue;
-      const seen = this.vis[m.y] && this.vis[m.y][m.x];
-      if (m.t.props && m.t.props.indexOf('flying') >= 0 && seen === false) continue;
-      if (!m.aggro && seen) { m.aggro = true; }
-      if (!m.aggro && !seen) continue;
+      const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
+      if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) continue;
+      if (seen) {
+        m.aggro = true;
+        m.lastSeen = this.turn;
+      } else if (m.aggro && dist1(m, p) > 1 && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
+        m.aggro = false;
+        m.revealed = false;
+      }
+      if (!m.aggro) continue;
       m.acted = true;
-      this.monsterAct(m, seen, der);
+      this.monsterAct(m, seen, der, field);
       if (this.dying) return;
     }
   }
 
-  monsterAct(m, seen, der) {
+  monsterAct(m, seen, der, field) {
     const p = this.state.player;
     const dist = dist1(m, p);
     const range = m.t.aggroRange || 8;
@@ -675,7 +919,7 @@ export class Game {
       return;
     }
     if (dist <= range || seen) {
-      this.monsterChase(m);
+      this.monsterChase(m, field);
     }
   }
 
@@ -705,27 +949,22 @@ export class Game {
     }
   }
 
-  monsterChase(m) {
+  monsterChase(m, field) {
     const floor = this.currentFloor;
     const p = this.state.player;
-    const dx = Math.sign(p.x - m.x), dy = Math.sign(p.y - m.y);
-    const r = this.rngOfTurn();
-    const order = [0, 1];
-    if (Math.abs(dx) >= Math.abs(dy)) order.unshift(0); else order.push(0);
-    const moves = [];
-    moves.push([dx, 0]); moves.push([0, dy]);
-    if (m.x + dx === p.x && m.y === p.y) {}
-    for (const [mx, my] of moves) {
-      const nx = m.x + mx, ny = m.y + my;
-      if (nx === p.x && ny === p.y) continue;
+    const here = field[m.y][m.x];
+    let best = null;
+    let bestD = here >= 0 ? here : Infinity;
+    for (const [dx, dy] of DIRS) {
+      const nx = m.x + dx, ny = m.y + dy;
       if (!this.inBounds(nx, ny)) continue;
-      const t = floor.tiles[ny][nx];
-      if (!isTravelable(t) || t === T.DOOR_C) continue;
-      if (floor.monsters.some((o) => o !== m && o.x === nx && o.y === ny)) continue;
-      if (this.canFindSecretAt && t === T.SECRET) continue;
-      m.x = nx; m.y = ny;
-      return;
+      if (nx === p.x && ny === p.y) continue;
+      const d = field[ny][nx];
+      if (d < 0 || d >= bestD) continue;
+      if (floor.monsters.some((o) => o !== m && o.hp > 0 && o.x === nx && o.y === ny)) continue;
+      bestD = d; best = [nx, ny];
     }
+    if (best) { m.x = best[0]; m.y = best[1]; }
   }
 
   monsterFlee(m) {
@@ -871,13 +1110,13 @@ export class Game {
       hit.unshift(target);
       for (const m of hit) {
         if (!m) continue;
-        const dmg = Math.max(1, r.d(a.damage.sides || 6) * (a.damage.dice || 1) + (a.damage.bonus || 0) + bonus);
+        const dmg = Math.max(1, this.rollDamage(a.damage) + bonus);
         this.log(a.name + ' blasts the ' + m.t.name + ' for ' + dmg + '!');
         this.applyDamageToMonster(m, dmg, false, der);
         if (this.dying) return;
       }
     } else if (target) {
-      const dmg = Math.max(1, r.d(a.damage.sides || 6) * (a.damage.dice || 1) + (a.damage.bonus || 0) + bonus);
+      const dmg = Math.max(1, this.rollDamage(a.damage) + bonus);
       this.log(a.name + ' strikes the ' + target.t.name + ' for ' + dmg + '!');
       this.applyDamageToMonster(target, dmg, false, der);
     } else {
@@ -938,7 +1177,7 @@ export class Game {
       if (d <= (a.range || 6) && d < bestD) { bestD = d; best = m; }
     }
     if (!best) { this.log('Nothing unholy answers your wrath.'); return; }
-    const dmg = Math.max(1, this.rngOfTurn().d(a.damage.sides || 6) * (a.damage.dice || 1) + (a.damage.bonus || 0));
+    const dmg = Math.max(1, this.rollDamage(a.damage));
     this.log(a.name + ' sears the ' + best.t.name + ' for ' + dmg + '! It staggers back.');
     best.hp -= dmg;
     best.fleeing = true;
@@ -1071,7 +1310,10 @@ export class Game {
     const idx = p.inventory.indexOf(item);
     if (idx < 0) return;
     p.inventory.splice(idx, 1);
-    if (this.currentFloor && this.currentFloor.items) this.currentFloor.items.push({ i: item, x: p.x, y: p.y, auto: false });
+    if (this.currentFloor && this.currentFloor.items) {
+      this.currentFloor.items.push({ i: item, x: p.x, y: p.y, auto: false });
+      this.rememberDrop(item, p.x, p.y);
+    }
     this.log('You drop the ' + item.name + '.');
   }
 
@@ -1120,12 +1362,14 @@ export class Game {
 
   /* ---- save ---- */
   save() {
+    this.snapshotFloor();
     return JSON.parse(JSON.stringify(this.state));
   }
 
   restore(state) {
     this.state = state;
-    this.floors = {};
+    /* Saves written before floor memory existed simply have none. */
+    if (!this.state.floors) this.state.floors = {};
     this.currentFloor = null;
     this.dying = false;
   }

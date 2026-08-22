@@ -136,7 +136,10 @@ export function getAbility(id) {
 
 export function abilityMod(v) { return Math.floor((v - 10) / 2); }
 
-export const XP_FOR_LEVEL = (lvl) => Math.floor(500 * (lvl * (lvl + 1) / 2));
+/* XP needed to earn the NEXT level (gainXP subtracts as it goes). Tuned so a
+ * dungeon's four floors are worth roughly four levels: 150, 450, 900, 1500 …
+ * against ~150 XP on floor one rising to ~2900 with the boss on floor four. */
+export const XP_FOR_LEVEL = (lvl) => Math.floor(150 * (lvl * (lvl + 1) / 2));
 
 export function classKillBonus(clsId, xp) {
   return Math.round(xp * (clsId === 'thief' ? 1.0 : 1.0));
@@ -301,7 +304,7 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'temple',
     threat: 0,
-    monsterWeights: ['sewer-rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'orc', 'skeleton', 'ghoul', 'mummy', 'living-statue', 'gargoyle', 'otyugh', 'lapsai-demon'],
+    monsterWeights: ['rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'orc', 'skeleton', 'ghoul', 'mummy', 'living-statue', 'gargoyle', 'otyugh', 'lapsai-demon'],
     bossId: 'lapsai-demon',
   },
   {
@@ -312,8 +315,8 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'sewers',
     threat: 2,
-    monsterWeights: ['giant-rat', 'giant-spider', 'giant-ant', 'centipede', 'wererat', 'giant-snake', 'giant-leech', 'ghast', 'ott', 'gorgon'],
-    bossId: 'umbel-hulk',
+    monsterWeights: ['giant-rat', 'giant-spider', 'giant-ant', 'centipede', 'wererat', 'giant-snake', 'giant-leech', 'ghast', 'otyugh', 'gorgon'],
+    bossId: 'umber-hulk',
   },
   {
     id: 'serpent',

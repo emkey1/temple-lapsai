@@ -22,10 +22,15 @@ export const T = {
 export const W = 64;
 export const H = 44;
 
-export function isTravelable(tile, playerOnly = false) {
-  if (tile === T.FLOOR || tile === T.DOOR_O || tile === T.SECRET || tile === T.UP || tile === T.DOWN || tile === T.ALTAR || tile === T.DEN) return true;
-  return false;
+/* A secret door is a wall until it is found, at which point it becomes an open
+ * door. Listing it as travelable let anyone walk straight through one. */
+export function isTravelable(tile) {
+  return tile === T.FLOOR || tile === T.DOOR_O || tile === T.UP ||
+         tile === T.DOWN || tile === T.ALTAR || tile === T.DEN || tile === T.WATER;
 }
+
+/* Water is crossable but slow — see Game.tryMove. */
+export function isSlowGoing(tile) { return tile === T.WATER; }
 
 export function isWall(tile) { return tile === T.WALL || tile === T.DOOR_C || tile === T.SECRET; }
 
@@ -43,9 +48,11 @@ function overlaps(a, b) {
   return a.x - 1 <= b.x + b.w && a.x + a.w + 1 >= b.x && a.y - 1 <= b.y + b.h && a.y + a.h + 1 >= b.y;
 }
 
-function carveCorridor(grid, ax, ay, bx, by) {
+function carveCorridor(grid, rng, ax, ay, bx, by) {
   let x = ax, y = ay;
-  const horizFirst = Math.random() < 0.5;
+  /* Seeded, not Math.random: the module's contract is that a floor is
+   * reproducible from (dungeonId, floorIdx), and the tests depend on it. */
+  const horizFirst = rng.chance(0.5);
   if (horizFirst) {
     while (x !== bx) { x += Math.sign(bx - x); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
     while (y !== by) { y += Math.sign(by - y); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
@@ -86,8 +93,10 @@ function gcd(a, b) { return b ? gcd(b, a % b) : a; }
 function cx(r) { return r.x + Math.floor(r.w / 2); }
 function cy(r) { return r.y + Math.floor(r.h / 2); }
 
-function installBossDen(grid) {
-  const frame = { x: W - 16, y: H - 14, w: 13, h: 11 };
+const DEN_FRAME = { x: W - 16, y: H - 14, w: 13, h: 11 };
+
+function installBossDen(grid, up) {
+  const frame = DEN_FRAME;
   for (let y = frame.y - 1; y < frame.y + frame.h + 1; y++) {
     for (let x = frame.x - 1; x < frame.x + frame.w + 1; x++) {
       grid[y][x] = T.WALL;
@@ -98,16 +107,40 @@ function installBossDen(grid) {
       grid[y][x] = T.DEN;
     }
   }
-  grid[frame.y + Math.floor(frame.h / 2)][frame.x] = T.SECRET;
+
+  /* The door goes in the west WALL of the frame, not in the first interior
+   * column — putting it at frame.x leaves the box sealed. */
+  const doorY = frame.y + Math.floor(frame.h / 2);
+  const doorX = frame.x - 1;
+  grid[doorY][doorX] = T.SECRET;
+
+  /* The den was stamped over whatever the corridor pass had carved here, so cut
+   * a fresh approach — all the way back to the up-stairs, which is the one tile
+   * guaranteed to be where the player starts. Vertical leg first, along the
+   * column just west of the frame; the horizontal leg then only runs east of
+   * the frame on rows the den does not occupy. The path can never re-enter it. */
+  const laneX = doorX - 1;
+  /* Clears standing water as well as rock: this lane is the only way in, so it
+   * must be walkable whatever the theme scattered across it. */
+  const carve = (x, y) => { if (grid[y][x] === T.WALL || grid[y][x] === T.WATER) grid[y][x] = T.FLOOR; };
+  carve(laneX, doorY);
+  for (let y = doorY; y !== up.y; ) { y += Math.sign(up.y - y); carve(laneX, y); }
+  for (let x = laneX; x !== up.x; ) { x += Math.sign(up.x - x); carve(x, up.y); }
   return frame;
 }
 
-function findSpot(grid, rooms, up, rng, clearDist) {
+function insideDen(den, x, y) {
+  if (!den) return false;
+  return x >= den.x - 1 && x <= den.x + den.w && y >= den.y - 1 && y <= den.y + den.h;
+}
+
+function findSpot(grid, rooms, up, rng, clearDist, den) {
   for (let tries = 0; tries < 40; tries++) {
     const r = rng.pick(rooms);
     const x = r.x + rng.int(0, r.w - 1);
     const y = r.y + rng.int(0, r.h - 1);
-    if (grid[y][x] !== T.FLOOR && grid[y][x] !== T.DEN) continue;
+    if (grid[y][x] !== T.FLOOR) continue;
+    if (insideDen(den, x, y)) continue;
     if (Math.abs(x - up.x) + Math.abs(y - up.y) < clearDist) continue;
     return { x, y };
   }
@@ -143,28 +176,28 @@ export function generateFloor(opts) {
   }
 
   for (let i = 1; i < rooms.length; i++) {
-    carveCorridor(grid, cx(rooms[i - 1]), cy(rooms[i - 1]), cx(rooms[i]), cy(rooms[i]));
+    carveCorridor(grid, rng, cx(rooms[i - 1]), cy(rooms[i - 1]), cx(rooms[i]), cy(rooms[i]));
   }
   installDoors(grid, rng);
   populateWater(grid, rng, dungeon.theme);
 
   const isLast = floorIdx >= dungeon.floors - 1;
-  let den = null;
-  if (isLast) den = installBossDen(grid);
+  const denFrame = isLast ? DEN_FRAME : null;
 
-  const up = { x: cx(rooms[0]), y: cy(rooms[0]) };
+  /* Choose the stairs before stamping the den: the player must never start
+   * inside it, and the den's approach corridor is cut back to this tile. */
+  const upRoom = rooms.find((r) => !insideDen(denFrame, cx(r), cy(r))) || rooms[0];
+  const up = { x: cx(upRoom), y: cy(upRoom) };
+  const den = isLast ? installBossDen(grid, up) : null;
   grid[up.y][up.x] = T.UP;
   let down = null;
   if (!isLast) {
-    down = { x: cx(rooms[rooms.length - 1]), y: cy(rooms[rooms.length - 1]) };
-    if (grid[down.y][down.x] === T.FLOOR || grid[down.y][down.x] === T.DEN) {
-      grid[down.y][down.x] = T.DOWN;
-    } else {
-      grid[down.y][down.x] = T.DOWN;
-    }
+    const downRoom = rooms[rooms.length - 1];
+    down = { x: cx(downRoom), y: cy(downRoom) };
+    grid[down.y][down.x] = T.DOWN;
   }
 
-  const dLevel = (state && state.player && state.player.level) || 1;
+  const threat = dungeon.threat || 0;
   const monsterPool = opts.monsterPool && opts.monsterPool.length ? opts.monsterPool : null;
 
   const monsters = [];
@@ -172,9 +205,9 @@ export function generateFloor(opts) {
   for (let i = 0; i < monsterCount; i++) {
     const t = monsterPool ? rng.pick(monsterPool) : opts.pickMonster && opts.pickMonster(floorIdx, rng);
     if (!t) continue;
-    const pos = findSpot(grid, rooms, up, rng, 6);
+    const pos = findSpot(grid, rooms, up, rng, 6, den);
     if (!pos) continue;
-    monsters.push(scaledMonster(t, pos, dLevel, floorIdx, false));
+    monsters.push(scaledMonster(t, pos, threat, floorIdx, false));
   }
 
   const boss = opts.boss;
@@ -184,7 +217,7 @@ export function generateFloor(opts) {
       y: den.y + Math.floor(den.h / 2),
     };
     if (grid[pay.y][pay.x] === T.DEN) {
-      monsters.push(scaledMonster(boss, pay, dLevel, floorIdx, true));
+      monsters.push(scaledMonster(boss, pay, threat, floorIdx, true));
     }
   }
 
@@ -193,7 +226,7 @@ export function generateFloor(opts) {
   for (let i = 0; i < itemCount; i++) {
     const it = opts.pickItem ? opts.pickItem(floorIdx, rng) : null;
     if (!it) continue;
-    const pos = findSpot(grid, rooms, up, rng, 3);
+    const pos = findSpot(grid, rooms, up, rng, 3, den);
     if (!pos) continue;
     items.push({ i: it, x: pos.x, y: pos.y, auto: it.kind === 'special' });
   }
@@ -207,15 +240,23 @@ export function generateFloor(opts) {
 
   const npcs = [];
   for (const tpl of (opts.npcs || [])) {
-    const pos = findSpot(grid, rooms, up, rng, 2);
+    const pos = findSpot(grid, rooms, up, rng, 2, den);
     if (pos) npcs.push({ tpl, x: pos.x, y: pos.y });
   }
+
+  /* Stable ids, assigned in generation order. Because a floor regenerates
+   * identically from its seed, the save can record "monster 4 is dead" and
+   * "item 2 was taken" and have that still mean the same thing next visit. */
+  monsters.forEach((m, i) => { m.idx = i; });
+  items.forEach((it, i) => { it.idx = i; });
 
   return { w: W, h: H, tiles: grid, rooms, monsters, items, npcs, up, down, theme, seed, isLast, den, boss };
 }
 
-function scaledMonster(t, pos, dLevel, floorIdx, boss) {
-  const mul = 1 + Math.max(0, dLevel - 1) * 0.2 + floorIdx * 0.16 + (Number.isFinite(t.tierMul) ? t.tierMul : 0) * 0.15;
+function scaledMonster(t, pos, threat, floorIdx, boss) {
+  /* Depth decides how tough a monster is, not the player's level — scaling on
+   * dLevel meant every level-up inflated every monster you had yet to meet. */
+  const mul = 1 + floorIdx * 0.22 + Math.max(0, threat) * 0.06;
   const hp = Math.max(1, Math.round((t.hpMax || 8) * mul * (boss ? 4 : 1)));
   const dmgBonus = ((t.damage && t.damage.bonus) || 0) + Math.floor(floorIdx / 2) + (boss ? 1 : 0);
   return {

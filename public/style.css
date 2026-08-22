@@ -224,16 +224,15 @@ h3.pane {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 3% 3%;
   z-index: 40;
 }
-#overlay.hidden { display: none; }
+/* Utility, not scoped to #overlay: every card relies on it, and #overlay's own
+   display:flex outranks a bare class selector, hence !important. */
+.hidden { display: none !important; }
 .overlay-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(680px, 92vw);
-  max-height: calc(88vh / 1.5);
+  width: min(680px, 100%);
+  max-height: 100%;
   overflow-y: auto;
   background: var(--panel);
   border: 2px solid var(--amb-dim);
@@ -306,3 +305,30 @@ input:focus, textarea:focus { outline: 1px solid var(--amb); }
 ::-webkit-scrollbar-track { background: #050705; }
 ::-webkit-scrollbar-thumb { background: var(--ink-faint); border: 2px solid #050705; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-dim); }
+
+/* help card & the hint that makes it discoverable */
+.hintkey {
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--amb-dim);
+  background: transparent;
+  border: 1px solid var(--ink-faint);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hintkey:hover, .hintkey:focus-visible { color: var(--amb); border-color: var(--amb-dim); }
+
+#help-keys { text-align: left; }
+#help-keys h3.pane { margin: 14px 0 4px; }
+table.keys { width: 100%; border-collapse: collapse; }
+table.keys td { padding: 3px 0; vertical-align: top; }
+table.keys td.k { width: 16em; padding-right: 14px; white-space: nowrap; }
+table.keys td.v { color: var(--ink-dim); line-height: 1.45; }
+kbd {
+  font-family: var(--mono, 'Courier New', monospace);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--amb);
+}
+#help button { margin-top: 16px; }

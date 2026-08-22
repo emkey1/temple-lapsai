@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "open": "node scripts/open.mjs"
+    "open": "node scripts/open.mjs",
+    "test": "node --test 'test/**/*.test.mjs'"
   },
   "engines": {
     "node": ">=18"

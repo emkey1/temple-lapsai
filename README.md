@@ -81,6 +81,31 @@ curl -sX POST http://localhost:8080/api/expand \
   -d '{"action":"monster","context":{"focus":"a chitinous horror"} }'
 ```
 
+## Delving
+
+A few rules worth knowing before you go down:
+
+- **Secret doors** are walls until you find them. Walk into a suspicious wall to search it — thieves
+  are much better at this, and an Amulet of True Seeing skips the roll entirely.
+- **Water** is crossable, but wading costs the turn twice over and the splashing wakes anything
+  within six tiles.
+- **Floors remember you.** What you killed stays dead, what you took stays taken, doors you opened
+  stay open, and the map you drew stays drawn — across stairs, saves and reloads.
+- **Armour class descends**, as in the modules this is an homage to: lower is harder to hit.
+- The stairs down are only barred while something is at your heels.
+
+## Development
+
+```sh
+npm test
+```
+
+Runs the headless suite on `node:test` — no dependencies, no build. The engine has no DOM
+dependencies, so the whole game runs in Node; the tests generate floors across many seeds and
+assert the invariants that are invisible by inspection: every dungeon's monster and boss ids
+resolve, every floor is fully reachable from its entrance, the boss is never sealed in its den,
+monsters route around walls, aggro lapses, and floor state survives a save round-trip.
+
 ## Project layout
 
 ```
@@ -104,7 +129,7 @@ data/expansions.json  Persisted generated content (server-side)
 | Key | Action |
 | --- | ------ |
 | `WASD` / arrow keys | Move |
-| `G` | Pick up items under you |
+| `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
 | `Space` / `X` | End your turn (wait) |
 | `1`–`9` | Activate the matching ability |
 | `Tab` | Cycle panels (stats / gear / codex / library) |
@@ -112,4 +137,5 @@ data/expansions.json  Persisted generated content (server-side)
 | `C` | Codex panel |
 | `L` | Library (expansions) panel |
 | `Enter` | Start the game / send a dialogue line |
-| `Esc` | Close the active dialogue |
+| `Esc` | Close the active dialogue or the controls card |
+| `?` / `H` | Show the controls in-game |

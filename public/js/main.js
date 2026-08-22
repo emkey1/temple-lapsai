@@ -65,7 +65,37 @@ const els = {
   dlgInput: $('dlg-input'),
   dlgSend: $('dlg-send'),
   viewport: $('viewport'),
+  help: $('help'),
+  helpKeys: $('help-keys'),
+  btnHelp: $('btn-help'),
+  btnHelpClose: $('btn-help-close'),
 };
+
+/* The one list of controls: the help card is built from it, so what the game
+ * tells you and what the game does cannot drift apart. */
+const CONTROLS = [
+  ['Getting about', [
+    ['W A S D  ·  arrows', 'Walk one tile. Walk into a monster to attack it, into a door to open it, into a person to talk.'],
+    ['Space  ·  X', 'Wait where you are and let the turn pass.'],
+    ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
+  ]],
+  ['Things on the ground', [
+    ['G', 'Take what is underfoot. With nothing there, look around instead and see what lies within reach.'],
+    ['$ ! ? = &  and other glyphs', 'Loot waiting to be picked up. Coins and treasure are taken automatically as you step on them.'],
+  ]],
+  ['Your character', [
+    ['1 – 9', 'Use the matching power from the STAT SHEET.'],
+    ['I  ·  E', 'Gear: equip, use, and drop what you are carrying. Right-click an item to drop it.'],
+    ['C', 'Codex: the depths you know about.'],
+    ['L', 'The Black Library, where new depths get written.'],
+    ['Tab', 'Cycle those four panels.'],
+  ]],
+  ['Talking and dialogs', [
+    ['Enter', 'Start the game, or send a line of dialogue.'],
+    ['Esc', 'Leave a conversation.'],
+    ['?  ·  H', 'This card.'],
+  ]],
+];
 
 /* ---------------- state ---------------- */
 let game = null;
@@ -159,9 +189,11 @@ function overlayShow(el) {
 }
 function overlayHideAll() {
   els.overlay.classList.add('hidden');
-  for (const o of ['boot', 'charcreate', 'library-overlay', 'item-detail', 'death', 'dungeon-arrival', 'victory', 'dialogue']) {
-    $(o).classList.add('hidden');
-  }
+  // Query rather than list ids: the camp card is built at runtime, and a card
+  // left visible reappears under the next overlay that opens.
+  for (const card of els.overlay.querySelectorAll('.overlay-card')) card.classList.add('hidden');
+  const camp = $('camp-card');
+  if (camp) camp.remove();
 }
 
 function showArrival(d) {
@@ -176,6 +208,15 @@ function showBeat(beat) {
   overlayShow(els.arrival);
   els.arrivalTitle.textContent = String(beat.title || 'THE DARK SPEAKS');
   els.arrivalFlavor.textContent = beat.text || '';
+}
+
+function showHelp() {
+  els.helpKeys.innerHTML = CONTROLS.map(([group, rows]) =>
+    '<h3 class="pane">' + group + '</h3><table class="keys">' +
+    rows.map(([k, what]) => '<tr><td class="k"><kbd>' + k + '</kbd></td><td class="v">' + what + '</td></tr>').join('') +
+    '</table>').join('');
+  overlayShow(els.help);
+  helpOpen = true;
 }
 
 function showDeath(msg) {
@@ -307,20 +348,38 @@ function renderAll(g) {
 
 /* ---------------- canvas renderer ---------------- */
 let ts = 20;
+let viewW = W, viewH = H;   /* size of the visible window, in tiles */
+let camX = 0, camY = 0;     /* top-left tile of that window */
 let lastTiles = '';
+
+/* How much floor to try to show before tiles are allowed to shrink further. */
+const TARGET_COLS = 42;
+const TARGET_ROWS = 27;
 
 function fitCanvas() {
   const vp = els.viewport;
-  const w = vp.clientWidth || 900;
-  const h = vp.clientHeight || 620;
-  ts = Math.max(12, Math.floor(Math.min(w / W, h / H)));
-  els.canvas.width = W * ts;
-  els.canvas.height = H * ts;
-  els.canvas.style.width = (W * ts) + 'px';
-  els.canvas.style.height = (H * ts) + 'px';
+  /* clientWidth/Height are in the same unzoomed CSS pixels that the canvas's
+   * own style width uses, so the two agree under `html { zoom }`. Measuring
+   * with getBoundingClientRect() instead is what oversized the canvas by 1.5x. */
+  const w = Math.max(160, vp.clientWidth || 900);
+  const h = Math.max(120, vp.clientHeight || 620);
+  ts = Math.max(8, Math.min(24, Math.floor(Math.min(w / TARGET_COLS, h / TARGET_ROWS))));
+  viewW = Math.max(12, Math.min(W, Math.floor(w / ts)));
+  viewH = Math.max(9, Math.min(H, Math.floor(h / ts)));
+  els.canvas.width = viewW * ts;
+  els.canvas.height = viewH * ts;
+  els.canvas.style.width = (viewW * ts) + 'px';
+  els.canvas.style.height = (viewH * ts) + 'px';
   vp.style.display = 'flex';
   vp.style.alignItems = 'center';
   vp.style.justifyContent = 'center';
+  lastTiles = '';
+}
+
+/* Hold the player in the middle of the window, stopping at the floor's edges. */
+function updateCamera(p) {
+  camX = Math.max(0, Math.min(W - viewW, p.x - Math.floor(viewW / 2)));
+  camY = Math.max(0, Math.min(H - viewH, p.y - Math.floor(viewH / 2)));
 }
 
 function inView(x, y) {
@@ -337,22 +396,24 @@ function renderGame(g) {
   const s = ts;
   const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
   const sa = Math.floor(performance.now() / 700) % 2;
-  let key = p.floorIdx + ':' + p.x + ',' + p.y + ':' + g.turn + ':' + sa;
+  updateCamera(p);
+  const key = p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
+    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa;
   if (key === lastTiles && els.canvas.width) return;
   lastTiles = key;
 
   ctx.fillStyle = '#050705';
-  ctx.fillRect(0, 0, W * s, H * s);
+  ctx.fillRect(0, 0, viewW * s, viewH * s);
   ctx.font = 'bold ' + Math.max(12, Math.round(s * 0.75)) + 'px "Courier New", monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  for (let y = camY; y < camY + viewH; y++) {
+    for (let x = camX; x < camX + viewW; x++) {
       const t = floor.tiles[y][x];
       const seen = g.seen && g.seen[y] && g.seen[y][x];
       const vis = g.vis && g.vis[y] && g.vis[y][x];
-      const px = x * s, py = y * s;
+      const px = (x - camX) * s, py = (y - camY) * s;
       if (!seen) {
         ctx.fillStyle = '#040503';
         ctx.fillRect(px, py, s, s);
@@ -424,7 +485,7 @@ function renderGame(g) {
   if (game && p) {
     drawGlyph(p.x, p.y, '@', '#f0f0e0', false, true);
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(p.x * s, p.y * s, s, s);
+    ctx.fillRect((p.x - camX) * s, (p.y - camY) * s, s, s);
   }
 }
 
@@ -437,11 +498,12 @@ function shade(hex, f) {
 let GL = 0; // sentinel
 
 function drawGlyph(x, y, ch, color, dim, pulse) {
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
   const ctx = els.ctx;
   const s = ts;
   ctx.fillStyle = dim ? shade(color, 0.7) : color;
   if (pulse && Math.floor(performance.now() / 400) % 2) ctx.globalAlpha = 0.85;
-  ctx.fillText(ch, x * s + s / 2, y * s + s / 2 + 1);
+  ctx.fillText(ch, (x - camX) * s + s / 2, (y - camY) * s + s / 2 + 1);
   ctx.globalAlpha = 1;
 }
 
@@ -485,7 +547,7 @@ function renderStats(g) {
   kv('Gold', p.gold + ' gp');
   kv('HP', p.hp + ' / ' + p.maxhp);
   kv('Power', p.power + ' / ' + p.maxpower);
-  kv('AC', der.ac);
+  kv('AC', der.ac + ' <span class="tiny">lower is better</span>');
   kv('To-hit', der.toHit >= 0 ? '+' + der.toHit : der.toHit);
   kv('Damage', der.dmg.dice + 'd' + der.dmg.sides + (der.dmg.bonus ? '+' + der.dmg.bonus : ''));
   kv('Crit', Math.round(der.crit * 100) + '%');
@@ -621,10 +683,11 @@ function onKey(e) {
     if (ab[idx] && ab[idx].kind !== 'passive') { game.handleKey(null, { ability: ab[idx].id }); e.preventDefault(); }
     return;
   }
+  if (k === '?' || k === 'h') { helpOpen ? closeHelp() : showHelp(); e.preventDefault(); return; }
   if (k === 'i' || k === 'e') { setTab('gear'); e.preventDefault(); return; }
   if (k === 'c') { setTab('codex'); e.preventDefault(); return; }
   if (k === 'l') { setTab('library'); e.preventDefault(); return; }
-  if (k === 'escape') { closeDialogue(); return; }
+  if (k === 'escape') { if (helpOpen) closeHelp(); else closeDialogue(); return; }
   if (k === 'enter') {
     if (dialogueOpen) { dlgSend(); }
     return;
@@ -639,6 +702,13 @@ function nextTab() {
 
 let dialogueOpen = false;
 let activeNpc = null;
+let helpOpen = false;
+
+function closeHelp() {
+  helpOpen = false;
+  overlayHideAll();
+  canvasFocus();
+}
 
 function openDialogue(npc) {
   const p = game.state.player;
@@ -862,6 +932,8 @@ async function boot() {
   els.btnArrivalOk.onclick = () => { overlayHideAll(); canvasFocus(); };
   els.btnVictoryOk.onclick = () => doRoster();
   els.btnLibClose.onclick = () => { overlayHideAll(); canvasFocus(); };
+  els.btnHelp.onclick = () => showHelp();
+  els.btnHelpClose.onclick = () => closeHelp();
   els.dlgSend.onclick = () => dlgSend();
   els.dlgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dlgSend(); } });
 
