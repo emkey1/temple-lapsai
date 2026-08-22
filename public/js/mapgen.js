@@ -244,13 +244,23 @@ export function generateFloor(opts) {
     if (pos) npcs.push({ tpl, x: pos.x, y: pos.y });
   }
 
+  /* One altar per floor, in a room away from the stairs. The tile type existed
+   * with a renderer and a travel rule and was never once placed.
+   *
+   * Drawn LAST on purpose: every rng draw shifts the stream, and taking one
+   * earlier would move every monster and item after it — which silently
+   * invalidates the floor memories in existing saves, since those record
+   * "monster 4 is dead" by index. */
+  const altar = findSpot(grid, rooms, up, rng, 8, den);
+  if (altar) grid[altar.y][altar.x] = T.ALTAR;
+
   /* Stable ids, assigned in generation order. Because a floor regenerates
    * identically from its seed, the save can record "monster 4 is dead" and
    * "item 2 was taken" and have that still mean the same thing next visit. */
   monsters.forEach((m, i) => { m.idx = i; });
   items.forEach((it, i) => { it.idx = i; });
 
-  return { w: W, h: H, tiles: grid, rooms, monsters, items, npcs, up, down, theme, seed, isLast, den, boss };
+  return { w: W, h: H, tiles: grid, rooms, monsters, items, npcs, up, down, altar, theme, seed, isLast, den, boss };
 }
 
 function scaledMonster(t, pos, threat, floorIdx, boss) {

@@ -23,9 +23,9 @@ generation are all client-side; progression is saved to `localStorage`.
 
 ## LLM-driven expansion (optional)
 
-The game ships with a small set of hand-authored expansions in `data/expansions.json`. With an LLM
-API key configured, the "Library" tab can generate new dungeons, monsters, items, and abilities on
-demand and append them to `data/expansions.json`.
+`data/expansions.json` starts empty. With an LLM API key configured, the "Library" tab generates new
+dungeons, monsters, items and abilities on demand, validates them, and appends them to that file;
+the client merges whatever is there into every new game on boot.
 
 ### Configuration
 
@@ -99,6 +99,9 @@ A few rules worth knowing before you go down:
   within six tiles.
 - **Floors remember you.** What you killed stays dead, what you took stays taken, doors you opened
   stay open, and the map you drew stays drawn — across stairs, saves and reloads.
+- **Altars** stand once on every floor. Step onto one for a blessing — health, power, and any
+  curse lifted. Each gives once, and will not spend itself on someone who needs nothing.
+- **The belt** takes four items. Bind with BELT in the gear panel, use with **shift + 1-4**.
 - **Armour class descends**, as in the modules this is an homage to: lower is harder to hit.
 - The stairs down are only barred while something is at your heels.
 
@@ -120,14 +123,25 @@ would otherwise swallow. `npm test` checks that no topic is unreachable.
 ## Development
 
 ```sh
+npm run check     # lint, then the test suite
 npm test
+npm run lint
 ```
 
-Runs the headless suite on `node:test` — no dependencies, no build. The engine has no DOM
+`npm test` runs the headless suite on `node:test` — no dependencies, no build. The engine has no DOM
 dependencies, so the whole game runs in Node; the tests generate floors across many seeds and
 assert the invariants that are invisible by inspection: every dungeon's monster and boss ids
 resolve, every floor is fully reachable from its entrance, the boss is never sealed in its den,
-monsters route around walls, aggro lapses, and floor state survives a save round-trip.
+monsters route around walls, aggro lapses, and floor state survives a save round-trip. It also
+checks the written world: that no dialogue topic is unreachable behind an earlier keyword, and that
+no NPC recites a story beat the player is about to read.
+
+`npm run lint` is a dependency-free check — every file parses, every relative import resolves, no
+debug debris, and the two conventions the content depends on.
+
+The server binds to `127.0.0.1` by default; set `HOST=0.0.0.0` if you deliberately want it on the
+network. `POST /api/expand` refuses cross-origin requests and is rate-limited, because it spends
+your API key.
 
 ## Project layout
 

@@ -126,9 +126,52 @@ function sendJSON(res, status, obj) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
   });
   res.end(body);
+}
+
+/* The game is served from this origin, so nothing legitimate is cross-origin.
+ * `Access-Control-Allow-Origin: *` on /api/expand meant any page you happened
+ * to visit could drive your API key in a loop.
+ *
+ * Gate on the SERVER's identity, not on headers the caller chose. Comparing
+ * Origin against Host passes any request whose two headers agree — which is
+ * exactly the shape of DNS rebinding, where a hostile page resolves its own
+ * domain to 127.0.0.1 and the browser sends both honestly. */
+function allowedAuthorities() {
+  return new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`]);
+}
+
+function sameOrigin(req) {
+  const allowed = allowedAuthorities();
+  /* Rebinding dies here: the Host the client used has to be one of ours. */
+  if (!allowed.has(req.headers.host)) return false;
+  const origin = req.headers.origin;
+  if (!origin) return true;   /* non-browser clients; browsers always send it on POST */
+  try {
+    return allowed.has(new URL(origin).host);
+  } catch {
+    return false;
+  }
+}
+
+/* Requiring JSON forces a preflight this server never answers, which closes
+ * the `mode:'no-cors'` text/plain POST that needs no preflight at all. */
+function isJson(req) {
+  return String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json');
+}
+
+/* A local single-player server has no business being a shared LLM gateway. */
+const EXPAND_WINDOW_MS = 60_000;
+const EXPAND_MAX = 12;
+const expandHits = [];
+
+function rateLimited() {
+  const now = Date.now();
+  while (expandHits.length && now - expandHits[0] > EXPAND_WINDOW_MS) expandHits.shift();
+  if (expandHits.length >= EXPAND_MAX) return true;
+  expandHits.push(now);
+  return false;
 }
 
 function readBody(req) {
@@ -189,7 +232,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/api/expand') {
-      const body = await readBody(req);
+      if (!sameOrigin(req)) return sendJSON(res, 403, { error: 'cross-origin requests are not accepted' });
+      if (!isJson(req)) return sendJSON(res, 415, { error: 'send application/json' });
+      /* Check the key BEFORE spending the budget: a 429 that hides "no key
+       * configured" sends you looking for the wrong problem. */
+      if (!CONFIG.apiKey) return sendJSON(res, 503, { error: 'No LLM API key configured' });
+      if (rateLimited()) return sendJSON(res, 429, { error: 'the scribes need a moment — try again shortly' });
+      let body;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJSON(res, 400, { error: 'could not read that request: ' + (err.message || 'bad JSON') });
+      }
       const action = ['dungeon', 'monster', 'item', 'ability'].includes(body.action) ? body.action : 'item';
       const expansion = await handleExpand(action, body.context || {});
       return sendJSON(res, 201, { ok: true, expansion });
@@ -207,9 +261,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+/* Loopback by default: this serves a single player on their own machine.
+ * Set HOST=0.0.0.0 deliberately if you want it on the network. */
+const HOST = process.env.HOST || '127.0.0.1';
+
+server.listen(PORT, HOST, () => {
   const llm = CONFIG.apiKey ? `${CONFIG.model} @ ${CONFIG.baseUrl}` : 'NOT CONFIGURED (set OPENAI_API_KEY)';
-  console.log(`Temple of Lapsai server on http://localhost:${PORT}`);
+  console.log(`Temple of Lapsai server on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`  LLM: ${llm}`);
   console.log(`  Expansions: ${EXPANSIONS_FILE}`);
 });

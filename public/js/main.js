@@ -7,6 +7,7 @@ import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls } from './base.js';
 import { T, W, H } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
+import { WEARABLE_SLOTS as WEARABLE } from './contract.js';
 
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
@@ -86,7 +87,8 @@ const CONTROLS = [
   ]],
   ['Your character', [
     ['1 – 9', 'Use the matching power from the STAT SHEET.'],
-    ['I  ·  E', 'Gear: equip, use, and drop what you are carrying. Right-click an item to drop it.'],
+    ['I  ·  E', 'Gear: wear, use, and drop what you are carrying. Right-click an item to drop it.'],
+    ['Shift + 1 – 4', 'Use what is on that belt loop. Bind something to the belt with BELT in the gear panel.'],
     ['C', 'Codex: the depths you know about.'],
     ['L', 'The Black Library, where new depths get written.'],
     ['Tab', 'Cycle those four panels.'],
@@ -174,7 +176,7 @@ function makeUI() {
     showVictory: (run) => showVictoryCard(run),
     showBeat: (beat) => showBeat(beat),
     unlock: (d) => {
-      logLine('A new path is opened: ' + d.name + ' — ' + (d.title || '') , 'good');
+      logLine('A new path is opened: ' + d.name + ' — ' + (d.title || ''), 'good');
       renderCodex(game);
       renderLibrary(game);
     },
@@ -584,7 +586,7 @@ function buffLines(p) {
   if (p.buffs.turn > 0) out.push('Turned Undead (' + p.buffs.turn + ')');
   if (p.buffs.sanctuary > 0) out.push('Sanctuary (' + p.buffs.sanctuary + ')');
   if (p.buffs.str > 0) out.push('Strength Boost (lvl ' + p.buffs.str + ')');
-  if (p.buffs.might > 0) out.push('Sharpened (+' + (p.buffs.mightBonus || 2) + ' to hit, ' + p.buffs.might + ')');
+  if (p.buffs.might > 0) out.push('Sharpened (+' + ((p.buffLevels && p.buffLevels.might) || 2) + ' to hit, ' + p.buffs.might + ')');
   return out;
 }
 
@@ -598,7 +600,7 @@ function renderStats(g) {
   const KEY = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
   let rows = '';
   const kv = (k, v) => rows += '<tr><td class="k">' + k + '</td><td class="v">' + v + '</td></tr>';
-  kv('Name', p.name);
+  kv('Name', esc(p.name));
   kv('Class', c.name + ' (' + c.glyph + ')');
   kv('Level', p.level);
   kv('XP', p.xp + ' / next ' + toNext);
@@ -627,11 +629,11 @@ function renderStats(g) {
     const can = p.level >= a.level && (a.kind === 'passive' || p.power >= (a.powerCost || 0)) && cd === 0;
     const el = document.createElement('div');
     el.className = 'ability-card' + (cd > 0 ? '' : '');
-    el.innerHTML = '<b>[' + (i + 1) + '] ' + a.name + '</b>' +
+    el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>' : ' <span class="tiny">' + (a.powerCost || 0) + ' pwr' + (a.cooldown ? ' · cd ' + a.cooldown : '') + '</span>') +
       (a.level > 1 ? ' <span class="tiny">Lv' + a.level + '</span>' : '') +
       (cd > 0 ? ' <b style="color:var(--red-dim)">(' + cd + ')</b>' : '') +
-      '<div class="desc">' + (a.description || '') + '</div>';
+      '<div class="desc">' + esc(a.description || '') + '</div>';
     if (!can && a.kind !== 'passive') el.style.opacity = 0.55;
     el.onclick = () => { if (game && !game.dying) { game.activateAbility(a.id); canvasFocus(); } };
     els.abilitiesBlock.appendChild(el);
@@ -647,6 +649,14 @@ function itemIcon(tpl) {
   return (tpl.glyph || 'o')[0];
 }
 
+/* What the button will actually do, so the label cannot lie. useItem checks
+ * kind before slot, so a wand in the pack fires rather than being worn. */
+function itemVerb(it) {
+  if (!it) return 'USE';
+  if (it.kind === 'wand') return 'FIRE';
+  return WEARABLE.includes(it.slot) ? 'WEAR' : 'USE';
+}
+
 function renderGear(g) {
   const p = g.state.player;
   if (!p) return;
@@ -657,30 +667,32 @@ function renderGear(g) {
     const mag = it && it.cursed === false && (it.effects && (it.effects.toHit || it.effects.acBonus || it.effects.damage));
     html += '<div class="eq-row"><span class="slot">' + label + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
-      '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '">' + (it ? it.name : '—') + '</span>' +
+      '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '">' + (it ? esc(it.name) : '—') + '</span>' +
       (it ? '<button data-act="unequip" data-slot="' + slot + '">TAKE OFF</button>' : '') +
       '</div>';
   }
   els.equipmentBlock.innerHTML = '<h3 class="pane">EQUIPPED</h3>' + html;
 
   const inv = p.inventory || [];
+  const onBelt = (it) => (p.belt || []).some((e) => e && (typeof e === 'string' ? e : e.uid) === it.uid);
   const ih = inv.map((it, i) =>
     '<div class="eq-row"><span class="ico">' + itemIcon(it) + '</span>' +
-    '<span class="i-name' + (it.cursed ? ' cursed' : '') + '">' + it.name + '</span>' +
-    '<button data-inv="' + i + '">' + (it.slot && it.slot !== 'consumable' && it.slot !== 'misc' ? 'USE' : 'USE') + '</button>' +
+    '<span class="i-name' + (it.cursed ? ' cursed' : '') + '">' + esc(it.name) + '</span>' +
+    '<button data-inv="' + i + '">' + itemVerb(it) + '</button>' +
+    (onBelt(it) ? '' : '<button data-bind="' + i + '">BELT</button>') +
     '<button data-drop="' + i + '">DROP</button></div>').join('');
   els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + ')</h3>' + (ih || '<div class="tiny">You carry nothing.</div>');
 
   let belt = '';
   const b = p.belt || [null, null, null, null];
   for (let i = 0; i < b.length; i++) {
-    const it = b[i];
-    belt += '<div class="eq-row"><span class="slot">B' + (i + 1) + '</span>' +
+    const it = g.beltItem(i);
+    belt += '<div class="eq-row"><span class="slot">⇧' + (i + 1) + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
-      '<span class="i-name">' + (it ? it.name : '—') + '</span>' +
-      (it ? '<button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
+      '<span class="i-name">' + (it ? esc(it.name) : '—') + '</span>' +
+      (it ? '<button data-use-belt="' + i + '">USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
   }
-  els.beltBlock.innerHTML = '<h3 class="pane">BELT</h3>' + belt;
+  els.beltBlock.innerHTML = '<h3 class="pane">BELT <span class="tiny">shift + 1-4</span></h3>' + belt;
 }
 
 /* ---------------- codex ---------------- */
@@ -780,6 +792,13 @@ function onKey(e) {
   const tag = (e.target && e.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   const k = String(e.key).toLowerCase();
+  const cardUp = !els.overlay.classList.contains('hidden');
+  if (e.shiftKey && e.code && /^Digit[1-4]$/.test(e.code) && !cardUp) {
+    game.handleKey(null, { belt: Number(e.code.slice(5)) - 1 });
+    renderGear(game); renderStats(game); saveGame();
+    e.preventDefault();
+    return;
+  }
   if (k >= '1' && k <= '9') {
     const idx = Number(k) - 1;
     const ab = game.allAbilities();
@@ -795,7 +814,14 @@ function onKey(e) {
     if (dialogueOpen) { dlgSend(); }
     return;
   }
-  if (game) { game.handleKey(e.key, {}); e.preventDefault(); saveGame(); }
+  if (game) {
+    game.handleKey(e.key, {});
+    /* Picking something up from the keyboard changed the pack and left the
+     * gear panel showing the pack from before. */
+    if (currentTab === 'gear') renderGear(game);
+    e.preventDefault();
+    saveGame();
+  }
 }
 
 function nextTab() {
@@ -1003,7 +1029,7 @@ async function doExpand(action) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      els.libResult.innerHTML = '<div class="lib-status" style="color:var(--red)">The oracle is silent: ' + (data.error || res.statusText || 'unknown error') + '</div>' +
+      els.libResult.innerHTML = '<div class="lib-status" style="color:var(--red)">The oracle is silent: ' + esc(data.error || res.statusText || 'unknown error') + '</div>' +
         (res.status === 503 ? '<p class="tiny">Set OPENAI_API_KEY (or config.json) and restart the server to awaken the oracle.</p>' : '');
       return;
     }
@@ -1011,15 +1037,15 @@ async function doExpand(action) {
     if (installExpansion(exp)) {
       persistRegistry();
       logLine('The Library certifies a new work: ' + (exp.name || exp.type || 'a binding'), 'good');
-      els.libResult.innerHTML = '<div class="expansion-card"><b>' + (exp.name || 'New ' + (exp.type || 'content')) + '</b>' +
-        '<p class="flavor">' + (exp.flavor || (exp.description || '')) + '</p></div>';
+      els.libResult.innerHTML = '<div class="expansion-card"><b>' + esc(exp.name || 'New ' + (exp.type || 'content')) + '</b>' +
+        '<p class="flavor">' + esc(exp.flavor || exp.description || '') + '</p></div>';
       if (exp.type === 'dungeon') logLine('A dungeon unfolds on the map: ' + exp.name, 'gold');
     } else {
       els.libResult.innerHTML = '<div class="lib-status">The worked page is blank.</div>';
     }
     if (game) { renderCodex(game); renderLibrary(game); if (currentTab === 'gear') renderGear(game); }
   } catch (e) {
-    els.libResult.innerHTML = '<div class="lib-status" style="color:var(--red)">Scribes fumbled: ' + (e.message || e) + '</div>';
+    els.libResult.innerHTML = '<div class="lib-status" style="color:var(--red)">Scribes fumbled: ' + esc(e.message || e) + '</div>';
   }
 }
 
@@ -1096,6 +1122,8 @@ function inventoryClick(e) {
   const p = game.state.player;
   if (b.dataset.drop !== undefined) {
     game.drop(p.inventory[Number(b.dataset.drop)]);
+  } else if (b.dataset.bind !== undefined) {
+    game.bindToBelt(p.inventory[Number(b.dataset.bind)]);
   } else if (b.dataset.inv !== undefined) {
     game.useItem(p.inventory[Number(b.dataset.inv)]);
   }
@@ -1103,13 +1131,23 @@ function inventoryClick(e) {
 }
 
 function inventDrop(e) {
-  const b = e.target && e.target.closest && e.target.closest('button[data-inv]');
-  if (!b || !game) return;
+  /* data-inv lives on one button in the row, so closest() from the row, the
+   * name or either other button used to find nothing at all. */
+  if (!game || !e.target || !e.target.closest) return;
+  const row = e.target.closest('.eq-row');
+  const b = row && row.querySelector('button[data-inv]');
+  if (!b) return;
   game.drop(game.state.player.inventory[Number(b.dataset.inv)]);
   renderGear(game); renderStats(game); saveGame();
 }
 
 function beltClick(e) {
+  const use = e.target.closest('[data-use-belt]');
+  if (use && game) {
+    game.useBeltItem(Number(use.dataset.useBelt));
+    renderGear(game); renderStats(game); saveGame(); canvasFocus();
+    return;
+  }
   const b = e.target.closest('[data-belt]');
   if (!b || !game) return;
   game.setBelt(Number(b.dataset.belt), null);

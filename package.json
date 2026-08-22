@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "open": "node scripts/open.mjs",
-    "test": "node --test 'test/**/*.test.mjs'"
+    "test": "node --test test/*.test.mjs",
+    "lint": "node scripts/lint.mjs",
+    "check": "npm run lint && npm test"
   },
   "engines": {
     "node": ">=18"

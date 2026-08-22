@@ -22,6 +22,10 @@ const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
  * a limit, anything that ever woke up stays awake forever and holds the stairs. */
 const AGGRO_MEMORY = 12;
 
+/* How much a Potion of Titan's Grip actually adds while it lasts. The potion
+ * set a countdown that nothing ever read. */
+const STRENGTH_BUFF = 4;
+
 /* ---------------- Character creation ---------------- */
 
 export function rollStats() {
@@ -63,6 +67,7 @@ export function makePlayer(name, clsId, stats) {
     equipment: { weapon: null, body: null, shield: null, ring: null, amulet: null },
     cooldowns: {},
     buffs: {},
+    buffLevels: {},   /* magnitudes, kept out of p.buffs, which is all countdowns */
     bossesSlain: {},
     explored: {},
     identified: [],
@@ -84,7 +89,6 @@ export class Game {
     this.state = this.opts.state || null;
     this.floors = {};
     this.currentFloor = null;
-    this.pendingCleave = false;
     this.dying = false;
 
     if (!this.state) {
@@ -237,6 +241,9 @@ export class Game {
     let dmg = { dice: 1, sides: 4, bonus: c.dmgBonus };
     let crit = c.critBonus;
     let regen = 0;
+    let resist = 0;          /* flat damage soaked, from wards */
+    let undeadResist = 0;    /* extra, against the unhallowed */
+    let luck = 0;            /* chance to shrug off a miss */
     let seeSecrets = false;
     let eqWeapon = null;
     const eq = p.equipment || {};
@@ -247,6 +254,9 @@ export class Game {
       ac -= fx.acBonus || 0;
       regen += fx.regen || 0;
       if (fx.seeSecrets) seeSecrets = true;
+      resist += fx.resist || 0;
+      undeadResist += fx.undeadResist || 0;
+      luck += fx.luck || 0;
       if (fx.statBonus) for (const k in fx.statBonus) sbonus[k] = (sbonus[k] || 0) + fx.statBonus[k];
       if (slot.slot === 'weapon' && fx.damage) eqWeapon = fx.damage;
       if (slot.kind === 'wand' && fx.damage) eqWeapon = fx.damage;
@@ -255,14 +265,19 @@ export class Game {
     for (const k of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
       eff[k] = Math.max(3, Math.min(18, (st[k] || 10) + (sbonus[k] || 0)));
     }
+    /* Temporary might sits ON TOP of the 18 cap. Inside it, a potion drunk by
+     * anyone strong enough to want one did exactly nothing. */
+    if (p.buffs && p.buffs.str > 0) eff.str += STRENGTH_BUFF;
     toHit += abilityMod(eff.dex) + abilityMod(eff.str);
     /* Monsters used to scale on player level while the player scaled on loot
      * alone, so levelling up made the game harder. Grow with level too. */
     toHit += Math.floor((p.level - 1) / 2);
-    if (p.buffs && p.buffs.might > 0) toHit += p.buffs.mightBonus || 2;
+    if (p.buffs && p.buffs.might > 0) toHit += (p.buffLevels && p.buffLevels.might) || 2;
     ac -= abilityMod(eff.dex);
     dmg.bonus += abilityMod(eff.str);
-    if (eqWeapon) dmg = { dice: eqWeapon.dice, sides: eqWeapon.sides, bonus: (eqWeapon.bonus || 0) + abilityMod(eff.str) };
+    /* Keep the class bonus: rebuilding dmg from the weapon dropped the
+     * Fighter's +1 the instant they picked up a sword. */
+    if (eqWeapon) dmg = { dice: eqWeapon.dice, sides: eqWeapon.sides, bonus: (eqWeapon.bonus || 0) + abilityMod(eff.str) + c.dmgBonus };
     dmg.bonus += Math.floor((p.level - 1) / 3);
     if (p.cls === 'thief') crit = Math.max(crit, 0.15);
     let maxp = c.powerBase + this.equipmentPower();
@@ -272,6 +287,8 @@ export class Game {
     return {
       effValues: eff,
       toHit, ac, dmg, crit, regen,
+      resist, undeadResist, luck,
+      sanctuary: (p.buffs && p.buffs.sanctuary > 0) || false,
       seeSecrets: !!seeSecrets,
       maxpower: Math.max(1, maxp),
       sight: 9,
@@ -341,6 +358,8 @@ export class Game {
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
     this.snapshotFloor();   /* remember the floor we are stepping off */
+    this.wading = false;
+    this.cleavedThisTurn = false;
     p.floorIdx = floorIdx;
     const isLast = floorIdx >= d.floors - 1;
     const boss = isLast ? (this.monsterTemplate(d.bossId) || null) : null;
@@ -374,7 +393,6 @@ export class Game {
     if (this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
     this.computeVisibility();
-    this.pendingCleave = false;
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
   }
@@ -404,7 +422,11 @@ export class Game {
       { arr: ['battle-axe', 'studded-armor', 'chainmail', 'large-shield', 'ring-strength', 'amulet-ward', 'potion-major-heal', 'scroll-reveal', 'scroll-flame', 'wand-of-fire'], max: 100 },
       { arr: ['two-handed-sword', 'scale-armor', 'plate', 'tower-shield', 'ring-arcana', 'amulet-seeing', 'amulet-luck', 'scroll-remove-curse', 'scroll-sanctuary', 'wand-of-healing', 'wand-of-frost'], max: 100 },
     ];
-    const tier = Math.min(pools.length - 1, Math.floor(floorIdx / 1.5));
+    /* floorIdx maxes out at 3, so dividing by 1.5 capped this at pool 2 and the
+     * deepest table — Deep Ward, True Seeing, the Lucky Coin, Sanctuary — could
+     * never drop at all. Dungeon threat carries the deeper dungeons further. */
+    const threat = Math.max(0, (this.dungeonById(this.state.player.dungeonId) || {}).threat || 0);
+    const tier = Math.min(pools.length - 1, floorIdx + Math.floor(threat / 3));
     const cands = pools.slice(0, tier + 1).flatMap((p) => p.arr);
     /* Generated items are drawn from the same table as hand-authored ones,
      * banded by their own tier so a tier-9 blade cannot turn up on floor one.
@@ -493,6 +515,10 @@ export class Game {
     if (!p || this.dying) return false;
     if (uiFlags.ability) {
       this.activateAbility(uiFlags.ability);
+      return;
+    }
+    if (uiFlags.belt !== undefined) {
+      this.useBeltItem(uiFlags.belt);
       return;
     }
     let turn = false;
@@ -618,6 +644,7 @@ export class Game {
       this.loadFloor(p.floorIdx - 1);
       return;
     }
+    if (tile === T.ALTAR) { this.useAltar(x, y); return; }
     const here = (floor.items || []).filter((it) => it.x === x && it.y === y);
     for (const it of here) {
       if (it.auto) {
@@ -679,6 +706,42 @@ export class Game {
     if (npc) this.log((npc.tpl ? npc.tpl.name : 'Someone') + ' stands beside you — walk into them to speak.');
   }
 
+  /* An altar gives once, to each character, on each floor: the old rites still
+   * work, which is the point the world keeps making. */
+  useAltar(x, y) {
+    const p = this.state.player;
+    const memo = this.currentMemo();
+    const key = x + ',' + y;
+    if (memo) {
+      if (!memo.altars) memo.altars = [];
+      if (memo.altars.includes(key)) {
+        this.log('The altar is cold. It gave what it had.');
+        return;
+      }
+      memo.altars.push(key);
+    }
+    const der = this.derived();
+    const healed = Math.min(p.maxhp - p.hp, Math.max(1, Math.round(p.maxhp * 0.35)));
+    const restored = Math.min(p.maxpower - p.power, Math.max(1, Math.round(der.maxpower * 0.5)));
+    const cursedHere = [...p.inventory, ...Object.values(p.equipment || {})].some((it) => it && it.cursed);
+    /* Do not spend a one-shot on someone who needs nothing from it. */
+    if (healed <= 0 && restored <= 0 && !cursedHere) {
+      this.log('An altar, still kept. You have nothing to ask it for yet.');
+      if (memo && memo.altars) memo.altars = memo.altars.filter((k) => k !== key);
+      return;
+    }
+    p.hp = Math.min(p.maxhp, p.hp + healed);
+    p.power = Math.min(p.maxpower, p.power + restored);
+    this.log('You set your hands on the altar. Someone kept this rite up long after the last of them stopped being paid.');
+    const gains = [healed > 0 ? '+' + healed + ' HP' : '', restored > 0 ? '+' + restored + ' PWR' : ''].filter(Boolean);
+    if (gains.length) this.log('The old words answer: ' + gains.join(', ') + '.');
+    const cursed = [...p.inventory, ...Object.values(p.equipment || {})].filter((it) => it && it.cursed);
+    if (cursed.length) {
+      this.removeAllCurses();
+      this.log('What was bound to you is not, any more.');
+    }
+  }
+
   tryPickup(x, y, manual) {
     const floor = this.currentFloor;
     const here = (floor.items || []).filter((it) => it.x === x && it.y === y);
@@ -714,19 +777,35 @@ export class Game {
 
   /* ---- combat ---- */
   attackMonster(m) {
+    this.breakSanctuary();
     const der = this.derived();
     const r = this.rngOfTurn();
-    const raw = r.d(20);
+    let raw = r.d(20);
     const dc = Math.max(1, 20 - m.t.ac);
-    const hit = raw === 20 ? true : raw + der.toHit >= dc;
+    let hit = raw === 20 || raw + der.toHit >= dc;
+
+    /* The Lucky Coin was carrying a number nothing read. It buys one second
+     * look at a blow that missed. */
+    if (!hit && der.luck > 0 && r.chance(Math.min(0.6, der.luck * 0.15))) {
+      raw = r.d(20);
+      hit = raw === 20 || raw + der.toHit >= dc;
+      if (hit) this.log('Someone else’s fortune turns the blade — it lands after all.');
+    }
+
     if (!hit) {
       this.log('Your blow misses the ' + m.t.name + '.');
       m.aggro = true;
       return;
     }
-    const dmg = this.rollDamage(der.dmg, m.t);
+
+    /* A natural 20 always crits; the Thief's Sharp & Keen is a standing chance
+     * on top. der.crit was computed, displayed on the stat sheet, and never
+     * once consulted in combat. */
+    const isCrit = raw === 20 || r.chance(der.crit || 0);
+    let dmg = this.rollDamage(der.dmg, m.t);
+    if (isCrit) dmg += this.rollDamage(der.dmg, m.t);
     this.log('You strike the ' + m.t.name + ' for ' + dmg + ' hit points.');
-    this.applyDamageToMonster(m, dmg, raw === 20, der);
+    this.applyDamageToMonster(m, dmg, isCrit, der);
   }
 
   rngOfTurn() {
@@ -744,7 +823,9 @@ export class Game {
     let s = 0;
     const dice = Math.max(1, d.dice || 1);
     for (let i = 0; i < dice; i++) s += r.d(Math.max(2, d.sides || 6));
-    return s + (d.bonus || 0);
+    /* A blow that lands takes something off. Without the floor a negative
+     * bonus — the Mage's -1, a cursed weapon — could heal what it hit. */
+    return Math.max(1, s + (d.bonus || 0));
   }
 
   applyDamageToMonster(m, dmg, isCrit, der) {
@@ -761,6 +842,7 @@ export class Game {
     const p = this.state.player;
     const floor = this.currentFloor;
     this.state.totalKills = (this.state.totalKills || 0) + 1;
+    const cleaves = this.hasPassive('cleave') && !this.cleavedThisTurn;
     if (m.boss) this.onBossSlain(m);
     const xp = Math.round((m.xp || 10) * classKillBonus(p.cls, 1));
     this.log('The ' + m.t.name + ' is slain!');
@@ -773,6 +855,19 @@ export class Game {
     }
     this.rememberKill(m);
     floor.monsters = floor.monsters.filter((x) => x !== m);
+
+    /* Cleave, the Fighter's level-1 passive: 'slaying a foe grants one bonus
+     * attack this turn'. It was set to false in three places and never once
+     * set to true. The blade carries into another adjacent foe at once — a
+     * bonus ATTACK, not a bonus turn that could be spent walking away. */
+    if (cleaves) {
+      const next = (floor.monsters || []).find((o) => o.hp > 0 && dist1(o, p) <= 1);
+      if (next) {
+        this.cleavedThisTurn = true;   /* set before the swing: no chains */
+        this.log('Your blade carries.');
+        this.attackMonster(next);
+      }
+    }
   }
 
   onBossSlain(m) {
@@ -855,7 +950,7 @@ export class Game {
       this.resolveMonsters();
       if (this.dying) return;
     }
-    if (this.pendingCleave) { this.pendingCleave = false; }
+    this.cleavedThisTurn = false;
     this.computeVisibility();
     this.turn++;
     if (this.ui.render) this.ui.render(this);
@@ -870,11 +965,21 @@ export class Game {
       p.hp = Math.min(p.maxhp, p.hp + der.regen);
     }
     for (const k in p.cooldowns) if (p.cooldowns[k] > 0) p.cooldowns[k]--;
+    /* Every key in p.buffs is a countdown in turns. Anything that is a
+     * magnitude rather than a duration belongs in p.buffLevels, or it decays. */
     for (const k in p.buffs) if (p.buffs[k] > 0) p.buffs[k]--;
-    if (p.buffs.turn && p.buffs.turn <= 0) this.buffsTurnRefresh();
+    if (p.buffs.turn !== undefined && p.buffs.turn <= 0) this.buffsTurnRefresh();
+    if (p.buffs.sanctuary !== undefined && p.buffs.sanctuary <= 0) {
+      delete p.buffs.sanctuary;
+      this.log('The dark remembers your name again.');
+    }
+    if (p.buffs.str !== undefined && p.buffs.str <= 0) {
+      delete p.buffs.str;
+      this.log('The borrowed strength drains out of your arm.');
+    }
     if (p.buffs.might !== undefined && p.buffs.might <= 0) {
       delete p.buffs.might;
-      delete p.buffs.mightBonus;
+      if (p.buffLevels) delete p.buffLevels.might;
       this.log('The edge goes off your swing.');
     }
   }
@@ -918,11 +1023,19 @@ export class Game {
     const alive = (floor.monsters || []).filter((m) => m.hp > 0);
     const rng = this.rngOfTurn();
     const field = this.playerDistanceField();
+    const hidden = der.sanctuary;   /* Scroll of Sanctuary: the dark forgets you */
     for (const m of rng.shuffle(alive)) {
       if (m.hp <= 0) continue;
+
+      /* Wand of Frost set `stunned` and nothing ever read it. */
+      if (m.stunned > 0) {
+        m.stunned--;
+        continue;
+      }
+
       const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
       if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) continue;
-      if (seen) {
+      if (seen && !hidden) {
         m.aggro = true;
         m.lastSeen = this.turn;
       } else if (m.aggro && dist1(m, p) > 1 && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
@@ -930,9 +1043,23 @@ export class Game {
         m.revealed = false;
       }
       if (!m.aggro) continue;
+      if (hidden) continue;   /* it knows something is there; it cannot fix on you */
+
       m.acted = true;
-      this.monsterAct(m, seen, der, field);
-      if (this.dying) return;
+      /* Monster speed (1-4) was carried on every template and never used.
+       * Speed buys GROUND, not blows: a fast thing closes sooner, but nothing
+       * gets to strike twice in one turn. */
+      const acts = Math.max(1, Math.min(4, m.t.speed || 1));
+      for (let i = 0; i < acts; i++) {
+        const before = p.hp;
+        const wasAt = { x: m.x, y: m.y };
+        this.monsterAct(m, seen, der, field);
+        if (this.dying) return;
+        if (m.hp <= 0) break;
+        /* It attacked if it did not move — melee, ranged or a missed swing. */
+        if (m.x === wasAt.x && m.y === wasAt.y) break;
+        if (p.hp !== before) break;
+      }
     }
   }
 
@@ -964,7 +1091,10 @@ export class Game {
     const der = this.derived();
     const r = this.rngOfTurn();
     const dc = Math.max(1, 20 - der.ac);
-    const hit = r.d(20) + m.toHit >= dc;
+    const raw = r.d(20);
+    /* A natural 20 always lands, as it does for the player. Without it, enough
+     * armour put the player permanently out of a monster's reach. */
+    const hit = raw === 20 || raw + m.toHit >= dc;
     if (!hit) { this.log('The ' + m.t.name + ' lashes out — and misses!'); return; }
     const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
     this.log('The ' + m.t.name + ' hits you for ' + dmg + ' hit points.');
@@ -976,9 +1106,10 @@ export class Game {
     const r = this.rngOfTurn();
     const der = this.derived();
     const dc = Math.max(1, 20 - der.ac);
-    if (r.d(20) + m.toHit >= dc) {
+    const raw = r.d(20);
+    if (raw === 20 || raw + m.toHit >= dc) {
       const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
-      this.log('The ' + m.t.name + ' hurls [ranged] and hits you for ' + dmg + '.');
+      this.log('The ' + m.t.name + ' looses at you and hits for ' + dmg + '.');
       this.damagePlayer(dmg, m);
     } else {
       this.log('The ' + m.t.name + '\'s ranged attack whistles past.');
@@ -1022,6 +1153,17 @@ export class Game {
 
   damagePlayer(dmg, m) {
     const p = this.state.player;
+    const der = this.derived();
+    let soak = der.resist || 0;
+    const unhallowed = m && m.t && m.t.props && (m.t.props.includes('undead') || m.t.props.includes('cursed'));
+    if (unhallowed) soak += der.undeadResist || 0;
+    if (soak > 0 && dmg > 1) {
+      const stopped = Math.min(soak, dmg - 1);
+      if (stopped > 0) {
+        dmg -= stopped;
+        this.log('Your ward turns ' + stopped + ' of it aside.');
+      }
+    }
     p.hp -= dmg;
     if (p.hp <= 0) {
       p.hp = 0;
@@ -1032,6 +1174,9 @@ export class Game {
   die(m) {
     const p = this.state.player;
     this.dying = true;
+    /* Per-turn flags do not survive the end of a life. */
+    this.wading = false;
+    this.cleavedThisTurn = false;
     const killer = m ? ('by a ' + m.t.name) : 'by misadventure';
     this.log('You are slain ' + killer + '!');
     if (this.ui.showDeath) this.ui.showDeath('You were laid low ' + killer + ' in ' + (this.dungeonById(p.dungeonId) || {}).name + '.');
@@ -1051,6 +1196,12 @@ export class Game {
     p.power = p.maxpower;
     this.enterDungeon(p.dungeonId);
     if (this.ui.render) this.ui.render(this);
+  }
+
+  hasPassive(id) {
+    const p = this.state.player;
+    if (!p) return false;
+    return this.allAbilities().some((a) => a.id === id && a.kind === 'passive');
   }
 
   /* ---- helpers ---- */
@@ -1169,6 +1320,7 @@ export class Game {
   }
 
   abilityDamage(a, der) {
+    this.breakSanctuary();
     const floor = this.currentFloor;
     const p = this.state.player;
     const range = a.range || (a.aura ? 1 : 1000);
@@ -1202,9 +1354,12 @@ export class Game {
   }
 
   abilityBonus(dmg, der) {
+    /* Effective stats, not the raw sheet: a Ring of Might and a Potion of
+     * Titan's Grip were both invisible to every ability that scales on STR. */
+    const eff = (der && der.effValues) || this.derived().effValues;
     let b = 0;
-    if (dmg && dmg.int) b += abilityMod(this.state.player.stats.int);
-    else if (dmg && dmg.n === 'str') b += abilityMod(this.state.player.stats.str);
+    if (dmg && dmg.int) b += abilityMod(eff.int);
+    else if (dmg && dmg.n === 'str') b += abilityMod(eff.str);
     return b;
   }
 
@@ -1218,12 +1373,23 @@ export class Game {
 
   /* A short-lived edge on your attacks. The validator accepts kind "buff", so
    * the engine has to do something real with one. */
+  /* Sanctuary hides you; it does not make you a fixed gun emplacement. Drawing
+   * blood ends it, which is what "the dark forgets you" has to mean. */
+  breakSanctuary() {
+    const p = this.state.player;
+    if (p.buffs && p.buffs.sanctuary > 0) {
+      delete p.buffs.sanctuary;
+      this.log('You strike, and the dark remembers you at once.');
+    }
+  }
+
   abilityBuff(a) {
     const p = this.state.player;
     const bonus = Math.max(1, a.bonus || 2);
     const turns = Math.max(2, a.aura || 5);
     p.buffs.might = turns;
-    p.buffs.mightBonus = bonus;
+    if (!p.buffLevels) p.buffLevels = {};
+    p.buffLevels.might = bonus;
     this.log('Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.');
   }
 
@@ -1317,7 +1483,7 @@ export class Game {
     else { this.log('It does nothing you can perceive.'); }
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
-    for (let i = 0; i < p.belt.length; i++) if (p.belt[i] === item) p.belt[i] = null;
+    this.unbindItem(item);
   }
 
   scrollFlame(dice) {
@@ -1365,7 +1531,7 @@ export class Game {
     if (fx.charges <= 0) {
       const idx = p.inventory.indexOf(item);
       if (idx >= 0) p.inventory.splice(idx, 1);
-      for (let i = 0; i < p.belt.length; i++) if (p.belt[i] === item) p.belt[i] = null;
+      this.unbindItem(item);
       if (p.equipment.weapon === item) p.equipment.weapon = null;
       this.log('The wand crumbles to ash.');
     }
@@ -1379,6 +1545,7 @@ export class Game {
     p.equipment[slot] = item;
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
+    this.unbindItem(item);   /* worn is not carried: it leaves the belt */
     if (cur) { p.inventory.push(cur); this.log('You swap the ' + cur.name + ' for the ' + item.name + '.'); }
     else { this.log('You ready the ' + item.name + '.'); }
     p.maxpower = this.computeMaxPower();
@@ -1403,6 +1570,7 @@ export class Game {
     const idx = p.inventory.indexOf(item);
     if (idx < 0) return;
     p.inventory.splice(idx, 1);
+    this.unbindItem(item);
     if (this.currentFloor && this.currentFloor.items) {
       this.currentFloor.items.push({ i: item, x: p.x, y: p.y, auto: false });
       this.rememberDrop(item, p.x, p.y);
@@ -1410,13 +1578,69 @@ export class Game {
     this.log('You drop the ' + item.name + '.');
   }
 
+  /* The belt holds UIDs, not object references. save() is a deep JSON copy, so
+   * a reference here survives serialisation as a duplicate object and every
+   * identity test against the pack fails the moment the game is reloaded. */
+  beltUid(entry) {
+    if (!entry) return null;
+    return typeof entry === 'string' ? entry : (entry.uid || null);
+  }
+
+  beltItem(index) {
+    const p = this.state.player;
+    const uid = this.beltUid(p.belt[index]);
+    if (!uid) return null;
+    return p.inventory.find((it) => it && it.uid === uid) || null;
+  }
+
+  unbindItem(item) {
+    const p = this.state.player;
+    if (!p || !item || !item.uid) return;
+    for (let i = 0; i < p.belt.length; i++) {
+      if (this.beltUid(p.belt[i]) === item.uid) p.belt[i] = null;
+    }
+  }
+
   setBelt(index, item) {
     const p = this.state.player;
+    if (index < 0 || index >= p.belt.length) return;
     if (!item) { p.belt[index] = null; return; }
-    const idx = p.inventory.indexOf(item);
-    if (idx < 0) return;
-    p.belt[index] = item;
+    if (p.inventory.indexOf(item) < 0) return;
+    if (!item.uid) item.uid = rngIntId();
+    this.unbindItem(item);   /* one loop per item: binding again moves it */
+    p.belt[index] = item.uid;
     this.log('Bound to the belt: ' + item.name + '.');
+  }
+
+  /* The first free loop, so binding is one click rather than a puzzle. */
+  bindToBelt(item) {
+    const p = this.state.player;
+    if (!item) return false;
+    if (!item.uid) item.uid = rngIntId();
+    if (p.belt.some((e) => this.beltUid(e) === item.uid)) {
+      this.log(item.name + ' is already on your belt.');
+      return false;
+    }
+    const free = p.belt.findIndex((x) => !x);
+    if (free < 0) { this.log('Your belt is full. Unbind something first.'); return false; }
+    this.setBelt(free, item);
+    return true;
+  }
+
+  /* Belt loops were bindable only to null and usable by nothing: four empty
+   * boxes rendered on the gear panel for every character ever made. */
+  useBeltItem(index) {
+    const p = this.state.player;
+    if (index < 0 || index >= p.belt.length) return false;
+    if (!p.belt[index]) { this.log('That belt loop is empty.'); return false; }
+    const item = this.beltItem(index);
+    if (!item) {
+      p.belt[index] = null;
+      this.log('That is no longer on your belt.');
+      return false;
+    }
+    this.useItem(item);
+    return true;
   }
 
   identifyAll() {
@@ -1463,6 +1687,22 @@ export class Game {
     this.state = state;
     /* Saves written before floor memory existed simply have none. */
     if (!this.state.floors) this.state.floors = {};
+    const p = this.state.player;
+    if (p) {
+      if (!p.buffLevels) p.buffLevels = {};
+      if (!p.beatsSeen) p.beatsSeen = {};
+      if (!p.npcsMet) p.npcsMet = {};
+      /* Belts used to hold object references, which a JSON round-trip turns
+       * into copies that match nothing. Rewrite them as uids. */
+      if (Array.isArray(p.belt)) {
+        p.belt = p.belt.map((e) => {
+          if (!e) return null;
+          if (typeof e === 'string') return e;
+          if (!e.uid) return null;
+          return p.inventory.some((it) => it && it.uid === e.uid) ? e.uid : null;
+        });
+      }
+    }
     this.currentFloor = null;
     this.dying = false;
   }
