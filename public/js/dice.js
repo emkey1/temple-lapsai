@@ -30,8 +30,16 @@ export function rngIntId() {
   return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+/* Manhattan: how far, in steps, ignoring diagonals. Used for ranges. */
 export function dist1(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/* Chebyshev: how far in KING moves. This is the one that means "adjacent" now
+ * that everything can move diagonally — a foe on the diagonal is one step away,
+ * but its Manhattan distance is two. */
+export function dist8(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
 export function applyMagic(item, level) {

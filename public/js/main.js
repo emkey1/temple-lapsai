@@ -1,4 +1,4 @@
-/* Temple of Lapsai — main.js: UI controller.
+/* Temple Lapsai — main.js: UI controller.
  * Owns the DOM/canvas; every engine callback is routed through the `ui` object.
  */
 
@@ -12,6 +12,19 @@ import { WEARABLE_SLOTS as WEARABLE } from './contract.js';
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
 const REGISTRY_KEY = 'lapsai-registry';
+/* The game was called something else until recently. Carry the player's
+ * character over rather than orphaning it behind a renamed key. */
+const LEGACY_KEYS = { 'lapsai-save': SAVE_KEY, 'lapsai-registry': REGISTRY_KEY };
+
+function migrateLegacyStorage() {
+  try {
+    for (const [from, to] of Object.entries(LEGACY_KEYS)) {
+      const old = localStorage.getItem(from);
+      if (old !== null && localStorage.getItem(to) === null) localStorage.setItem(to, old);
+      if (old !== null) localStorage.removeItem(from);
+    }
+  } catch (e) { /* private mode, quota, an indifferent browser */ }
+}
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -78,6 +91,7 @@ const els = {
 const CONTROLS = [
   ['Getting about', [
     ['W A S D  ·  arrows', 'Walk one tile. Walk into a monster to attack it, into a door to open it, into a person to talk.'],
+    ['Y U B N  ·  numpad', 'Walk a diagonal — Y and U up, B and N down. The numpad works too, with 5 to wait. You cannot cut a corner where two walls meet.'],
     ['Space  ·  X', 'Wait where you are and let the turn pass.'],
     ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
   ]],
@@ -799,6 +813,21 @@ function onKey(e) {
     e.preventDefault();
     return;
   }
+  const NUMPAD = {
+    Numpad1: [-1, 1], Numpad2: [0, 1], Numpad3: [1, 1],
+    Numpad4: [-1, 0], Numpad6: [1, 0],
+    Numpad7: [-1, -1], Numpad8: [0, -1], Numpad9: [1, -1],
+  };
+  if (e.code && NUMPAD[e.code] && !cardUp) {
+    const [ndx, ndy] = NUMPAD[e.code];
+    game.handleKey(null, { dx: ndx, dy: ndy });
+    if (currentTab === 'gear') renderGear(game);
+    e.preventDefault();
+    saveGame();
+    return;
+  }
+  if (e.code === 'Numpad5' && !cardUp) { game.handleKey(' ', {}); e.preventDefault(); saveGame(); return; }
+
   if (k >= '1' && k <= '9') {
     const idx = Number(k) - 1;
     const ab = game.allAbilities();
@@ -1059,6 +1088,7 @@ function setBootNote() {
 }
 
 async function boot() {
+  migrateLegacyStorage();
   loadRegistry();
   try {
     const res = await fetch('/api/status', { headers: { 'Content-Type': 'application/json' } });

@@ -267,7 +267,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 
 server.listen(PORT, HOST, () => {
   const llm = CONFIG.apiKey ? `${CONFIG.model} @ ${CONFIG.baseUrl}` : 'NOT CONFIGURED (set OPENAI_API_KEY)';
-  console.log(`Temple of Lapsai server on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`Temple Lapsai server on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`  LLM: ${llm}`);
   console.log(`  Expansions: ${EXPANSIONS_FILE}`);
 });

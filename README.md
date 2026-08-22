@@ -1,4 +1,4 @@
-# Temple of Lapsai — Turn-Based Homage
+# Temple Lapsai — Turn-Based Homage
 
 A zero-dependency, retro top-down turn-based dungeon crawler inspired by the 1982 classic, with
 optional LLM-driven world expansion. Client and server are plain ES modules — no build step, no
@@ -169,6 +169,7 @@ data/expansions.json  Persisted generated content (server-side)
 | Key | Action |
 | --- | ------ |
 | `WASD` / arrow keys | Move |
+| `Y` `U` `B` `N` / numpad | Move diagonally (numpad `5` waits) |
 | `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
 | `Space` / `X` | End your turn (wait) |
 | `1`–`9` | Activate the matching ability |

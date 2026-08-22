@@ -1,7 +1,7 @@
 {
-  "name": "temple-of-lapsai-clone",
+  "name": "temple-lapsai",
   "version": "1.0.0",
-  "description": "A turn-based retro top-down homage to the Temple of Lapsai, with LLM-driven world expansion.",
+  "description": "A turn-based retro top-down homage to the dungeon crawlers of 1982, with LLM-driven world expansion.",
   "type": "module",
   "private": true,
   "scripts": {

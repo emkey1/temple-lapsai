@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, W, H } from '../public/js/mapgen.js';
-import { dist1 } from '../public/js/dice.js';
+import { dist1, dist8 } from '../public/js/dice.js';
 import { CLASSES } from '../public/js/base.js';
 import { RNG } from '../public/js/rng.js';
 import { newGame, floorOf } from './helpers.mjs';
@@ -245,4 +245,88 @@ test('an altar at full strength keeps its charge', () => {
   p.hp = 1;
   g.useAltar(x, y);
   assert.ok(p.hp > 1, 'the altar was spent by someone who needed nothing');
+});
+
+/* ---- eight-way movement ---- */
+
+test('the player can step diagonally', () => {
+  const g = newGame('diag');
+  arena(g);
+  const p = g.state.player;
+  const from = { x: p.x, y: p.y };
+  g.handleKey('n');                       /* vi: south-east */
+  assert.deepEqual({ x: p.x, y: p.y }, { x: from.x + 1, y: from.y + 1 });
+  g.handleKey('y');                       /* vi: north-west */
+  assert.deepEqual({ x: p.x, y: p.y }, from);
+});
+
+test('the numpad moves in all eight directions', () => {
+  const g = newGame('numpad');
+  arena(g);
+  const p = g.state.player;
+  const start = { x: p.x, y: p.y };
+  for (const [dx, dy] of [[1, 1], [-1, -1], [-1, 1], [1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    p.x = start.x; p.y = start.y;
+    g.handleKey(null, { dx, dy });
+    assert.deepEqual({ x: p.x, y: p.y }, { x: start.x + dx, y: start.y + dy }, `numpad ${dx},${dy} did not move`);
+  }
+});
+
+test('you cannot squeeze through the corner where two walls meet', () => {
+  const g = newGame('corner');
+  const floor = arena(g);
+  const p = g.state.player;
+  /* Wall off both orthogonals of the south-east diagonal. */
+  floor.tiles[p.y][p.x + 1] = T.WALL;
+  floor.tiles[p.y + 1][p.x] = T.WALL;
+  const from = { x: p.x, y: p.y };
+  g.logs.length = 0;
+  g.handleKey('n');
+  assert.deepEqual({ x: p.x, y: p.y }, from, 'the player slipped through solid rock');
+  assert.match(g.logs.join(' '), /corner is too tight/i);
+});
+
+test('one open side is enough to round a corner', () => {
+  const g = newGame('corner-ok');
+  const floor = arena(g);
+  const p = g.state.player;
+  floor.tiles[p.y][p.x + 1] = T.WALL;     /* one blocked, one open */
+  const from = { x: p.x, y: p.y };
+  g.handleKey('n');
+  assert.deepEqual({ x: p.x, y: p.y }, { x: from.x + 1, y: from.y + 1 });
+});
+
+test('monsters move diagonally too, so the player cannot simply outrun them', () => {
+  const g = newGame('diag-chase');
+  const floor = arena(g);
+  const m = beast(20, 16, { t: { aggroRange: 40 } });   /* off both axes */
+  floor.monsters.push(m);
+  const opened = dist8(m, g.state.player);
+  for (let t = 0; t < 6; t++) { g.turn = t; g.resolveMonsters(); }
+  const closed = opened - dist8(m, g.state.player);
+  assert.ok(closed >= 5, `a diagonal approach closed only ${closed} of ${opened} in six turns`);
+});
+
+test('a foe on the diagonal is adjacent, and swings', () => {
+  const g = newGame('diag-melee');
+  const floor = arena(g);
+  const p = g.state.player;
+  p.hp = 500; p.maxhp = 500;
+  const m = beast(p.x + 1, p.y + 1, { toHit: 60 });      /* diagonally adjacent */
+  floor.monsters.push(m);
+  g.turn = 1;
+  g.logs.length = 0;
+  g.resolveMonsters();
+  assert.match(g.logs.join(' '), /hits you for|lashes out/, 'a diagonal neighbour just stood there');
+});
+
+test('Cleave carries into a foe on the diagonal', () => {
+  const g = newGame('diag-cleave');
+  const floor = arena(g);
+  const p = g.state.player;
+  const doomed = beast(p.x + 1, p.y, { hp: 1, t: { ac: 30 } });
+  const diagonal = beast(p.x + 1, p.y + 1, { hp: 999, t: { ac: 30 } });
+  floor.monsters.push(doomed, diagonal);
+  g.handleKey('d');
+  assert.ok(diagonal.hp < 999, 'the blade did not carry to the diagonal');
 });

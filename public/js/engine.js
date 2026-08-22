@@ -9,14 +9,21 @@ import {
   scaleDice, randomTreasureValue, getDungeon,
 } from './base.js';
 import {
-  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor,
+  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
-import { evaluateDice, rngIntId, dist1, applyMagic, deepItem } from './dice.js';
+import { evaluateDice, rngIntId, dist1, dist8, applyMagic, deepItem } from './dice.js';
 import { WEARABLE_SLOTS } from './contract.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/* Eight-way, now that both sides move diagonally. Anything that means
+ * "adjacent" uses dist8; anything that means "how far" still uses dist1. */
+const DIRS8 = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [1, 1], [1, -1], [-1, 1], [-1, -1],
+];
 
 /* Turns a monster keeps hunting after it last had the player in sight. Without
  * a limit, anything that ever woke up stays awake forever and holds the stairs. */
@@ -104,6 +111,7 @@ export class Game {
       created: Date.now(),
       totalKills: 0,
       floors: {},
+      genVersion: GEN_VERSION,
     };
   }
 
@@ -496,6 +504,18 @@ export class Game {
 
   inBounds(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
 
+  /* No squeezing through the gap where two walls meet at a corner. Without
+   * this, a diagonal step passes through solid rock. */
+  canCorner(fromX, fromY, toX, toY) {
+    const floor = this.currentFloor;
+    if (!floor) return false;
+    /* The two tiles a diagonal step slips between. At least one has to be
+     * open, or the step passes through the corner where two walls meet. */
+    const side = floor.tiles[fromY] && floor.tiles[fromY][toX];
+    const over = floor.tiles[toY] && floor.tiles[toY][fromX];
+    return (side !== undefined && isTravelable(side)) || (over !== undefined && isTravelable(over));
+  }
+
   revealSecrets() {
     if (this.secretsRevealed) return;
     const floor = this.currentFloor;
@@ -523,8 +543,14 @@ export class Game {
     }
     let turn = false;
     const k = String(keyName || '').toLowerCase();
-    const dx = { 'arrowleft': -1, 'a': -1, 'arrowright': 1, 'd': 1 }[k] || 0;
-    const dy = { 'arrowup': -1, 'w': -1, 'arrowdown': 1, 's': 1 }[k] || 0;
+    /* Cardinals on WASD and the arrows; diagonals on the vi keys, because the
+     * number row belongs to the abilities. uiFlags.dx/dy carries the numpad. */
+    let dx = { arrowleft: -1, a: -1, arrowright: 1, d: 1, y: -1, b: -1, u: 1, n: 1 }[k] || 0;
+    let dy = { arrowup: -1, w: -1, arrowdown: 1, s: 1, y: -1, u: -1, b: 1, n: 1 }[k] || 0;
+    if (uiFlags.dx !== undefined || uiFlags.dy !== undefined) {
+      dx = uiFlags.dx || 0;
+      dy = uiFlags.dy || 0;
+    }
     if (dx !== 0 || dy !== 0) {
       turn = this.tryMove(dx, dy);
     } else if (k === 'g') {
@@ -571,6 +597,10 @@ export class Game {
        * one roll against the tile in front of you. */
       if (tile === T.SECRET && this.searchSecretAt(nx, ny)) return true;
       this.log(tile === T.WALL || tile === T.SECRET ? 'The way is blocked.' : 'You cannot pass here.');
+      return false;
+    }
+    if (dx && dy && !this.canCorner(p.x, p.y, nx, ny)) {
+      this.log('The corner is too tight to slip through.');
       return false;
     }
     p.x = nx; p.y = ny;
@@ -627,7 +657,7 @@ export class Game {
     if (tile === T.DOWN) {
       /* Only something at your heels stops you — anything further off can be
        * outrun, and anything walled off must not hold the stairs forever. */
-      const atYourHeels = (floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist1(m, p) <= 2);
+      const atYourHeels = (floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist8(m, p) <= 2);
       if (atYourHeels) { this.log('Something at your heels bars the descent.'); return; }
       this.log('You descend.');
       if (this.ui.prepareTransition) this.ui.prepareTransition();
@@ -702,7 +732,7 @@ export class Game {
       .map((it) => ((it.i && it.i.name) || 'something') + ' to the ' + compass(it));
     if (near.length) this.log('Within reach: ' + near.join('; ') + '.');
 
-    const npc = ((floor.npcs) || []).find((n) => dist1(n, p) <= 1);
+    const npc = ((floor.npcs) || []).find((n) => dist8(n, p) <= 1);
     if (npc) this.log((npc.tpl ? npc.tpl.name : 'Someone') + ' stands beside you — walk into them to speak.');
   }
 
@@ -861,7 +891,7 @@ export class Game {
      * set to true. The blade carries into another adjacent foe at once — a
      * bonus ATTACK, not a bonus turn that could be spent walking away. */
     if (cleaves) {
-      const next = (floor.monsters || []).find((o) => o.hp > 0 && dist1(o, p) <= 1);
+      const next = (floor.monsters || []).find((o) => o.hp > 0 && dist8(o, p) <= 1);
       if (next) {
         this.cleavedThisTurn = true;   /* set before the swing: no chains */
         this.log('Your blade carries.');
@@ -1002,9 +1032,10 @@ export class Game {
     for (let i = 0; i < queue.length; i++) {
       const [x, y] = queue[i];
       const d = dist[y][x] + 1;
-      for (const [dx, dy] of DIRS) {
+      for (const [dx, dy] of DIRS8) {
         const nx = x + dx, ny = y + dy;
         if (!this.inBounds(nx, ny) || dist[ny][nx] !== -1) continue;
+        if (dx && dy && !this.canCorner(x, y, nx, ny)) continue;
         const t = floor.tiles[ny][nx];
         /* Monsters cross open ground and open doors; closed and secret doors
          * stop them, same as the old step-by-step chase intended. */
@@ -1038,7 +1069,7 @@ export class Game {
       if (seen && !hidden) {
         m.aggro = true;
         m.lastSeen = this.turn;
-      } else if (m.aggro && dist1(m, p) > 1 && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
+      } else if (m.aggro && dist8(m, p) > 1 && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
         m.aggro = false;
         m.revealed = false;
       }
@@ -1069,7 +1100,7 @@ export class Game {
     const range = m.t.aggroRange || 8;
     const isRanged = m.t.props && m.t.props.some((x) => x === 'ranged');
     if (!m.aggro) return;
-    if (dist <= 1) {
+    if (dist8(m, p) <= 1) {
       this.monsterMelee(m);
       return;
     }
@@ -1122,9 +1153,10 @@ export class Game {
     const here = field[m.y][m.x];
     let best = null;
     let bestD = here >= 0 ? here : Infinity;
-    for (const [dx, dy] of DIRS) {
+    for (const [dx, dy] of DIRS8) {
       const nx = m.x + dx, ny = m.y + dy;
       if (!this.inBounds(nx, ny)) continue;
+      if (dx && dy && !this.canCorner(m.x, m.y, nx, ny)) continue;
       if (nx === p.x && ny === p.y) continue;
       const d = field[ny][nx];
       if (d < 0 || d >= bestD) continue;
@@ -1687,6 +1719,15 @@ export class Game {
     this.state = state;
     /* Saves written before floor memory existed simply have none. */
     if (!this.state.floors) this.state.floors = {};
+    /* A floor memory says "monster 4 is dead" by index, which only means
+     * anything against the generator that produced it. When the generator
+     * changes shape, keep the character and forget the floors. */
+    if (this.state.genVersion !== GEN_VERSION) {
+      const had = Object.keys(this.state.floors).length;
+      this.state.floors = {};
+      this.state.genVersion = GEN_VERSION;
+      if (had) this.log('The depths have been re-cut since you were last down. What you mapped is no longer true.');
+    }
     const p = this.state.player;
     if (p) {
       if (!p.buffLevels) p.buffLevels = {};

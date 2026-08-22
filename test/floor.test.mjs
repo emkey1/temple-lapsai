@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DUNGEONS } from '../public/js/base.js';
-import { T, W, H } from '../public/js/mapgen.js';
+import { T, W, H, isTravelable } from '../public/js/mapgen.js';
 import { floorOf, canReach, reachableFrom } from './helpers.mjs';
 
 const SEEDS = 25;
@@ -71,6 +71,85 @@ test('water is crossable, so sewer floors hold together', () => {
         const open = floor.tiles.flat().filter((t) => t !== T.WALL).length;
         assert.ok(water > 0, `${d.id} floor ${f} seed ${s}: no water generated at all`);
         assert.equal(reachableFrom(floor, floor.up).size, open, `${d.id} floor ${f} seed ${s}: water cut the floor apart`);
+      }
+    }
+  }
+});
+
+/* ---- hidden caches ----
+ * Secret doors used to be decorative. installDoors picks doorway gaps on the
+ * corridor network, and that network is connected by construction, so a secret
+ * door there could only ever save you a walk. Measured before this: of 250
+ * generated secret doors, the only 30 that gated anything were boss dens. */
+
+test('every floor hides a cache behind a secret door', () => {
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < SEEDS; s++) {
+        const { floor } = floorOf(d.id, f, `cache-${d.id}-${f}-${s}`);
+        assert.ok(floor.cache, `${d.id} floor ${f} seed ${s}: nothing hidden anywhere`);
+        assert.equal(floor.tiles[floor.cache.door.y][floor.cache.door.x], T.SECRET);
+      }
+    }
+  }
+});
+
+test('a cache is sealed until its door is found', () => {
+  /* Reachability treating secret doors as the walls they look like. */
+  const sealedFrom = (floor) => {
+    const seen = new Set([floor.up.y * W + floor.up.x]);
+    const queue = [floor.up];
+    for (let i = 0; i < queue.length; i++) {
+      const c = queue[i];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = c.x + dx, y = c.y + dy;
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const k = y * W + x;
+        if (seen.has(k)) continue;
+        const t = floor.tiles[y][x];
+        if (!isTravelable(t) && t !== T.DOOR_C) continue;   /* SECRET excluded */
+        seen.add(k);
+        queue.push({ x, y });
+      }
+    }
+    return seen;
+  };
+
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < SEEDS; s++) {
+        const { floor } = floorOf(d.id, f, `sealed-${d.id}-${f}-${s}`);
+        const withoutSecrets = sealedFrom(floor);
+        const key = floor.cache.y * W + floor.cache.x;
+        assert.ok(!withoutSecrets.has(key), `${d.id} floor ${f} seed ${s}: the cache is reachable without finding anything`);
+        assert.ok(reachableFrom(floor, floor.up).has(key), `${d.id} floor ${f} seed ${s}: the cache is sealed even WITH its door`);
+      }
+    }
+  }
+});
+
+test('a cache is worth the turns spent tapping walls', () => {
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      const { floor } = floorOf(d.id, f, `loot-${d.id}-${f}`);
+      const c = floor.cache;
+      const inside = floor.items.filter((it) =>
+        it.x >= c.x && it.x < c.x + c.w && it.y >= c.y && it.y < c.y + c.h);
+      assert.ok(inside.length >= 2, `${d.id} floor ${f}: a cache holding ${inside.length} things is not worth finding`);
+    }
+  }
+});
+
+test('nothing else wanders into the cache', () => {
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < 10; s++) {
+        const { floor } = floorOf(d.id, f, `nomob-${d.id}-${f}-${s}`);
+        const c = floor.cache;
+        const inside = (m) => m.x >= c.x && m.x < c.x + c.w && m.y >= c.y && m.y < c.y + c.h;
+        assert.ok(!floor.monsters.some(inside), `${d.id} floor ${f} seed ${s}: something is sealed in with the loot`);
+        assert.ok(!(floor.up.x >= c.x && floor.up.x < c.x + c.w && floor.up.y >= c.y && floor.up.y < c.y + c.h),
+          'the player starts inside the cache');
       }
     }
   }

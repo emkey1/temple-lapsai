@@ -88,10 +88,64 @@ function populateWater(grid, rng, theme) {
   }
 }
 
-function gcd(a, b) { return b ? gcd(b, a % b) : a; }
-
 function cx(r) { return r.x + Math.floor(r.w / 2); }
 function cy(r) { return r.y + Math.floor(r.h / 2); }
+
+/* Bumped whenever the generator changes shape or its rng draws move. Floor
+ * memories record "monster 4 is dead" by index, so they are only meaningful
+ * against the generator that produced them. */
+export const GEN_VERSION = 2;
+
+const CACHE = 3;   /* a hidden cache is CACHE x CACHE */
+
+/* Where a cache would sit if it hung off this side of this room, with exactly
+ * one wall tile between the two. */
+function cacheRect(r, side) {
+  if (side === 'w') return { x: r.x - 1 - CACHE, y: cy(r) - 1, w: CACHE, h: CACHE };
+  if (side === 'e') return { x: r.x + r.w + 1, y: cy(r) - 1, w: CACHE, h: CACHE };
+  if (side === 'n') return { x: cx(r) - 1, y: r.y - 1 - CACHE, w: CACHE, h: CACHE };
+  return { x: cx(r) - 1, y: r.y + r.h + 1, w: CACHE, h: CACHE };
+}
+
+function cacheDoor(r, side) {
+  if (side === 'w') return { x: r.x - 1, y: cy(r) };
+  if (side === 'e') return { x: r.x + r.w, y: cy(r) };
+  if (side === 'n') return { x: cx(r), y: r.y - 1 };
+  return { x: cx(r), y: r.y + r.h };
+}
+
+/* True only if the rect, plus a one-tile margin, is untouched rock — so
+ * carving it cannot break into a room, a corridor or the map edge. */
+function isSolid(grid, rect) {
+  for (let y = rect.y - 1; y <= rect.y + rect.h; y++) {
+    for (let x = rect.x - 1; x <= rect.x + rect.w; x++) {
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return false;
+      if (grid[y][x] !== T.WALL) return false;
+    }
+  }
+  return true;
+}
+
+/* A cache with no way in but one hidden door.
+ *
+ * Every other secret door sits on the corridor network, and that network is
+ * connected by construction — so finding one only ever saved you a walk. This
+ * is the one that pays: solid rock on every side but the door. */
+function installHiddenCache(grid, rooms, rng) {
+  for (const r of rng.shuffle(rooms)) {
+    for (const side of rng.shuffle(['n', 's', 'e', 'w'])) {
+      const rect = cacheRect(r, side);
+      if (!isSolid(grid, rect)) continue;
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) grid[y][x] = T.FLOOR;
+      }
+      const door = cacheDoor(r, side);
+      grid[door.y][door.x] = T.SECRET;
+      return { ...rect, door };
+    }
+  }
+  return null;
+}
 
 const DEN_FRAME = { x: W - 16, y: H - 14, w: 13, h: 11 };
 
@@ -179,6 +233,7 @@ export function generateFloor(opts) {
     carveCorridor(grid, rng, cx(rooms[i - 1]), cy(rooms[i - 1]), cx(rooms[i]), cy(rooms[i]));
   }
   installDoors(grid, rng);
+  const cache = installHiddenCache(grid, rooms, rng);
   populateWater(grid, rng, dungeon.theme);
 
   const isLast = floorIdx >= dungeon.floors - 1;
@@ -238,6 +293,22 @@ export function generateFloor(opts) {
     }
   }
 
+  /* What the cache is for. Two draws from two floors deeper than you are, plus
+   * something that was worth hiding. */
+  if (cache && opts.pickItem) {
+    const spots = [];
+    for (let y = cache.y; y < cache.y + cache.h; y++) {
+      for (let x = cache.x; x < cache.x + cache.w; x++) spots.push({ x, y });
+    }
+    for (const pos of rng.shuffle(spots).slice(0, 2)) {
+      const it = opts.pickItem(floorIdx + 2, rng);
+      if (it) items.push({ i: it, x: pos.x, y: pos.y, auto: it.kind === 'special' });
+    }
+    const centre = { x: cache.x + 1, y: cache.y + 1 };
+    const hoard = opts.makeTreasure ? opts.makeTreasure(floorIdx + 2, rng) : null;
+    if (hoard) items.push({ i: hoard, x: centre.x, y: centre.y, auto: true });
+  }
+
   const npcs = [];
   for (const tpl of (opts.npcs || [])) {
     const pos = findSpot(grid, rooms, up, rng, 2, den);
@@ -260,7 +331,7 @@ export function generateFloor(opts) {
   monsters.forEach((m, i) => { m.idx = i; });
   items.forEach((it, i) => { it.idx = i; });
 
-  return { w: W, h: H, tiles: grid, rooms, monsters, items, npcs, up, down, altar, theme, seed, isLast, den, boss };
+  return { w: W, h: H, tiles: grid, rooms, monsters, items, npcs, up, down, altar, cache, theme, seed, isLast, den, boss };
 }
 
 function scaledMonster(t, pos, threat, floorIdx, boss) {

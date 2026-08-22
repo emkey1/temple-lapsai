@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, W, H } from '../public/js/mapgen.js';
-import { dist1 } from '../public/js/dice.js';
+import { dist8 } from '../public/js/dice.js';
 import { newGame } from './helpers.mjs';
 
 /* Two rooms split by a wall with a single gap at the far south end. Reaching
@@ -44,11 +44,11 @@ test('a monster walks around a wall to reach the player', () => {
   const floor = partitionedFloor(g);
   const m = beast(35, 7);
   floor.monsters.push(m);
-  for (let t = 0; t < 200 && dist1(m, g.state.player) > 1; t++) {
+  for (let t = 0; t < 200 && dist8(m, g.state.player) > 1; t++) {
     g.turn = t;
     g.resolveMonsters();
   }
-  assert.ok(dist1(m, g.state.player) <= 1, `monster stalled at (${m.x},${m.y})`);
+  assert.ok(dist8(m, g.state.player) <= 1, `monster stalled at (${m.x},${m.y})`);
 });
 
 test('a monster that cannot see or reach the player gives up', () => {
@@ -71,7 +71,7 @@ test('a monster in plain sight stays on alert', () => {
   const floor = partitionedFloor(g);
   const m = beast(12, 7);
   floor.monsters.push(m);
-  for (let t = 0; t < 40 && dist1(m, g.state.player) > 1; t++) {
+  for (let t = 0; t < 40 && dist8(m, g.state.player) > 1; t++) {
     g.turn = t;
     g.resolveMonsters();
   }
