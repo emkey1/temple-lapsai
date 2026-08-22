@@ -1,31 +1,12 @@
 /* Core content data: classes, colors, monsters, items, abilities, dungeons. */
 
-export const COLORS = {
-  green: '#9dc97a',
-  amber: '#d8b04a',
-  amber2: '#8a7432',
-  white: '#e8e8d8',
-  gray: '#9aaa88',
-  silver: '#c8d0c8',
-  red: '#e05a4e',
-  brightred: '#ff6a5a',
-  orange: '#e08a4a',
-  yellow: '#e8d85a',
-  brightgreen: '#aef08a',
-  cyan: '#7ad8d0',
-  brightblue: '#8ac8f0',
-  blue: '#5a82b8',
-  magenta: '#d45ad8',
-  pink: '#e88ad0',
-  brown: '#a87848',
-  darkgray: '#556055',
-  violet: '#a08af0',
-  gold: '#e0c05a',
-  teal: '#58a8a0',
-  black: '#000000',
-};
+import { COLORS as PALETTE_COLORS } from './contract.js';
 
-export const cls = (name) => COLORS[name] || '#9dc97a';
+/* Palette lives in the content contract so the server validates against the
+ * same names the canvas draws. Re-exported here for the modules that had it. */
+export { COLORS } from './contract.js';
+
+export const cls = (name) => PALETTE_COLORS[name] || '#9dc97a';
 
 /* ---------------- Classes ---------------- */
 

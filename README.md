@@ -70,8 +70,16 @@ Any OpenAI-compatible endpoint works (`OpenAI-Base-URL`, vLLM, local llama.cpp, 
 }
 ```
 
-`action` is one of `dungeon | monster | item | ability`. `context.focus` steers the theme;
-for `ability` the player's current class is passed automatically.
+`action` is one of `dungeon | monster | item | ability`. `context.focus` is the creative
+direction the player typed; `context.depth` pitches the result at a character of that level, and
+`context.theme`, `context.cls` and `context.existing` are filled in from the current game.
+
+Generated content is validated field by field against `public/js/contract.js` — the same
+vocabulary the client renders with, and the same one the prompt's enum lists are generated from,
+so what the model is offered and what the game will accept cannot drift apart. Anything that
+survives validation is playable: items join the loot tables banded by tier, abilities appear on
+the ability bar for the right class at the right level, monsters keep their behaviour, and
+dungeons take their place in the codex once the Temple has been cleared.
 
 Example:
 
@@ -109,10 +117,12 @@ monsters route around walls, aggro lapses, and floor state survives a save round
 ## Project layout
 
 ```
-server.js           HTTP server, static serving, LLM proxy & expansion generator
+server.js           HTTP server, static serving, LLM proxy
+lib/expansion.js    Prompt building and validation of everything the oracle returns
 public/index.html   Single-page shell
 public/style.css    Layout & theming
 public/js/
+  contract.js       THE CONTENT CONTRACT — one vocabulary shared by client and server
   base.js           Rules/data: classes, abilities, themes, item templates, XP table
   dice.js           rpg-style dice helpers
   rng.js            seedable RNG

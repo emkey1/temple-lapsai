@@ -527,6 +527,7 @@ function buffLines(p) {
   if (p.buffs.turn > 0) out.push('Turned Undead (' + p.buffs.turn + ')');
   if (p.buffs.sanctuary > 0) out.push('Sanctuary (' + p.buffs.sanctuary + ')');
   if (p.buffs.str > 0) out.push('Strength Boost (lvl ' + p.buffs.str + ')');
+  if (p.buffs.might > 0) out.push('Sharpened (+' + (p.buffs.mightBonus || 2) + ' to hit, ' + p.buffs.might + ')');
   return out;
 }
 
@@ -812,14 +813,24 @@ function openLibrary() {
   overlayShow(els.libOverlay);
 }
 
+/* The engine reads `props`. Expansions written before the content contract
+ * existed carry `properties`; accept both so old data still behaves. */
+function normaliseMonster(m) {
+  if (!m || typeof m !== 'object') return m;
+  if (!Array.isArray(m.props) && Array.isArray(m.properties)) {
+    return { ...m, props: m.properties };
+  }
+  return m;
+}
+
 function installExpansion(exp) {
   if (!exp || typeof exp !== 'object') return false;
   const type = exp.type || exp._t;
   if (type === 'dungeon') {
     const id = exp.id || ('exp-' + Math.random().toString(36).slice(2, 8));
     if (registry.dungeons.some((d) => d.id === id)) return true;
-    const monsters = (exp.monsters || []).map((m, i) => ({ ...m, id: id + '-m' + i, type: 'monster' }));
-    const boss = exp.boss ? { id: id + '-boss', type: 'monster', ...exp.boss } : null;
+    const monsters = (exp.monsters || []).map((m, i) => ({ ...normaliseMonster(m), id: id + '-m' + i, type: 'monster' }));
+    const boss = exp.boss ? { ...normaliseMonster(exp.boss), id: id + '-boss', type: 'monster' } : null;
     if (boss) registry.monsters = registry.monsters.filter((m) => m.id !== boss.id);
     if (boss) registry.monsters.push(boss);
     for (const m of monsters) {
@@ -839,7 +850,7 @@ function installExpansion(exp) {
   if (type === 'monster') {
     const id = exp.id || ('exp-' + Math.random().toString(36).slice(2, 8));
     registry.monsters = registry.monsters.filter((m) => m.id !== id);
-    registry.monsters.push({ ...exp, id, type: 'monster' });
+    registry.monsters.push({ ...normaliseMonster(exp), id, type: 'monster' });
     return true;
   }
   if (type === 'item') {
@@ -872,8 +883,16 @@ async function doExpand(action) {
   els.libResult.innerHTML = '<div class="lib-status">The quills are scraping…</div>';
   const focus = (els.libFocus.value || '').trim();
   try {
-    const bodyContext = { focus, theme: focus };
-    if (action === 'ability') bodyContext.cls = game ? game.state.player.cls : 'fighter';
+    const p = game && game.state.player;
+    const bodyContext = { focus };
+    /* Tell the oracle who is asking, so what it writes is worth meeting. */
+    if (p) {
+      bodyContext.depth = p.level;
+      if (action === 'ability') bodyContext.cls = p.cls;
+      const d = game.dungeonById(p.dungeonId);
+      if (d && d.theme) bodyContext.theme = d.theme;
+      bodyContext.existing = game.availableDungeons().map((x) => x && x.name).filter(Boolean).join(', ');
+    }
     const res = await fetch('/api/expand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

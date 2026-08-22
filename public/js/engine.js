@@ -14,6 +14,7 @@ import {
 import { npcsForDungeonFloor } from './npc.js';
 import { beatAt, arcForDungeon, setFlag, getFlag } from './world.js';
 import { evaluateDice, rngIntId, dist1, applyMagic, deepItem } from './dice.js';
+import { WEARABLE_SLOTS } from './contract.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -256,6 +257,7 @@ export class Game {
     /* Monsters used to scale on player level while the player scaled on loot
      * alone, so levelling up made the game harder. Grow with level too. */
     toHit += Math.floor((p.level - 1) / 2);
+    if (p.buffs && p.buffs.might > 0) toHit += p.buffs.mightBonus || 2;
     ac -= abilityMod(eff.dex);
     dmg.bonus += abilityMod(eff.str);
     if (eqWeapon) dmg = { dice: eqWeapon.dice, sides: eqWeapon.sides, bonus: (eqWeapon.bonus || 0) + abilityMod(eff.str) };
@@ -402,6 +404,14 @@ export class Game {
     ];
     const tier = Math.min(pools.length - 1, Math.floor(floorIdx / 1.5));
     const cands = pools.slice(0, tier + 1).flatMap((p) => p.arr);
+    /* Generated items are drawn from the same table as hand-authored ones,
+     * banded by their own tier so a tier-9 blade cannot turn up on floor one.
+     * Without this, everything the Library made was unreachable. */
+    const depth = (tier + 1) * 2;
+    for (const it of this.registry.items || []) {
+      if (!it || !it.id) continue;
+      if ((it.tier ?? 1) <= depth) cands.push(it.id);
+    }
     let tpl = this.itemTemplate(rng.pick(cands) || 'potion-heal');
     if (!tpl) tpl = this.itemTemplate('potion-heal');
     const it = deepItem(tpl);
@@ -841,6 +851,11 @@ export class Game {
     for (const k in p.cooldowns) if (p.cooldowns[k] > 0) p.cooldowns[k]--;
     for (const k in p.buffs) if (p.buffs[k] > 0) p.buffs[k]--;
     if (p.buffs.turn && p.buffs.turn <= 0) this.buffsTurnRefresh();
+    if (p.buffs.might !== undefined && p.buffs.might <= 0) {
+      delete p.buffs.might;
+      delete p.buffs.mightBonus;
+      this.log('The edge goes off your swing.');
+    }
   }
 
   buffsTurnRefresh() {
@@ -1049,26 +1064,38 @@ export class Game {
 
   /* ---- abilities ---- */
   allAbilities() {
-    if (!this.state.player) return [];
+    const p = this.state.player;
+    if (!p) return [];
     const out = [];
     const seen = {};
-    for (const a of abilitiesFor(this.state.player.cls, this.state.player.level)) {
+    for (const a of abilitiesFor(p.cls, p.level)) {
       if (!a || seen[a.id]) continue;
       out.push(a);
       seen[a.id] = true;
     }
+    /* Generated abilities used to be listed for every class at every level,
+     * taking up a number key that then did nothing when pressed. */
     for (const a of this.registry.abilities || []) {
-      if (!a || seen[a.id]) continue;
+      if (!a || !a.id || seen[a.id]) continue;
+      if (a.cls && a.cls !== p.cls) continue;
+      if ((a.level || 1) > p.level) continue;
       out.push(a);
       seen[a.id] = true;
     }
     return out;
   }
 
+  /* Base abilities first, then anything the Library wrote. */
+  abilityById(id) {
+    return getAbility(id) || (this.registry.abilities || []).find((a) => a && a.id === id) || null;
+  }
+
   activateAbility(id) {
     const p = this.state.player;
-    const a = getAbility(id);
-    if (!a || a.cls !== p.cls) return;
+    const a = this.abilityById(id);
+    /* Silence used to be the failure mode here: an unknown id simply returned. */
+    if (!a) { this.log('You reach for a power you do not have.'); return; }
+    if (a.cls && a.cls !== p.cls) { this.log('That art belongs to another calling.'); return; }
     if (p.level < a.level) { this.log('You have not yet learned ' + a.name + '.'); return; }
     if (a.kind === 'passive') { this.log('That power is always at work within you.'); return; }
     const cost = a.powerCost || 0;
@@ -1085,6 +1112,7 @@ export class Game {
       case 'reveal': this.abilityReveal(a); break;
       case 'teleport': this.abilityTeleport(a); break;
       case 'turn': this.abilityTurn(a, der); break;
+      case 'buff': this.abilityBuff(a); break;
       default: this.log('Nothing visibly happens.');
     }
     if (this.dying) return;
@@ -1133,9 +1161,21 @@ export class Game {
 
   abilityHeal(a) {
     const p = this.state.player;
-    const v = evaluateDice(a.heal);
-    p.hp = Math.min(p.maxhp, p.hp + v);
-    this.log('Old forces knit your wounds for ' + v + ' hit points.');
+    /* Hand-authored abilities carry "3d6"; generated ones carry {dice,sides}. */
+    const v = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal);
+    p.hp = Math.min(p.maxhp, p.hp + Math.max(1, v));
+    this.log('Old forces knit your wounds for ' + Math.max(1, v) + ' hit points.');
+  }
+
+  /* A short-lived edge on your attacks. The validator accepts kind "buff", so
+   * the engine has to do something real with one. */
+  abilityBuff(a) {
+    const p = this.state.player;
+    const bonus = Math.max(1, a.bonus || 2);
+    const turns = Math.max(2, a.aura || 5);
+    p.buffs.might = turns;
+    p.buffs.mightBonus = bonus;
+    this.log('Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.');
   }
 
   abilityReveal(a) {
@@ -1177,7 +1217,7 @@ export class Game {
       if (d <= (a.range || 6) && d < bestD) { bestD = d; best = m; }
     }
     if (!best) { this.log('Nothing unholy answers your wrath.'); return; }
-    const dmg = Math.max(1, this.rollDamage(a.damage));
+    const dmg = Math.max(1, this.rollDamage(a.damage || { dice: 2, sides: 6, bonus: 0 }));
     this.log(a.name + ' sears the ' + best.t.name + ' for ' + dmg + '! It staggers back.');
     best.hp -= dmg;
     best.fleeing = true;
@@ -1194,17 +1234,21 @@ export class Game {
   }
 
   useItem(item) {
-    const p = this.state.player;
     if (!item) return;
     const fx = item.effects || {};
-    if (item.kind === 'potion' || item.kind === 'scroll') {
+    if (item.kind === 'potion' || item.kind === 'scroll' || item.slot === 'consumable') {
       this.consumeItem(item, fx);
     } else if (item.kind === 'wand') {
       this.castWand(item);
-    } else if (item.slot === 'consumable') {
-      this.consumeItem(item, fx);
-    } else {
+    } else if (WEARABLE_SLOTS.includes(item.slot)) {
       this.equip(item);
+      return;
+    } else {
+      /* Terminal branch. useItem and equip used to hand anything they did not
+       * recognise straight back to each other — a stack overflow waiting for
+       * the first item with a misc slot, which is exactly what the validator
+       * defaults an unknown kind to. */
+      this.log('You turn the ' + item.name + ' over in your hands and learn nothing.');
       return;
     }
     this.endPlayerTurn();
@@ -1281,7 +1325,7 @@ export class Game {
   equip(item) {
     const p = this.state.player;
     const slot = item.slot;
-    if (!slot || slot === 'consumable' || slot === 'special' || slot === 'misc') { this.useItem(item); return; }
+    if (!WEARABLE_SLOTS.includes(slot)) { this.useItem(item); return; }
     const cur = p.equipment[slot];
     p.equipment[slot] = item;
     const idx = p.inventory.indexOf(item);
