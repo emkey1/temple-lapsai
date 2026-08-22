@@ -1,9 +1,10 @@
-/* …VISION NOTE… This module is the WORLD-BUILDING HOOK LAYER.
- * The full history, factions, story arcs, NPCs and narrative beats are meant
- * to be written here in a later pass (see the design skeleton below).
+/* THE WORLD LAYER: the mechanism, not the content.
  *
- * Shape of the future content, filled minimally now so the engine can hook
- * into it without changes:
+ * The history, factions, story arcs and cast live in lore.js and are registered
+ * here on import, so this file stays the small set of queries the engine calls
+ * and the writing stays somewhere a writer can work without reading code.
+ *
+ * The shapes:
  *   WORLD.history   [ { era, title, text } ]          — fantasy history
  *   WORLD.factions  [ { id, name, stance, note } ]     — powers that be
  *   WORLD.npcs      [ NPC ]                            — interactable cast
@@ -16,6 +17,8 @@
  *   { type: 'overlay', title, text }                  — full-screen narration
  *   { type: 'flag', flag, valueCount }                — engine bookkeeping
  */
+
+import { LORE } from './lore.js';
 
 export const WORLD = {
   history: [],
@@ -46,11 +49,29 @@ export function beatsForDungeon(dungeonId) {
   return (arc && arc.beats) || [];
 }
 
-export function beatAt(dungeonId, kind, floorIdx) {
-  const beat = beatsForDungeon(dungeonId).find(
+/* Every beat matching (kind, floor), in the order written. beatAt returned only
+ * the first, so a second beat on the same floor silently never fired. */
+export function beatsAt(dungeonId, kind, floorIdx) {
+  return beatsForDungeon(dungeonId).filter(
     (b) => (b.kind === kind) && (b.floor === undefined || b.floor === floorIdx),
   );
-  return beat || null;
+}
+
+export function beatAt(dungeonId, kind, floorIdx) {
+  return beatsAt(dungeonId, kind, floorIdx)[0] || null;
+}
+
+export function npcsForDungeon(dungeonId, floorIdx) {
+  return WORLD.npcs.filter((n) => n.dungeon === dungeonId && n.floor === floorIdx);
+}
+
+export function factionById(id) {
+  return WORLD.factions.find((f) => f.id === id) || null;
+}
+
+/* Resets the flags a single run accumulates; the lore itself is static. */
+export function resetWorldFlags() {
+  WORLD.flags = {};
 }
 
 export function setFlag(flag, n = 1) {
@@ -60,3 +81,6 @@ export function setFlag(flag, n = 1) {
 export function getFlag(flag) {
   return WORLD.flags[flag] || 0;
 }
+
+/* Registered at import so every consumer sees a populated world. */
+registerWorldContent(LORE);

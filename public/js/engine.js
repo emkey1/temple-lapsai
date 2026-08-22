@@ -12,7 +12,7 @@ import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
-import { beatAt, arcForDungeon, setFlag, getFlag } from './world.js';
+import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
 import { evaluateDice, rngIntId, dist1, applyMagic, deepItem } from './dice.js';
 import { WEARABLE_SLOTS } from './contract.js';
 
@@ -68,6 +68,8 @@ export function makePlayer(name, clsId, stats) {
     identified: [],
     counters: {},
     visitedDungeons: {},
+    beatsSeen: {},
+    npcsMet: {},
   };
 }
 
@@ -367,7 +369,7 @@ export class Game {
     this.restoreSeen(memo);   /* the map you drew stays drawn */
     this.secretsRevealed = false;
     this.turn = 0;
-    this.beatAt('enter', floorIdx);
+    this.fireBeats('enter', floorIdx);
     if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
     if (this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
@@ -779,11 +781,9 @@ export class Game {
     this.uiLog('The great ' + m.t.name + ' crashes down like a struck bell.');
     p.bossesSlain[p.dungeonId] = true;
     p.explored[p.dungeonId] = true;
-    const arc = arcForDungeon(p.dungeonId);
-    if (arc && this.ui.showBeat && arc.beats) {
-      const beat = beatAt(p.dungeonId, 'boss', p.floorIdx);
-      if (beat) this.ui.showBeat(beat);
-    }
+    this.fireBeats('boss', p.floorIdx);
+    /* 'finish' was documented, written for, and never fired by anything. */
+    this.fireBeats('finish', p.floorIdx);
     const next = this.baseDungeonIds();
     const idx = next.indexOf(p.dungeonId);
     if (idx >= 0 && idx < next.length - 1 && this.ui.unlock) this.ui.unlock(this.dungeonById(next[idx + 1]));
@@ -793,7 +793,24 @@ export class Game {
   maybeExpand() {
     const bases = this.baseDungeonIds();
     const all = bases.every((id) => this.isDungeonCleared(id));
-    if (all && this.opts.onAllBaseCleared) this.opts.onAllBaseCleared();
+    if (!all) return;
+    /* The end of the founding chronicle. The victory card was written, styled
+     * and wired to a button, and nothing ever showed it. */
+    const p = this.state.player;
+    if (!p.counters) p.counters = {};
+    if (!p.counters.finished) {
+      p.counters.finished = 1;
+      if (this.ui.showVictory) {
+        this.ui.showVictory({
+          name: p.name,
+          cls: p.cls,
+          level: p.level,
+          gold: p.gold,
+          kills: this.state.totalKills,
+        });
+      }
+    }
+    if (this.opts.onAllBaseCleared) this.opts.onAllBaseCleared();
   }
 
   gainXP(xp) {
@@ -815,7 +832,11 @@ export class Game {
     p.maxpower = this.computeMaxPower();
     p.power = Math.min(p.maxpower, p.power + this.computeMaxPower());
     this.uiLog('You grow wise and strong — ' + CLASSES[p.cls].name + ' level ' + p.level + '!');
-    this.beatAt('condition', p.floorIdx);
+    /* A condition beat is pinned to a floor, but level-ups happen wherever they
+     * happen — an exact match meant the beat only fired if you happened to
+     * level on that one floor. Fire everything at or above your current depth;
+     * beatsSeen keys off the beat's own floor, so each still fires once. */
+    for (let f = 0; f <= p.floorIdx; f++) this.fireBeats('condition', f);
     if (this.ui.refreshStats) this.ui.refreshStats(this);
   }
 
@@ -1051,15 +1072,43 @@ export class Game {
     return it;
   }
 
-  beatAt(kind, floorIdx) {
+  /* Fires every beat matching (kind, floor), not just the first — a second beat
+   * on the same floor used to be written and then silently never shown. */
+  fireBeats(kind, floorIdx) {
     const p = this.state.player;
     if (!p || !p.dungeonId) return;
-    const beat = beatAt(p.dungeonId, kind, floorIdx);
-    if (!beat) return;
-    if (beat.type === 'narration') { this.log('… ' + beat.text + ' …'); }
-    else if (beat.type === 'npc-intro' && beat.npcId && this.ui.flagNpcIntroduced) { this.ui.flagNpcIntroduced(beat.npcId); }
-    else if (beat.type === 'overlay' && this.ui.showBeat) { this.ui.showBeat(beat); }
-    else if (beat.type === 'flag' && beat.flag) { setFlag(beat.flag, beat.valueCount || 1); }
+    for (const beat of beatsAt(p.dungeonId, kind, floorIdx)) {
+      if (this.beatSeen(kind, floorIdx, beat)) continue;
+      this.rememberBeat(kind, floorIdx, beat);
+      if (beat.type === 'narration') this.log('… ' + beat.text + ' …');
+      else if (beat.type === 'npc-intro' && beat.npcId) this.introduceNpc(beat.npcId);
+      else if (beat.type === 'overlay' && this.ui.showBeat) this.ui.showBeat(beat);
+      else if (beat.type === 'flag' && beat.flag) setFlag(beat.flag, beat.valueCount || 1);
+    }
+  }
+
+  /* A beat is a moment, not a room: revisiting a floor should not replay it. */
+  beatKey(kind, floorIdx, beat) {
+    const p = this.state.player;
+    return [p.dungeonId, kind, floorIdx, beat.type, beat.title || beat.npcId || beat.flag || (beat.text || '').slice(0, 24)].join('|');
+  }
+
+  beatSeen(kind, floorIdx, beat) {
+    const p = this.state.player;
+    return !!(p.beatsSeen && p.beatsSeen[this.beatKey(kind, floorIdx, beat)]);
+  }
+
+  rememberBeat(kind, floorIdx, beat) {
+    const p = this.state.player;
+    if (!p.beatsSeen) p.beatsSeen = {};
+    p.beatsSeen[this.beatKey(kind, floorIdx, beat)] = true;
+  }
+
+  introduceNpc(npcId) {
+    const p = this.state.player;
+    if (!p.npcsMet) p.npcsMet = {};
+    p.npcsMet[npcId] = true;
+    if (this.ui.flagNpcIntroduced) this.ui.flagNpcIntroduced(npcId);
   }
 
   /* ---- abilities ---- */

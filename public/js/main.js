@@ -5,7 +5,8 @@
 import { Game, rollStats, initialStats } from './engine.js';
 import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls } from './base.js';
 import { T, W, H } from './mapgen.js';
-import { dialogue } from './npc.js';
+import { dialogue, NPC_GLYPH } from './npc.js';
+import { WORLD } from './world.js';
 
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
@@ -170,13 +171,14 @@ function makeUI() {
     openDialogue: (npc) => openDialogue(npc),
     showCamp: (g) => showCamp(g),
     showDeath: (msg) => showDeath(msg),
+    showVictory: (run) => showVictoryCard(run),
     showBeat: (beat) => showBeat(beat),
     unlock: (d) => {
       logLine('A new path is opened: ' + d.name + ' — ' + (d.title || '') , 'good');
       renderCodex(game);
       renderLibrary(game);
     },
-    flagNpcIntroduced: () => {},
+    flagNpcIntroduced: () => { if (currentTab === 'codex') renderCodex(game); },
     prepareTransition: () => { els.topstatus.textContent = '…descending…'; },
   };
   return self;
@@ -196,18 +198,51 @@ function overlayHideAll() {
   if (camp) camp.remove();
 }
 
+/* Narrative cards queue instead of racing. Arriving in a dungeon, the beat for
+ * the floor you land on, and the ending can all want the screen in the same
+ * tick — and showArrival and showBeat write to the SAME card, so without this
+ * the second silently overwrites the first. */
+let cardQueue = [];
+let cardShowing = false;
+
+function enqueueCard(render) {
+  cardQueue.push(render);
+  if (!cardShowing) nextCard();
+}
+
+function nextCard() {
+  const render = cardQueue.shift();
+  if (!render) {
+    cardShowing = false;
+    overlayHideAll();
+    canvasFocus();
+    return;
+  }
+  cardShowing = true;
+  overlayHideAll();
+  render();
+}
+
+function clearCards() {
+  cardQueue = [];
+  cardShowing = false;
+}
+
 function showArrival(d) {
-  els.arrivalTitle.textContent = d.name;
-  els.arrivalTitle.textContent = d.name.toUpperCase();
-  els.arrivalFlavor.textContent = d.flavor || '';
-  overlayShow(els.arrival);
+  enqueueCard(() => {
+    els.arrivalTitle.textContent = String(d.name || '').toUpperCase();
+    els.arrivalFlavor.textContent = d.flavor || '';
+    overlayShow(els.arrival);
+  });
 }
 
 function showBeat(beat) {
   if (!beat) return;
-  overlayShow(els.arrival);
-  els.arrivalTitle.textContent = String(beat.title || 'THE DARK SPEAKS');
-  els.arrivalFlavor.textContent = beat.text || '';
+  enqueueCard(() => {
+    els.arrivalTitle.textContent = String(beat.title || 'THE DARK SPEAKS');
+    els.arrivalFlavor.textContent = beat.text || '';
+    overlayShow(els.arrival);
+  });
 }
 
 function showHelp() {
@@ -219,7 +254,27 @@ function showHelp() {
   helpOpen = true;
 }
 
+function buildVictory(run) {
+  const c = CLASSES[run.cls] || CLASSES.fighter;
+  els.victoryMsg.innerHTML =
+    '<p class="flavor">Three sanctums are quiet. Whatever was owed down there, you have collected on it, ' +
+    'and the dark has learned your name well enough to stop using it.</p>' +
+    '<table class="stats">' +
+    '<tr><td class="k">Name</td><td class="v">' + esc(run.name) + '</td></tr>' +
+    '<tr><td class="k">Standing</td><td class="v">' + esc(c.name) + ', level ' + run.level + '</td></tr>' +
+    '<tr><td class="k">Purse</td><td class="v">' + run.gold + ' gp</td></tr>' +
+    '<tr><td class="k">Slain</td><td class="v">' + run.kills + '</td></tr>' +
+    '</table>' +
+    '<p class="flavor">The Black Library is open to you now. Ask it for somewhere new to die.</p>';
+}
+
+function showVictoryCard(run) {
+  enqueueCard(() => { buildVictory(run); overlayShow(els.victory); });
+}
+
 function showDeath(msg) {
+  clearCards();
+  overlayHideAll();
   els.deathMsg.textContent = msg || 'You were laid low in the dark.';
   overlayShow(els.death);
 }
@@ -480,7 +535,9 @@ function renderGame(g) {
   }
   for (const n of floor.npcs || []) {
     if (!inView(n.x, n.y)) continue;
-    drawGlyph(n.x, n.y, '¶', cls(n.color || 'amber'), false);
+    /* The floor entry is {tpl,x,y} — the colour lives on the template, so this
+     * drew every NPC in the same fallback amber. */
+    drawGlyph(n.x, n.y, NPC_GLYPH, cls((n.tpl && n.tpl.color) || 'amber'), false);
   }
   if (game && p) {
     drawGlyph(p.x, p.y, '@', '#f0f0e0', false, true);
@@ -627,17 +684,62 @@ function renderGear(g) {
 }
 
 /* ---------------- codex ---------------- */
+function esc(t) {
+  return String(t == null ? '' : t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+/* The chronicle opens as you go: two eras to begin with, one more per sanctum
+ * conquered. A codex you have already read to the end is not a reward. */
+function revealedHistory(g) {
+  const cleared = g.baseDungeonIds().filter((id) => g.isDungeonCleared(id)).length;
+  return WORLD.history.slice(0, 2 + cleared);
+}
+
+function codexSection(title, body) {
+  return '<h3 class="pane">' + title + '</h3>' + (body || '<div class="tiny">Nothing is written here yet.</div>');
+}
+
 function renderCodex(g) {
   if (!g || !g.state.player) { els.dungeonCodex.innerHTML = ''; return; }
-  let html = '';
+  const p = g.state.player;
+
+  let depths = '';
   for (const d of g.availableDungeons()) {
     if (!d) continue;
     const done = g.isDungeonCleared(d.id);
-    html += '<div class="codex-item' + (done ? '' : ' unread') + '"><b>' + d.name + '</b> <span class="tiny">' + (done ? '· conquered' : '· ' + d.floors + ' floors') + '</span>' +
-      '<p class="flavor">' + (d.flavor || '') + '</p></div>';
+    depths += '<div class="codex-item' + (done ? '' : ' unread') + '"><b>' + esc(d.name) + '</b> <span class="tiny">' +
+      (done ? '· conquered' : '· ' + d.floors + ' floors') + '</span>' +
+      '<p class="flavor">' + esc(d.flavor) + '</p></div>';
   }
-  if (!html) html = '<div class="tiny">No paths are known yet.</div>';
-  els.dungeonCodex.innerHTML = '<h3 class="pane">KNOWN DEPTHS</h3>' + html;
+
+  const eras = revealedHistory(g);
+  let chronicle = eras.map((h) =>
+    '<div class="codex-item"><b>' + esc(h.title) + '</b> <span class="tiny">· ' + esc(h.era) + '</span>' +
+    '<p class="flavor">' + esc(h.text) + '</p></div>').join('');
+  if (eras.length && eras.length < WORLD.history.length) {
+    chronicle += '<div class="tiny">The later pages are still sealed. Conquer a sanctum to break the seal.</div>';
+  }
+
+  const cleared = g.baseDungeonIds().filter((id) => g.isDungeonCleared(id)).length;
+  let powers = '';
+  if (!cleared) {
+    powers = '<div class="tiny">You have not yet come to anyone\'s attention. Give it time.</div>';
+  } else {
+    powers = WORLD.factions.map((f) =>
+      '<div class="codex-item"><b>' + esc(f.name) + '</b> <span class="tiny">· ' + esc(f.stance) + '</span>' +
+      '<p class="flavor">' + esc(f.note) + '</p></div>').join('');
+  }
+
+  const met = WORLD.npcs.filter((n) => p.npcsMet && p.npcsMet[n.id]);
+  const cast = met.length
+    ? met.map((n) => '<div class="codex-item"><b>' + esc(n.name) + '</b> <span class="tiny">· ' + esc(n.title) + '</span></div>').join('')
+    : '<div class="tiny">You have spoken to no one down there. Walk into someone.</div>';
+
+  els.dungeonCodex.innerHTML =
+    codexSection('KNOWN DEPTHS', depths) +
+    codexSection('THE CHRONICLE', chronicle) +
+    codexSection('POWERS OF THE WORLD', powers) +
+    codexSection('THOSE YOU HAVE MET', cast);
 }
 
 /* ---------------- library ---------------- */
@@ -712,12 +814,13 @@ function closeHelp() {
 }
 
 function openDialogue(npc) {
-  const p = game.state.player;
-  activeNpc = npc;
+  const tpl = npc && npc.tpl ? npc.tpl : npc;
+  if (game && tpl && tpl.id) game.introduceNpc(tpl.id);
+  activeNpc = tpl;
   dialogueOpen = true;
-  els.dlgName.textContent = npc.name + ' — ' + (npc.title || 'a denizen of the dark');
+  els.dlgName.textContent = tpl.name + ' — ' + (tpl.title || 'a denizen of the dark');
   els.dlgLog.innerHTML = '';
-  const hist = dialogue.start(npc);
+  const hist = dialogue.start(tpl);
   for (const m of hist) appendDlg(m);
   els.dlgInput.value = '';
   overlayShow(els.dialogue);
@@ -948,8 +1051,8 @@ async function boot() {
   els.charName.addEventListener('keydown', (e) => { if (e.key === 'Enter') doEnter(); });
   els.btnResurrect.onclick = () => doResurrect();
   els.btnRoster.onclick = () => doRoster();
-  els.btnArrivalOk.onclick = () => { overlayHideAll(); canvasFocus(); };
-  els.btnVictoryOk.onclick = () => doRoster();
+  els.btnArrivalOk.onclick = () => nextCard();
+  els.btnVictoryOk.onclick = () => { clearCards(); doRoster(); };
   els.btnLibClose.onclick = () => { overlayHideAll(); canvasFocus(); };
   els.btnHelp.onclick = () => showHelp();
   els.btnHelpClose.onclick = () => closeHelp();

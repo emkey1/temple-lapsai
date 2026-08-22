@@ -1,48 +1,29 @@
-/* NPC + dialogue HOOK layer.
- * A small cast can be seeded here; the engine lets the player talk to NPCs on
- * their tile ('T'). Responses come from a canned fallback until a dialogue
- * ADAPTER (LLM-backed) is wired in via setDialogueAdapter, which should map to
- * a future /api/talk endpoint (see expander.js / server hook).
+/* NPCs and dialogue.
+ *
+ * The cast itself lives in lore.js and is registered through world.js — this
+ * module is the dialogue machinery. It used to keep a second, separate list of
+ * NPCs, which meant WORLD.npcs was populated by nobody and read by nothing.
+ *
+ * Replies come from each NPC's own `topics` (keyword-matched) and `fallbacks`.
+ * A dialogue ADAPTER can be installed with setAdapter to route conversation
+ * through an LLM instead; without one the canned material answers.
  */
+
+import { WORLD, getNPC, npcsForDungeon } from './world.js';
 
 export const NPC_GLYPH = '¶';
 
-export const NPCS = [
-  {
-    id: 'hermit-ogil',
-    name: 'Ogil the Whetstone',
-    title: 'a hermit with one good eye',
-    dungeon: 'temple', floor: 1,
-    color: 'amber',
-    intro: '“Sharp edges keep softer men alive down here. I know this temple blade by blade. Ask, and I shall whet your wits as well.”',
-    knowledge: ['temple', 'secret', 'treasure', 'door'],
-  },
-  {
-    id: 'priestess-eilyth',
-    name: 'Eilyth, Drowned Sister',
-    title: 'a priestess of the old sea-god',
-    dungeon: 'upper', floor: 1,
-    color: 'cyan',
-    intro: '“The tide carries ruin into the warrens and carries our prayers out. Whom do you serve, down-soaked stranger? Perhaps I keep a blessing for you.”',
-    knowledge: ['sewers', 'water', 'rat', 'potion', 'bless'],
-  },
-  {
-    id: 'keeper-venn',
-    name: 'Keeper Venn',
-    title: 'the last keeper of the serpent halls',
-    dungeon: 'serpent', floor: 1,
-    color: 'green',
-    intro: '“The Coils remember every pilgrim who ever crawled them, and they counted you the moment you stepped inside. Be cleverer than the last hundred.”',
-    knowledge: ['serpent', 'basilisk', 'coil', 'stairs'],
-  },
-];
-
 export function getNPCTemplate(id) {
-  return NPCS.find((n) => n.id === id) || null;
+  return getNPC(id);
 }
 
-export function npcsForDungeonFloor(dungeonId, floor) {
-  return NPCS.filter((n) => n.dungeon === dungeonId && n.floor === floor);
+/* floorIdx is zero-based, as the engine counts floors. */
+export function npcsForDungeonFloor(dungeonId, floorIdx) {
+  return npcsForDungeon(dungeonId, floorIdx);
+}
+
+export function allNPCs() {
+  return WORLD.npcs;
 }
 
 /* ---- dialogue ---- */
@@ -79,25 +60,33 @@ export class DialogueSystem {
     return hist;
   }
 
+  /* First topic whose keys appear in what the player typed. Each NPC carries
+   * their own; the old version shared one hard-coded list of three tips across
+   * the whole cast, so everyone said the same things in the same words. */
   canned(npc, input) {
     const lower = String(input || '').toLowerCase();
-    const tips = [
-      ['descend', ['The stairs are hungry and honest. Walk softly and carry a lit torch, even if you think you see fine.']],
-      ['secret', ['Half the wealth of the deep is behind walls that were never doors. Tap the stones and listen for hollowness.']],
-      ['treasure|gold', ['Gold keeps its promises poorly, but the scribes are always out of paper. Bring me nothing; bring yourself back.']],
-    ];
-    for (const [keys, replies] of tips) {
-      if (keys.split('|').some((k) => lower.includes(k))) {
-        return `${npc.name}: ${replies[Math.floor(Math.random() * replies.length)]}`;
+    const topics = npc.topics || [];
+    for (const topic of topics) {
+      const keys = topic.keys || [];
+      if (keys.some((k) => k && lower.includes(String(k).toLowerCase()))) {
+        return pick(topic.replies, lower);
       }
     }
-    const fallbacks = [
-      `${npc.name} squints off into the dark. "There is little to say that the labyrinth does not say louder. Keep your wits about you."`,
-      `${npc.name} scratches a mark on the wall. "That is a better question than most. When the world grows thin, ask the Library to stitch new depths."`,
-      `${npc.name} offers a worn smile. "I have told the honest truth and a few pretty lies. Which would you like to believe today?"`,
-    ];
-    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    const fallbacks = npc.fallbacks && npc.fallbacks.length
+      ? npc.fallbacks
+      : ['They look at you, and go back to what they were doing.'];
+    return pick(fallbacks, lower);
   }
+}
+
+/* Deterministic in what the player typed, so asking the same thing twice gets
+ * the same answer and asking a new thing gets a new one. */
+function pick(list, seedText) {
+  const arr = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!arr.length) return '…';
+  let h = 0;
+  for (let i = 0; i < seedText.length; i++) h = (h * 31 + seedText.charCodeAt(i)) >>> 0;
+  return arr[h % arr.length];
 }
 
 export const dialogue = new DialogueSystem();

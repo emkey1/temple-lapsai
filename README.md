@@ -102,6 +102,21 @@ A few rules worth knowing before you go down:
 - **Armour class descends**, as in the modules this is an homage to: lower is harder to hit.
 - The stairs down are only barred while something is at your heels.
 
+## The writing
+
+The world — five eras of history, seven factions, a story arc per dungeon and a speaking cast —
+lives in `public/js/lore.js`. It is content only, no logic, so it can be edited by anyone who can
+count commas; `world.js` registers it on import and the engine reads it through the queries there.
+
+Story beats fire at `(dungeonId, kind, floorIdx)`. `kind` is `enter` (arriving on a floor), `boss`,
+`finish` (the dungeon cleared) or `condition` (a level-up); `type` is `narration` for a line in the
+message log, `overlay` for a full card, or `flag` for bookkeeping. Floors are zero-based, and a beat
+fires once per character.
+
+Dialogue topics are matched as substrings against what the player types and the **first** match
+wins — so a topic carrying a short common key (`god`, `door`) must sit below the specific topics it
+would otherwise swallow. `npm test` checks that no topic is unreachable.
+
 ## Development
 
 ```sh
@@ -127,8 +142,9 @@ public/js/
   dice.js           rpg-style dice helpers
   rng.js            seedable RNG
   mapgen.js         Room-corridor dungeon generation
-  npc.js            NPC/monster templates
-  world.js          World map + dungeon registry
+  npc.js            Dialogue machinery (keyword topics, pluggable LLM adapter)
+  lore.js           THE WRITING — history, factions, story arcs, the cast and their dialogue
+  world.js          World layer: registers the lore and answers the engine's queries about it
   engine.js         Game state machine: movement, combat, inventory, abilities, save
   main.js           UI controller: canvas renderer, HUD, panels, keyboard, save/load, library
 data/expansions.json  Persisted generated content (server-side)
