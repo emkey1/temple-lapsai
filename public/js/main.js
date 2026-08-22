@@ -12,16 +12,21 @@ import { WEARABLE_SLOTS as WEARABLE } from './contract.js';
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
 const REGISTRY_KEY = 'lapsai-registry';
-/* The game was called something else until recently. Carry the player's
- * character over rather than orphaning it behind a renamed key. */
-const LEGACY_KEYS = { 'lapsai-save': SAVE_KEY, 'lapsai-registry': REGISTRY_KEY };
-
+/* The game has been renamed before and may be again. Rather than naming the
+ * old keys — which would keep a retired name alive in the source — adopt any
+ * save or registry left behind under a previous one, then clear it away. */
 function migrateLegacyStorage() {
   try {
-    for (const [from, to] of Object.entries(LEGACY_KEYS)) {
-      const old = localStorage.getItem(from);
-      if (old !== null && localStorage.getItem(to) === null) localStorage.setItem(to, old);
-      if (old !== null) localStorage.removeItem(from);
+    for (const suffix of ['-save', '-registry']) {
+      const current = suffix === '-save' ? SAVE_KEY : REGISTRY_KEY;
+      for (const key of Object.keys(localStorage)) {
+        if (key === current || !key.endsWith(suffix)) continue;
+        const carried = localStorage.getItem(key);
+        if (carried !== null && localStorage.getItem(current) === null) {
+          localStorage.setItem(current, carried);
+        }
+        localStorage.removeItem(key);
+      }
     }
   } catch (e) { /* private mode, quota, an indifferent browser */ }
 }
