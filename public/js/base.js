@@ -97,7 +97,17 @@ export const ABILITIES = [
   { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
 
   /* Mage */
+  /* The answer to the oldest complaint about playing a wizard: cast your one
+   * spell, then carry everyone's luggage. A Mage always has this, it costs
+   * nothing, and it hands a little power back — so the pool is what the big
+   * workings are FOR, not the whole of what a Mage is. Flat dice on purpose:
+   * it is a floor to stand on, not a career. */
+  { cls: 'mage', level: 1, id: 'witch-spark', name: 'Witch-Spark', kind: 'damage', powerCost: 0, cooldown: 0, range: 6, damage: { sides: 4, bonus: 0, dice: 1 }, powerGain: 1, description: 'The small working, always to hand: 1d4 at six paces, and it leaves a little power behind instead of taking any.' },
   { cls: 'mage', level: 1, id: 'firebolt', name: 'Firebolt', kind: 'damage', powerCost: 3, cooldown: 0, range: 7, damage: { sides: 8, bonus: 0, dice: 1, int: true }, description: 'Lance of flame: 1d8+INT to the nearest foe in sight (range 7).' },
+  /* Frailty was the Mage's whole late game: the pool was not the only thing
+   * that ran out, the Mage did. A skin to stand behind for a few turns is the
+   * oldest answer in the book and it is a decision rather than a passive. */
+  { cls: 'mage', level: 3, id: 'ashen-mantle', name: 'Ashen Mantle', kind: 'buff', buff: 'ward', powerCost: 4, cooldown: 8, turns: 6, bonus: 2, description: 'Draw the cold air in close: turns aside 2 damage from every blow for 6 turns, and more as you learn.' },
   { cls: 'mage', level: 3, id: 'reveal', name: 'Light & Reveal', kind: 'reveal', powerCost: 2, cooldown: 0, description: 'Reveal all secret doors and traps on this floor until you leave it.' },
   { cls: 'mage', level: 6, id: 'blink', name: 'Blink', kind: 'teleport', powerCost: 4, cooldown: 4, teleportRng: 6, description: 'Rend the veil: teleport to a random spot up to 6 tiles away.' },
   { cls: 'mage', level: 9, id: 'fireball', name: 'Fireball', kind: 'damage', powerCost: 9, cooldown: 3, aura: 3, range: 5, damage: { sides: 6, bonus: 0, dice: 3, int: true }, description: 'Ball of doom: 3d6+INT to the target and everything within a 3-tile blast.' },

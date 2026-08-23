@@ -639,6 +639,7 @@ function buffLines(p) {
   if (p.buffs.sanctuary > 0) out.push('Sanctuary (' + p.buffs.sanctuary + ')');
   if (p.buffs.str > 0) out.push('Strength Boost (lvl ' + p.buffs.str + ')');
   if (p.buffs.might > 0) out.push('Sharpened (+' + ((p.buffLevels && p.buffLevels.might) || 2) + ' to hit, ' + p.buffs.might + ')');
+  if (p.buffs.ward > 0) out.push('Warded (' + ((p.buffLevels && p.buffLevels.ward) || 1) + ' turned aside, ' + p.buffs.ward + ')');
   return out;
 }
 
@@ -686,7 +687,11 @@ function renderStats(g) {
      * the ones the Library writes as well as the four that shipped. */
     const heals = abilityHealNote(a, { maxhp: p.maxhp });
     el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
-      (a.kind === 'passive' ? ' <span class="tiny">passive</span>' : ' <span class="tiny">' + (a.powerCost || 0) + ' pwr' + (a.cooldown ? ' · cd ' + a.cooldown : '') + '</span>') +
+      (a.kind === 'passive' ? ' <span class="tiny">passive</span>'
+        /* "0 pwr" reads as broken. A working that costs nothing is at will. */
+        : ' <span class="tiny">' + (a.powerCost ? a.powerCost + ' pwr' : 'at will') +
+          (a.powerGain ? ' · +' + a.powerGain + ' pwr' : '') +
+          (a.cooldown ? ' · cd ' + a.cooldown : '') + '</span>') +
       (a.level > 1 ? ' <span class="tiny">Lv' + a.level + '</span>' : '') +
       (cd > 0 ? ' <b style="color:var(--red-dim)">(' + cd + ')</b>' : '') +
       '<div class="desc">' + esc(a.description || '') +

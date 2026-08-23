@@ -232,6 +232,28 @@ Measured now, 60 duels a cell, in the kit each dungeon can supply:
 Each boss is a real fight that levelling wins. The Mage is the known gap — its
 power is a fixed pool, and once it is spent the Mage is swinging a stick.
 
+### The Mage
+
+No Vancian pool. A Mage always has **Witch-Spark** — at will, 1d4 at six paces, and it hands one
+power back rather than taking any — so the pool is what the big workings are *for*, not the whole of
+what a Mage is. **Ashen Mantle** (level 3) turns damage aside for six turns, because frailty was the
+other half of why a Mage could not finish a fight.
+
+And every ability in the game now grows with practice. They were flat dice forever: a level 12
+Firebolt was the same 1d8+INT as a level 1 one, while a fighter's damage grew with the weapon, the
+strength and the level. That is why the Mage measured as the *weakest* attacker at depth despite
+owning the only attack that cannot miss.
+
+Boss win rates before and after, 60 duels a cell:
+
+| | Temple | Upper Reaches | Serpent |
+| --- | --- | --- | --- |
+| before | 13% | 0% | 0% |
+| after | 60–98% | 15–73% | 2–15% |
+| fighter, for scale | 65–98% | 68–92% | 52–95% |
+
+In the pack at the Temple, real but weaker deeper, and never once reduced to carrying the luggage.
+
 ### Reading the map
 
 Colour is not decoration. Everything alive is drawn in the red family, tinted by tier — dull rust

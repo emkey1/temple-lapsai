@@ -314,8 +314,11 @@ test('using an ability is not forgotten on reload', () => {
   g.loadFloor(0);
   const p = g.state.player;
   const before = p.power;
-  const blast = g.allAbilities().find((a) => a.kind === 'damage');
-  assert.ok(blast, 'the mage has no damaging ability at level 1');
+  /* One that actually costs something: the Mage's first damaging ability is
+   * now Witch-Spark, which is at will and hands power back rather than
+   * taking any, so it cannot show whether spending is persisted. */
+  const blast = g.allAbilities().find((a) => a.kind === 'damage' && (a.powerCost || 0) > 0);
+  assert.ok(blast, 'the mage has no damaging ability that costs power at level 1');
   g.activateAbility(blast.id);
   assert.ok(p.power < before, 'casting cost nothing');
   const saved = JSON.parse(JSON.stringify(g.save()));

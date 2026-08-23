@@ -297,6 +297,9 @@ export class Game {
      * alone, so levelling up made the game harder. Grow with level too. */
     toHit += Math.floor((p.level - 1) / 2);
     if (p.buffs && p.buffs.might > 0) toHit += (p.buffLevels && p.buffLevels.might) || 2;
+    /* A ward soaks like a worn one does — damagePlayer already knows how to
+     * spend `resist`, so a timed one only has to arrive in the same place. */
+    if (p.buffs && p.buffs.ward > 0) resist += (p.buffLevels && p.buffLevels.ward) || 1;
     ac -= abilityMod(eff.dex);
     dmg.bonus += abilityMod(eff.str);
     /* Keep the class bonus: rebuilding dmg from the weapon dropped the
@@ -1473,6 +1476,12 @@ export class Game {
       default: this.log('Nothing visibly happens.');
     }
     if (this.dying) return;
+    /* A lesser working gathers a little of what a greater one spends. This is
+     * the whole of the Mage's answer to running dry: see Witch-Spark in
+     * base.js. Deliberately quiet — a log line every single turn is noise. */
+    if (a.powerGain > 0) {
+      p.power = Math.min(this.computeMaxPower(), p.power + a.powerGain);
+    }
     this.endPlayerTurn();
   }
 
@@ -1517,6 +1526,13 @@ export class Game {
     let b = 0;
     if (dmg && dmg.int) b += abilityMod(eff.int);
     else if (dmg && dmg.n === 'str') b += abilityMod(eff.str);
+    /* And practice counts. Every ability in the game was flat dice forever —
+     * a level 12 Firebolt was the same 1d8+INT as a level 1 one — while a
+     * fighter's damage grew with the weapon, the strength and the level. That
+     * is the whole reason the Mage measured as the WEAKEST attacker at depth
+     * despite having the only attack that cannot miss. The same step the
+     * player's own weapon gets (derived: bonus += floor((level-1)/3)). */
+    b += Math.floor((this.state.player.level - 1) / 3);
     return b;
   }
 
@@ -1556,14 +1572,23 @@ export class Game {
     }
   }
 
+  /* Two kinds of buff: an edge on what you swing, and a skin against what
+   * swings at you. `aura` doubles as the duration here because that is what
+   * the validator has always passed; `turns` says it plainly. */
   abilityBuff(a) {
     const p = this.state.player;
-    const bonus = Math.max(1, a.bonus || 2);
-    const turns = Math.max(2, a.aura || 5);
-    p.buffs.might = turns;
+    /* Grows with practice, like everything else an ability does — a mantle
+     * that turns aside three blows' worth is a wall at level 3 and a rumour at
+     * level 13, and the blows themselves nearly double over that stretch. */
+    const bonus = Math.max(1, (a.bonus || 2) + Math.floor((p.level - 1) / 4));
+    const turns = Math.max(2, a.turns || a.aura || 5);
+    const kind = a.buff === 'ward' ? 'ward' : 'might';
+    p.buffs[kind] = turns;
     if (!p.buffLevels) p.buffLevels = {};
-    p.buffLevels.might = bonus;
-    this.log('Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.');
+    p.buffLevels[kind] = bonus;
+    this.log(kind === 'ward'
+      ? 'A skin of cold air closes over you: ' + bonus + ' turned aside from every blow, ' + turns + ' turns.'
+      : 'Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.');
   }
 
   abilityReveal(a) {
