@@ -252,10 +252,16 @@ by tests rather than by clicking around in a browser.
 
 ### The Mage
 
-No Vancian pool. A Mage always has **Witch-Spark** — at will, 1d4 at six paces, and it hands one
-power back rather than taking any — so the pool is what the big workings are *for*, not the whole of
-what a Mage is. **Ashen Mantle** (level 3) turns damage aside for six turns, because frailty was the
-other half of why a Mage could not finish a fight.
+No Vancian pool. **Ebb & Flow** (level 1, passive) makes the reserve a tide rather than a cup: while
+a fight is on it seeps back a little each turn, and a blow landed with a **staff — a weapon that
+carries power, which a sword does not** — draws deeper. So the turn you spend in reach is how you
+buy the next Firebolt, and the mundane swing stops being the thing you do *instead* of being a Mage.
+**Witch-Spark** (at will, 1d4 at six paces, costs nothing) means a dry turn is still a spell.
+**Ashen Mantle** (level 3) turns damage aside for six turns, because frailty was the other half of
+why a Mage could not finish a fight.
+
+The renewal is deliberately not something the oracle may write: a Fighter with in-combat power
+renewal casts Second Wind, which mends half its maximum health, without limit.
 
 And every ability in the game now grows with practice. They were flat dice forever: a level 12
 Firebolt was the same 1d8+INT as a level 1 one, while a fighter's damage grew with the weapon, the
@@ -267,10 +273,22 @@ Boss win rates before and after, 60 duels a cell:
 | | Temple | Upper Reaches | Serpent |
 | --- | --- | --- | --- |
 | before | 13% | 0% | 0% |
-| after | 60–98% | 15–73% | 2–15% |
-| fighter, for scale | 65–98% | 68–92% | 52–95% |
+| after | 65–100% | 22–87% | 2–58% |
+| fighter, for scale | 65–95% | 65–95% | 63–97% |
 
 In the pack at the Temple, real but weaker deeper, and never once reduced to carrying the luggage.
+Witch-Spark used to hand a point of power back too; measured, a Mage with both economies won 92% of
+the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
+of the economy.
+
+### Experience
+
+`gainXP` subtracts as it goes, so reaching level N costs the sum of every step below it — which made
+the old curve far steeper than it read. Measured against what the generator actually puts on the
+floors, clearing the whole of Temple floor one paid **106** against the **150** level two cost, so a
+player finished the first floor of the game still at level one. The curve now matches the content:
+level two arrives partway through floor one, a full Temple leaves you at six, the whole game reaches
+twelve — and each boss is met at the level it was tuned against (5, 8 and 12).
 
 ### Reading the map
 

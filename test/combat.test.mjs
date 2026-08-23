@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CLASSES, XP_FOR_LEVEL } from '../public/js/base.js';
-import { newGame } from './helpers.mjs';
+import { newGame, floorOf } from './helpers.mjs';
 
 test('armour class descends: armour and DEX both make you harder to hit', () => {
   const g = newGame('ac');
@@ -62,9 +62,48 @@ test('monsters are scaled by depth, not by the player\'s level', () => {
   assert.deepEqual(hpAtLevel9, hpAtLevel1, 'levelling up inflated the monsters');
 });
 
-test('the XP curve is worth about a level per floor', () => {
-  /* Four floors of the Temple are worth roughly 4,000 XP all told. */
-  const toLevel5 = [1, 2, 3, 4].reduce((sum, l) => sum + XP_FOR_LEVEL(l), 0);
-  assert.ok(toLevel5 > 2000 && toLevel5 < 4000, `cumulative XP to level 5 is ${toLevel5}`);
-  assert.ok(XP_FOR_LEVEL(1) <= 200, `level 2 costs ${XP_FOR_LEVEL(1)} XP — too far for one floor`);
+/* The curve is only right relative to what the floors actually hold, and the
+ * old one was checked against a guess: the comment claimed floor one was worth
+ * about 150 XP, level two cost exactly 150, and the floor in fact holds 106 —
+ * so a player cleared the whole first floor of the game and finished it still
+ * at level one, barely past halfway. Measure the content, not the formula. */
+function templeXp(floors) {
+  let total = 0;
+  for (let f = 0; f < floors; f++) {
+    for (let s = 0; s < 12; s++) {
+      const { floor } = floorOf('temple', f, `xp-${f}-${s}`);
+      total += floor.monsters.reduce((a, m) => a + (m.xp || 0), 0);
+    }
+  }
+  return Math.round(total / 12);
+}
+
+/* gainXP subtracts as it goes, so reaching level N costs every step below it. */
+function levelFor(xp) {
+  let level = 1;
+  let left = xp;
+  while (left >= XP_FOR_LEVEL(level)) { left -= XP_FOR_LEVEL(level); level++; }
+  return level;
+}
+
+test('clearing the first floor of the game earns the first level', () => {
+  const floorOne = templeXp(1);
+  assert.ok(floorOne >= XP_FOR_LEVEL(1),
+    `Temple floor one holds ${floorOne} XP and level two costs ${XP_FOR_LEVEL(1)} — a whole floor, still level one`);
+});
+
+test('a dungeon is worth about the levels its boss is tuned against', () => {
+  /* The three bosses were measured at levels 5-7, 8-10 and 11-13. A curve that
+   * leaves the player short of that is what makes a boss feel unfair when the
+   * boss itself is fine. */
+  const wholeTemple = templeXp(4);
+  const reached = levelFor(wholeTemple);
+  assert.ok(reached >= 6 && reached <= 8,
+    `a full clear of the Temple reaches level ${reached}; the Demon is tuned for 5-7`);
+});
+
+test('levelling never gets cheaper as you go', () => {
+  for (let l = 1; l < 15; l++) {
+    assert.ok(XP_FOR_LEVEL(l + 1) > XP_FOR_LEVEL(l), `level ${l + 2} costs less than level ${l + 1}`);
+  }
 });

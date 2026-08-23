@@ -11,8 +11,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
-import { ABILITIES, CLASSES } from '../public/js/base.js';
+import { ABILITIES, CLASSES, getItemTemplate } from '../public/js/base.js';
+import { deepItem } from '../public/js/dice.js';
 import { validateAbility } from '../lib/expansion.js';
+import { abilityPowerNote } from '../public/js/describe.js';
 
 function mageAt(level, seed = 'm') {
   const g = newGame(`${seed}-${level}`, 'mage');
@@ -43,20 +45,87 @@ test('a Mage out of power still has something to cast', () => {
   assert.ok(m.hp < before, 'an empty Mage could do nothing at all');
 });
 
-test('the small working hands power back rather than taking it', () => {
+test('the small working costs nothing, and hands nothing back either', () => {
+  /* Ebb & Flow is the whole of the economy. A spark that ALSO paid put the
+   * Mage above every other class at the first boss — 92% against a Fighter's
+   * 77% — which is the overshoot this splits apart. */
   const { g, p } = mageAt(4);
   target(g);
-  p.power = 0;
+  p.power = 7;
   g.activateAbility('witch-spark');
-  assert.ok(p.power > 0, 'Witch-Spark cost power instead of returning it');
+  assert.ok(p.power <= 7, 'the spark paid power back on top of the tide');
 });
 
-test('sparking never fills the pool past its brim', () => {
+/* ---- the tide ---- */
+
+test('the reserve seeps back while a fight is on', () => {
   const { g, p } = mageAt(6);
-  target(g);
+  target(g, 1);
+  p.power = 0;
+  for (let i = 0; i < 12; i++) g.endPlayerTurn();
+  assert.ok(p.power > 0, 'the reserve never moved with something in the room');
+});
+
+test('a fraction of a point a turn is banked, not rounded away or rounded up', () => {
+  const { g, p } = mageAt(1);
+  const der = g.derived();
+  const perTurn = der.maxpower * der.powerRegen;
+  assert.ok(perTurn > 0 && perTurn < 1, `the seep is ${perTurn} a turn, which rounding would ruin either way`);
+  target(g, 1);
+  p.power = 0;
+  g.endPlayerTurn();
+  assert.equal(p.power, 0, 'a fraction of a point was rounded up into a whole one');
+  for (let i = 0; i < 10; i++) g.endPlayerTurn();
+  assert.ok(p.power >= 1, 'the fractions never added up to anything');
+});
+
+test('lingering in a fight is never quicker than walking away from one', () => {
+  const { g } = mageAt(9);
+  const der = g.derived();
+  assert.ok(der.powerRegen < 0.045,
+    `fighting renews at ${der.powerRegen} against resting's 0.045 — the wrong way round`);
+});
+
+test('a blow landed with a staff draws power through it; a sword does not', () => {
+  const { g, p } = mageAt(6);
+  const m = target(g, 1);
+  p.equipment.weapon = deepItem(getItemTemplate('staff'));
+  p.power = 0;
+  for (let i = 0; i < 12; i++) { g.attackMonster(m); }
+  const withFocus = p.power;
+  assert.ok(withFocus > 0, 'the staff drew nothing');
+
+  p.equipment.weapon = deepItem(getItemTemplate('broadsword'));
+  p.power = 0;
+  for (let i = 0; i < 12; i++) { g.attackMonster(m); }
+  assert.ok(p.power < withFocus, 'a broadsword recharged the Mage');
+  assert.equal(g.isFocusWeapon(p.equipment.weapon), false);
+});
+
+test('the tide never overfills the cup', () => {
+  const { g, p } = mageAt(6);
+  const m = target(g, 1);
+  p.equipment.weapon = deepItem(getItemTemplate('staff'));
   p.power = p.maxpower;
-  for (let i = 0; i < 10; i++) g.activateAbility('witch-spark');
-  assert.equal(p.power, p.maxpower);
+  for (let i = 0; i < 20; i++) { g.attackMonster(m); g.endPlayerTurn(); }
+  assert.ok(p.power <= p.maxpower, `${p.power} of ${p.maxpower}`);
+});
+
+test('only the Mage has a tide', () => {
+  for (const cls of ['fighter', 'thief', 'cleric']) {
+    const g = newGame('tide-' + cls, cls);
+    for (let i = 1; i < 9; i++) g.levelUp();
+    assert.equal(g.derived().powerRegen, 0, `${cls} renews power mid-fight`);
+    assert.equal(g.derived().focusPower, 0, `${cls} draws power through its weapon`);
+  }
+});
+
+test('the renewal is written on the card, not left to be discovered', () => {
+  const ebb = ABILITIES.find((a) => a.id === 'ebb-flow');
+  const note = abilityPowerNote(ebb, { maxpower: 30 });
+  assert.match(note, /pwr/, 'the passive says nothing about what it does');
+  assert.match(note, /focus/, 'the staff clause is invisible');
+  assert.equal(abilityPowerNote(ABILITIES.find((a) => a.id === 'firebolt'), { maxpower: 30 }), '');
 });
 
 test('the small working stays small', () => {
@@ -68,8 +137,6 @@ test('the small working stays small', () => {
   assert.ok(!spark.damage.int, 'the cantrip scales with INT, which is the big spell\'s job');
   assert.ok(spark.damage.dice * spark.damage.sides < bolt.damage.dice * bolt.damage.sides,
     'the free working hits as hard as the one you pay for');
-  assert.ok(spark.powerGain < bolt.powerCost,
-    'one spark pays for a Firebolt outright, which is a fountain, not an economy');
 });
 
 test('an ability grows with practice, as a weapon does', () => {
@@ -134,10 +201,31 @@ test('the Mage is no longer the frailest thing in the dungeon by a mile', () => 
 /* ---- what the Library may write ---- */
 
 test('the oracle cannot write a power fountain', () => {
-  const greedy = validateAbility({ name: 'Endless Font', cls: 'mage', kind: 'damage', level: 1, powerCost: 0, powerGain: 99 });
-  assert.ok(greedy.powerGain <= 2, `powerGain came back as ${greedy.powerGain}`);
-  const none = validateAbility({ name: 'Plain Bolt', cls: 'mage', kind: 'damage', level: 1 });
-  assert.equal(none.powerGain, undefined, 'every generated ability now returns power');
+  /* Renewal is granted by one passive the game ships, and the validator builds
+   * its output from a whitelist — so a model asking for it is simply dropped.
+   * A Fighter with in-combat renewal casts Second Wind, which mends half its
+   * maximum health, without limit. */
+  const greedy = validateAbility({
+    name: 'Endless Well', cls: 'fighter', kind: 'passive', level: 1,
+    powerRegen: 5, focusPower: 99, powerGain: 99,
+  });
+  assert.equal(greedy.powerRegen, undefined);
+  assert.equal(greedy.focusPower, undefined);
+  assert.equal(greedy.powerGain, undefined);
+
+  const g = newGame('fountain', 'fighter');
+  g.registry.abilities = [{ ...greedy, id: 'exp-well' }];
+  g.loadFloor(0);
+  assert.equal(g.derived().powerRegen, 0, 'a written passive granted a tide anyway');
+});
+
+test('and the engine bounds it even if one ever got through', () => {
+  const g = newGame('bounded', 'mage');
+  g.registry.abilities = [{ cls: 'mage', level: 1, kind: 'passive', id: 'exp-flood', powerRegen: 5, focusPower: 99 }];
+  g.loadFloor(0);
+  const der = g.derived();
+  assert.ok(der.powerRegen <= 0.04, `powerRegen came out at ${der.powerRegen}`);
+  assert.ok(der.focusPower <= 3, `focusPower came out at ${der.focusPower}`);
 });
 
 test('a written ward is a ward, and anything else is an edge', () => {

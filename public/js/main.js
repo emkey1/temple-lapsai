@@ -9,7 +9,7 @@ import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
-import { itemDescription, abilityHealNote } from './describe.js';
+import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
 import {
   LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
   forgetCharacter, markFallen, pickLast, playable, adoptLegacySave,
@@ -711,16 +711,17 @@ function renderStats(g) {
      * floor is appended rather than trusted to the description — which covers
      * the ones the Library writes as well as the four that shipped. */
     const heals = abilityHealNote(a, { maxhp: p.maxhp });
+    const renews = abilityPowerNote(a, { maxpower: p.maxpower });
     el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>'
         /* "0 pwr" reads as broken. A working that costs nothing is at will. */
         : ' <span class="tiny">' + (a.powerCost ? a.powerCost + ' pwr' : 'at will') +
-          (a.powerGain ? ' · +' + a.powerGain + ' pwr' : '') +
           (a.cooldown ? ' · cd ' + a.cooldown : '') + '</span>') +
       (a.level > 1 ? ' <span class="tiny">Lv' + a.level + '</span>' : '') +
       (cd > 0 ? ' <b style="color:var(--red-dim)">(' + cd + ')</b>' : '') +
       '<div class="desc">' + esc(a.description || '') +
-      (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') + '</div>';
+      (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') +
+      (renews ? ' <span class="tiny">(' + esc(renews) + ')</span>' : '') + '</div>';
     if (!can && a.kind !== 'passive') el.style.opacity = 0.55;
     el.onclick = () => { if (game && !game.dying) { game.activateAbility(a.id); canvasFocus(); } };
     els.abilitiesBlock.appendChild(el);

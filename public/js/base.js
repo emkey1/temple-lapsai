@@ -97,12 +97,20 @@ export const ABILITIES = [
   { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
 
   /* Mage */
-  /* The answer to the oldest complaint about playing a wizard: cast your one
-   * spell, then carry everyone's luggage. A Mage always has this, it costs
-   * nothing, and it hands a little power back — so the pool is what the big
-   * workings are FOR, not the whole of what a Mage is. Flat dice on purpose:
-   * it is a floor to stand on, not a career. */
-  { cls: 'mage', level: 1, id: 'witch-spark', name: 'Witch-Spark', kind: 'damage', powerCost: 0, cooldown: 0, range: 6, damage: { sides: 4, bonus: 0, dice: 1 }, powerGain: 1, description: 'The small working, always to hand: 1d4 at six paces, and it leaves a little power behind instead of taking any.' },
+  /* The reserve is a tide, not a cup. This is the half of the answer that
+   * makes a Mage's own turns pay for themselves: while a fight is on, power
+   * seeps back, and a blow landed with a staff — a weapon that carries power,
+   * which a sword does not — draws deeper. So the turn you spend in reach is
+   * how you buy the next Firebolt, and the mundane swing stops being the thing
+   * you do INSTEAD of being a Mage. */
+  { cls: 'mage', level: 1, id: 'ebb-flow', name: 'Ebb & Flow', kind: 'passive', powerRegen: 0.02, focusPower: 2, description: 'Your reserve is a tide, not a cup: while a fight is on it seeps back a little every turn, and a blow landed with a staff or other focus draws deeper.' },
+
+  /* The other half: something to CAST when the reserve is low, so the answer
+   * to a dry turn is a small spell rather than a stick. It hands nothing back —
+   * Ebb & Flow above is the whole of the economy, and measured, a spark that
+   * paid as well put the Mage above every other class at the first boss. Flat
+   * dice on purpose: a floor to stand on, not a career. */
+  { cls: 'mage', level: 1, id: 'witch-spark', name: 'Witch-Spark', kind: 'damage', powerCost: 0, cooldown: 0, range: 6, damage: { sides: 4, bonus: 0, dice: 1 }, description: 'The small working, always to hand: 1d4 at six paces, and it costs nothing at all.' },
   { cls: 'mage', level: 1, id: 'firebolt', name: 'Firebolt', kind: 'damage', powerCost: 3, cooldown: 0, range: 7, damage: { sides: 8, bonus: 0, dice: 1, int: true }, description: 'Lance of flame: 1d8+INT to the nearest foe in sight (range 7).' },
   /* Frailty was the Mage's whole late game: the pool was not the only thing
    * that ran out, the Mage did. A skin to stand behind for a few turns is the
@@ -133,10 +141,20 @@ export function getAbility(id) {
 
 export function abilityMod(v) { return Math.floor((v - 10) / 2); }
 
-/* XP needed to earn the NEXT level (gainXP subtracts as it goes). Tuned so a
- * dungeon's four floors are worth roughly four levels: 150, 450, 900, 1500 …
- * against ~150 XP on floor one rising to ~2900 with the boss on floor four. */
-export const XP_FOR_LEVEL = (lvl) => Math.floor(150 * (lvl * (lvl + 1) / 2));
+/* XP needed to earn the NEXT level. gainXP SUBTRACTS as it goes, so reaching
+ * level N costs the sum of every step below it — which is what made the old
+ * coefficient of 150 so much steeper than it looked. Measured against what the
+ * generator actually puts on the floors: clearing the whole of Temple floor one
+ * paid 106 against the 150 that level two cost, so a player finished the first
+ * floor of the game still at level one and barely past halfway.
+ *
+ * At 70 the curve matches the content instead of the other way round. Clearing
+ * a floor pays for the level it took to clear it: level two arrives partway
+ * through floor one, a full Temple leaves you at six, and the whole game
+ * reaches twelve — which is where the three bosses were tuned to be fought.
+ * Before this you met the Demon of Lapsai at level FOUR, below the bottom of
+ * the range anyone had measured it at. */
+export const XP_FOR_LEVEL = (lvl) => Math.floor(70 * (lvl * (lvl + 1) / 2));
 
 /* ---------------- Healing ---------------- */
 

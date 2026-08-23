@@ -109,3 +109,19 @@ export function abilityHealNote(a, ctx) {
   if (!(maxhp > 0)) return 'at least ' + share;
   return 'at least ' + Math.max(1, Math.round(maxhp * fraction)) + ' — ' + share;
 }
+
+/* A renewal the player cannot see is one they cannot plan around — and a
+ * fraction of a point a turn reads as nothing, so it is quoted over ten turns
+ * of fighting, which is about a third of a boss. */
+export function abilityPowerNote(a, ctx) {
+  if (!a) return '';
+  const maxpower = ctx && ctx.maxpower;
+  const parts = [];
+  if (a.powerRegen > 0) {
+    parts.push(maxpower > 0
+      ? '+' + Math.floor(maxpower * a.powerRegen * 10) + ' pwr over ten turns of fighting'
+      : Math.round(a.powerRegen * 100) + '% of your power a turn while fighting');
+  }
+  if (a.focusPower > 0) parts.push('+' + a.focusPower + ' pwr on a blow landed with a focus');
+  return parts.join(' · ');
+}

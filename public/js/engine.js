@@ -46,6 +46,13 @@ const STRENGTH_BUFF = 4;
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
 const HP_REGEN_FRACTION = 0.02;
 const PWR_REGEN_FRACTION = 0.045;
+/* Renewal DURING a fight, which only a passive grants. Both are ceilings on
+ * what any one ability may hand out, because a number the engine reads should
+ * be a number the engine bounds — and because a trickle big enough to fund a
+ * cast every turn puts a Mage over a Fighter's sustained damage at range, with
+ * an attack that cannot miss. */
+const MAX_COMBAT_PWR_REGEN = 0.04;
+const MAX_FOCUS_POWER = 3;
 const DESCENT_RECOVERY = 0.15;  /* stairs are a breather, not a bed */
 
 /* ---------------- Character creation ---------------- */
@@ -308,7 +315,12 @@ export class Game {
     dmg.bonus += Math.floor((p.level - 1) / 3);
     /* Granted by the ABILITY, not by the class name — the passive previously
      * gave nothing that lacking it would have taken away. */
-    for (const a of this.passives()) if (a.critBonus) crit += a.critBonus;
+    let powerRegen = 0, focusPower = 0;
+    for (const a of this.passives()) {
+      if (a.critBonus) crit += a.critBonus;
+      if (a.powerRegen) powerRegen += a.powerRegen;
+      if (a.focusPower) focusPower += a.focusPower;
+    }
     let maxp = c.powerBase + this.equipmentPower();
     if (c.powerPerInt) maxp += abilityMod(eff.int);
     if (c.powerPerChr) maxp += abilityMod(eff.cha);
@@ -317,11 +329,39 @@ export class Game {
       effValues: eff,
       toHit, ac, dmg, crit, regen,
       resist, undeadResist, luck,
+      powerRegen: Math.min(MAX_COMBAT_PWR_REGEN, powerRegen),
+      focusPower: Math.min(MAX_FOCUS_POWER, focusPower),
       sanctuary: (p.buffs && p.buffs.sanctuary > 0) || false,
       seeSecrets: !!seeSecrets,
       maxpower: Math.max(1, maxp),
       sight: 9,
     };
+  }
+
+  /* Renewal arrives as a fraction of a point a turn, which rounds to nothing
+   * every turn if you let it and to a free point a turn if you round the other
+   * way. So it is banked and paid out whole. */
+  gatherPower(amount, der) {
+    const p = this.state.player;
+    if (!(amount > 0)) return 0;
+    const max = (der || this.derived()).maxpower;
+    if (p.power >= max) return 0;
+    if (!p.counters) p.counters = {};
+    p.counters.mote = (p.counters.mote || 0) + amount;
+    const whole = Math.floor(p.counters.mote);
+    if (whole < 1) return 0;
+    p.counters.mote -= whole;
+    const before = p.power;
+    p.power = Math.min(max, p.power + whole);
+    return p.power - before;
+  }
+
+  /* A focus is a weapon that carries power, which is the property the Staff
+   * has and a sword does not — and which anything the Library invents can have
+   * without being named here. applyMagic only ever writes toHit, damage and
+   * acBonus, so a +2 Broadsword never becomes one. */
+  isFocusWeapon(it) {
+    return !!(it && it.slot === 'weapon' && Number(it.effects && it.effects.power) > 0);
   }
 
   effectiveStats() {
@@ -947,6 +987,14 @@ export class Game {
     let dmg = this.rollDamage(der.dmg, m.t);
     if (isCrit) dmg += this.rollDamage(der.dmg, m.t);
     this.log('You strike the ' + m.t.name + ' for ' + dmg + ' hit points.');
+    /* A blow landed with a focus draws power back through it. Paid BEFORE the
+     * damage, because killing the thing ends the floor's business and the blow
+     * should still have been worth striking. This is what turns a Mage out of
+     * power from a commoner with a stick into a Mage winding up. */
+    if (der.focusPower > 0 && this.isFocusWeapon(this.state.player.equipment.weapon)) {
+      const drawn = this.gatherPower(der.focusPower, der);
+      if (drawn > 0) this.log('The focus drinks: +' + drawn + ' PWR.');
+    }
     this.applyDamageToMonster(m, dmg, isCrit, der);
   }
 
@@ -1109,6 +1157,13 @@ export class Game {
     if (this.outOfCombat()) {
       p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION)));
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.ceil(der.maxpower * PWR_REGEN_FRACTION)));
+      /* A half point never carries from one fight into the next. */
+      if (p.counters) p.counters.mote = 0;
+    } else if (der.powerRegen > 0) {
+      /* The reserve is a tide, not a cup: while a fight is on it seeps back.
+       * Deliberately slower than resting — lingering in a fight must never be
+       * a quicker way to fill the bar than walking away from one. */
+      this.gatherPower(der.maxpower * der.powerRegen, der);
     }
     for (const k in p.cooldowns) if (p.cooldowns[k] > 0) p.cooldowns[k]--;
     /* Every key in p.buffs is a countdown in turns. Anything that is a
@@ -1476,12 +1531,6 @@ export class Game {
       default: this.log('Nothing visibly happens.');
     }
     if (this.dying) return;
-    /* A lesser working gathers a little of what a greater one spends. This is
-     * the whole of the Mage's answer to running dry: see Witch-Spark in
-     * base.js. Deliberately quiet — a log line every single turn is noise. */
-    if (a.powerGain > 0) {
-      p.power = Math.min(this.computeMaxPower(), p.power + a.powerGain);
-    }
     this.endPlayerTurn();
   }
 
@@ -1934,6 +1983,9 @@ export class Game {
           this.log('You are steadier on your feet than you remember. (+' + credit + ' max HP)');
         }
       }
+      /* A character part-way to the next level under an older, steeper curve
+       * should not have to earn that ground twice. */
+      if (Number.isInteger(p.level) && p.xp >= XP_FOR_LEVEL(p.level)) this.gainXP(0);
       /* Two numbers claimed to be the maximum power: the one stored on the
        * player, which the bar and every "is it full" test read, and the one
        * derived() computes fresh from class, level and gear, which the
