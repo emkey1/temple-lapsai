@@ -154,14 +154,26 @@ test('a fast ranged monster shoots once a turn', () => {
 });
 
 test('per-turn flags do not survive a death', () => {
+  /* These live on the ACTOR now, not on the game — there is going to be more
+   * than one actor, and an initiative order can have two of them mid-turn at
+   * once. The invariant is the same one: nothing carries past the grave. */
   const g = newGame('death-flags');
   arena(g);
-  g.wading = true;
-  g.pendingCleave = true;
-  g.cleavedThisTurn = true;
+  g.actorTurn().wading = true;
+  g.actorTurn().cleaved = true;
   g.die(beast(11, 10));
-  assert.equal(g.wading, false, 'wading leaked past the grave');
-  assert.equal(g.cleavedThisTurn, false, 'the cleave allowance leaked past the grave');
+  assert.ok(!g.actorTurn().wading, 'wading leaked past the grave');
+  assert.ok(!g.actorTurn().cleaved, 'the cleave allowance leaked past the grave');
+});
+
+test('one actor\'s turn is not another\'s', () => {
+  const g = newGame('actor-flags');
+  arena(g);
+  const other = { name: 'Second' };
+  g.actorTurn().cleaved = true;
+  assert.ok(!g.actorTurn(other).cleaved, 'a flag set on one actor showed up on another');
+  g.clearActorTurn(other);
+  assert.ok(g.actorTurn().cleaved, 'clearing one actor cleared another');
 });
 
 test('Turn Undead wears off', () => {

@@ -460,8 +460,7 @@ export class Game {
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
     this.snapshotFloor();   /* remember the floor we are stepping off */
-    this.wading = false;
-    this.cleavedThisTurn = false;
+    this.clearActorTurn();
     /* The breath at the stairs is paid for reaching somewhere NEW.
      *
      * loadFloor is also how you climb back up, how the camp button puts you
@@ -783,7 +782,7 @@ export class Game {
    * carries. Making it impassable was severing whole sewer floors. */
   wadeInto(x, y) {
     this.log('You wade into black water — slow going, and loud.');
-    this.wading = true;
+    this.actorTurn().wading = true;
     let roused = 0;
     for (const m of (this.currentFloor.monsters || [])) {
       if (!m.aggro && dist1(m, { x, y }) <= 6) { m.aggro = true; m.lastSeen = this.turn; roused++; }
@@ -1051,7 +1050,7 @@ export class Game {
     const p = this.state.player;
     const floor = this.currentFloor;
     this.state.totalKills = (this.state.totalKills || 0) + 1;
-    const cleaves = this.hasPassive('cleave') && !this.cleavedThisTurn;
+    const cleaves = this.hasPassive('cleave') && !this.actorTurn().cleaved;
     if (m.boss) this.onBossSlain(m);
     const xp = m.xp || 10;
     this.log('The ' + m.t.name + ' is slain!');
@@ -1072,7 +1071,7 @@ export class Game {
     if (cleaves) {
       const next = (floor.monsters || []).find((o) => o.hp > 0 && dist8(o, p) <= 1);
       if (next) {
-        this.cleavedThisTurn = true;   /* set before the swing: no chains */
+        this.actorTurn().cleaved = true;   /* set before the swing: no chains */
         this.log('Your blade carries.');
         this.attackMonster(next);
       }
@@ -1153,13 +1152,13 @@ export class Game {
     this.resolveMonsters();
     if (this.dying) return;
     /* Wading costs the turn twice over: everything else gets a second move. */
-    if (this.wading) {
-      this.wading = false;
+    if (this.actorTurn().wading) {
+      this.actorTurn().wading = false;
       this.turn++;
       this.resolveMonsters();
       if (this.dying) return;
     }
-    this.cleavedThisTurn = false;
+    this.clearActorTurn();
     this.computeVisibility();
     this.turn++;
     if (this.ui.render) this.ui.render(this);
@@ -1279,6 +1278,23 @@ export class Game {
         if (did !== 'step') break;
       }
     }
+  }
+
+  /* Per-turn state belongs to the ACTOR, not to the game. It lived on the
+   * Game because there was only ever one actor; a party has several, and an
+   * initiative order can put two of them mid-turn at once. It is a fresh
+   * object each round, so nothing has to remember to clear a flag it added —
+   * and it is turnState rather than turn, because this.turn is the counter. */
+  actorTurn(actor) {
+    const a = actor || this.state.player;
+    if (!a) return {};
+    if (!a.turnState) a.turnState = {};
+    return a.turnState;
+  }
+
+  clearActorTurn(actor) {
+    const a = actor || this.state.player;
+    if (a) a.turnState = {};
   }
 
   /* Says what it DID: 'strike', 'step' or 'nothing'. The caller used to work
@@ -1401,8 +1417,7 @@ export class Game {
     const p = this.state.player;
     this.dying = true;
     /* Per-turn flags do not survive the end of a life. */
-    this.wading = false;
-    this.cleavedThisTurn = false;
+    this.clearActorTurn();
     const killer = m ? ('by a ' + m.t.name) : 'by misadventure';
     this.log('You are slain ' + killer + '!');
     if (this.ui.showDeath) this.ui.showDeath('You were laid low ' + killer + ' in ' + (this.dungeonById(p.dungeonId) || {}).name + '.');
