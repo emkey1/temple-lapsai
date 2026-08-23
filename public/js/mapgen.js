@@ -458,7 +458,6 @@ function scaledMonster(t, pos, threat, floorIdx, boss) {
     hp, maxhp: hp,
     boss,
     aggro: false,
-    acted: false,
     toHit: (t.toHit || 0) + Math.floor(floorIdx / 2),
     dmg: {
       dice: (t.damage && t.damage.dice) || 1,

@@ -1239,8 +1239,15 @@ export class Game {
   tickStatus() {
     const p = this.state.player;
     const der = this.derived();
-    if (der.regen && this.turn % 2 === 1) {
-      p.hp = Math.min(p.maxhp, p.hp + der.regen);
+    /* Every other TICK, not every other value of this.turn. Wading advances
+     * the turn counter twice for one action, so a player wearing a Ring of
+     * Regeneration and crossing water only ever landed on even turns and the
+     * ring simply stopped working. Measured: five points of mending over ten
+     * actions on dry ground, none at all in the water. */
+    if (der.regen) {
+      if (!p.counters) p.counters = {};
+      p.counters.regenTick = (p.counters.regenTick || 0) + 1;
+      if (p.counters.regenTick % 2 === 0) p.hp = Math.min(p.maxhp, p.hp + der.regen);
     }
     if (this.outOfCombat()) {
       p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION)));
@@ -1335,7 +1342,6 @@ export class Game {
       if (!m.aggro) continue;
       if (hidden) continue;   /* it knows something is there; it cannot fix on you */
 
-      m.acted = true;
       /* Monster speed (1-4) was carried on every template and never used.
        * Speed buys GROUND, not blows: a fast thing closes sooner, but nothing
        * gets to strike twice in one turn. So it keeps going only while it is
@@ -1712,7 +1718,7 @@ export class Game {
 
   abilityHeal(a) {
     /* Hand-authored abilities carry "3d6"; generated ones carry {dice,sides}. */
-    const rolled = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal);
+    const rolled = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal, this.rngOfTurn());
     const mended = this.applyHeal(rolled, healFractionForAbility(a));
     this.log('Old forces knit your wounds for ' + mended + ' hit points.');
   }
@@ -1830,8 +1836,8 @@ export class Game {
     /* Drinking at full health spent the flask AND the turn for nothing. The
      * altar has always refused that trade; so does this now. */
     if (fx.heal && p.hp >= p.maxhp) { this.log('You are whole. The flask stays corked.'); return false; }
-    if (fx.heal) { const v = this.applyHeal(evaluateDice(fx.heal), healFractionForItem(item)); this.log('Sweet relief: +' + v + ' HP.'); }
-    else if (fx.power) { const v = evaluateDice(fx.power); p.power = Math.min(p.maxpower, p.power + v); this.log('Crackling force surges: +' + v + ' PWR.'); }
+    if (fx.heal) { const v = this.applyHeal(evaluateDice(fx.heal, this.rngOfTurn()), healFractionForItem(item)); this.log('Sweet relief: +' + v + ' HP.'); }
+    else if (fx.power) { const v = evaluateDice(fx.power, this.rngOfTurn()); p.power = Math.min(p.maxpower, p.power + v); this.log('Crackling force surges: +' + v + ' PWR.'); }
     else if (fx.buffStr) { p.buffs.str = fx.buffStr; this.log('Your arm bulges with borrowed might.'); }
     else if (fx.removeCurse) { this.removeAllCurses(); }
     else if (fx.identify) { this.identifyAll(); }
@@ -1871,7 +1877,7 @@ export class Game {
       if (d < best) { best = d; target = m; }
     }
     if (!target) { this.log('The flame finds nothing to burn.'); return; }
-    const dmg = evaluateDice(dice);
+    const dmg = evaluateDice(dice, this.rngOfTurn());
     this.log('The scroll ignites: the ' + target.t.name + ' burns for ' + dmg + '!');
     target.hp -= dmg;
     target.aggro = true;
@@ -1887,7 +1893,7 @@ export class Game {
     const spell = fx.spell;
     if (spell === 'heal') {
       /* Wands written before the heal was data still roll the old 1d6+3. */
-      const v = this.applyHeal(fx.heal ? evaluateDice(fx.heal) : r.d(6) + 3, healFractionForItem(item));
+      const v = this.applyHeal(fx.heal ? evaluateDice(fx.heal, r) : r.d(6) + 3, healFractionForItem(item));
       this.log('The wand warms: +' + v + ' HP. (' + fx.charges + ' charges)' );
     } else {
       const floor = this.currentFloor;

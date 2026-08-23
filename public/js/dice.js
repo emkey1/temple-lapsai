@@ -10,8 +10,15 @@ export function rollDice(d) {
   return s + (d.bonus || 0);
 }
 
-/* evaluate strings like "3d6+2" or plain numbers */
-export function evaluateDice(v) {
+/* Evaluate strings like "3d6+2", or plain numbers.
+ *
+ * Takes the roller as an argument. Everything else a turn rolls comes out of
+ * the turn's own seeded stream (Game.rngOfTurn), and this did not — so the
+ * five things that go through it, every healing potion and power draught and
+ * scroll of flame and class heal and wand among them, were the only rolls in
+ * the game that a seed could not reproduce. */
+export function evaluateDice(v, rng) {
+  const die = (sides) => (rng ? rng.d(sides) : 1 + Math.floor(Math.random() * sides));
   if (typeof v === 'number') {
     if (Number.isFinite(v)) return v;
     return 0;
@@ -21,7 +28,7 @@ export function evaluateDice(v) {
   let s = 0;
   const dice = parseInt(m[1], 10);
   const sides = parseInt(m[2], 10);
-  for (let i = 0; i < dice; i++) s += 1 + Math.floor(Math.random() * sides);
+  for (let i = 0; i < dice; i++) s += die(sides);
   if (m[3]) s += parseInt(m[3], 10);
   return s;
 }

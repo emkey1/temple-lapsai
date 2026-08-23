@@ -342,3 +342,59 @@ test('Cleave carries into a foe on the diagonal', () => {
   g.handleKey('d');
   assert.ok(diagonal.hp < 999, 'the blade did not carry to the diagonal');
 });
+
+/* ---- three things a design review found in the shipped game ---- */
+
+test('a Ring of Regeneration keeps working in the water', () => {
+  /* The ring fired on odd values of this.turn, and wading advances the turn
+   * counter TWICE for one action — so crossing water landed the player only on
+   * even turns and the ring quietly stopped. */
+  const g = newGame('ring-wade');
+  arena(g);
+  const p = g.state.player;
+  p.equipment.ring = { name: 'Ring', kind: 'ring', slot: 'ring', effects: { regen: 1 } };
+  p.maxhp = 200;
+
+  /* The same NUMBER of ticks either way — what changes is how far the turn
+   * counter moves between them, which is the thing the ring must not care
+   * about. */
+  const mendedOverTenTicks = (step) => {
+    p.counters = {};
+    let total = 0;
+    let turn = 0;
+    for (let i = 0; i < 10; i++) { p.hp = 100; g.turn = turn; g.tickStatus(); total += p.hp - 100; turn += step; }
+    return total;
+  };
+  const dry = mendedOverTenTicks(1);
+  const wet = mendedOverTenTicks(2);
+  assert.equal(wet, dry, `ten actions mended ${dry} on dry ground and ${wet} in the water`);
+});
+
+test('everything a turn rolls comes out of the turn\'s own stream', () => {
+  /* Healing potions, power draughts, scrolls of flame, class heals and wands
+   * all went through evaluateDice, which rolled Math.random — the only rolls
+   * in the game a seed could not reproduce. */
+  const drink = () => {
+    const g = newGame('same-seed');
+    arena(g);
+    const p = g.state.player;
+    p.maxhp = 500; p.hp = 1;
+    g.turn = 7;
+    const it = { name: 'Potion', kind: 'potion', slot: 'consumable', uid: 'p1', tier: 1, effects: { heal: '4d6+4' } };
+    p.inventory.push(it);
+    g.useItem(it);
+    return g.logs.filter((l) => /Sweet relief/.test(l)).pop();
+  };
+  assert.equal(drink(), drink(), 'the same seed on the same turn healed two different amounts');
+});
+
+test('nothing is left carrying a flag that nothing reads', () => {
+  /* Asked of a monster the real generator built, not one the test rig made. */
+  const g = newGame('acted');
+  g.loadFloor(0);
+  const m = g.currentFloor.monsters.find((x) => x.hp > 0);
+  assert.ok(m, 'the floor generated no monsters to ask');
+  assert.equal('acted' in m, false, 'monsters still carry an `acted` flag no code reads');
+  g.resolveMonsters();
+  assert.equal('acted' in m, false, 'resolving a turn put the flag back');
+});
