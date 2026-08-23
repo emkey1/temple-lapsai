@@ -373,7 +373,7 @@ function showCamp(g) {
     b.onclick = () => { overlayHideAll(); box.remove(); g.enterDungeon(d.id); };
     list.appendChild(b);
   }
-  box.querySelector('#btn-camp-close').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx); };
+  box.querySelector('#btn-camp-close').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx, 'keep'); };
 }
 
 /* ---------------- character creation ---------------- */
@@ -1089,7 +1089,10 @@ function openCharacter(id) {
       markFallen(localStorage, id, false);
       g.returnToCamp(true);
     } else {
-      g.loadFloor(g.state.player.floorIdx);
+      /* Resuming, not arriving: a reload used to put you back on the stairs,
+       * which lost your place and — since a floor rebuilds its monsters from
+       * the seed — was a way to walk out of a fight you were losing. */
+      g.loadFloor(g.state.player.floorIdx, 'keep');
     }
     saveGame();
   } catch (e) {

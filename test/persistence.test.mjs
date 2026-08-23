@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { T } from '../public/js/mapgen.js';
+import { T, isTravelable } from '../public/js/mapgen.js';
 import { newGame } from './helpers.mjs';
 
 test('a floor regenerates identically from its seed', () => {
@@ -120,4 +120,73 @@ test('a save cannot come back with more power than it can hold', () => {
   const p = back.state.player;
   assert.ok(p.power <= p.maxpower, `${p.power} of ${p.maxpower}`);
   assert.equal(p.maxpower, back.computeMaxPower(), 'the stored maximum still disagrees with the real one');
+});
+
+/* ---- arriving on a floor ---- */
+
+test('climbing a flight puts you on the stairs you came down, not the next ones up', () => {
+  /* loadFloor placed the player on floor.up unconditionally, so going up from
+   * floor two landed you on floor one's UP-staircase — the one out to camp —
+   * rather than on the down-staircase you had just climbed. */
+  const g = newGame('stairs-up', 'fighter');
+  const p = g.state.player;
+  p.dungeonId = 'temple';
+  g.loadFloor(0);
+  const down = { ...g.currentFloor.down };
+  g.loadFloor(1);
+  assert.deepEqual({ x: p.x, y: p.y }, { x: g.currentFloor.up.x, y: g.currentFloor.up.y },
+    'coming down should land on the up-staircase');
+
+  /* Now climb back, the way handleKey does. */
+  g.loadFloor(0, 'down');
+  assert.deepEqual({ x: p.x, y: p.y }, down,
+    `climbing landed on ${p.x},${p.y} instead of the down-staircase at ${down.x},${down.y}`);
+});
+
+test('the bottom floor has no down-staircase to land on, and says so by not falling over', () => {
+  const g = newGame('stairs-bottom', 'fighter');
+  const p = g.state.player;
+  p.dungeonId = 'temple';
+  const last = 3;
+  assert.doesNotThrow(() => g.loadFloor(last, 'down'));
+  assert.ok(g.currentFloor.tiles[p.y][p.x] !== undefined, 'the player was placed off the map');
+});
+
+test('rebuilding the floor under a standing player leaves them standing', () => {
+  /* A reload used to put you back on the stairs — which lost your place, and,
+   * because a floor rebuilds its monsters from the seed, was a way to walk out
+   * of a fight you were losing. */
+  const g = newGame('stairs-keep', 'fighter');
+  const p = g.state.player;
+  p.dungeonId = 'temple';
+  g.loadFloor(1);
+  p.x = g.currentFloor.up.x;
+  p.y = g.currentFloor.up.y;
+  /* Step somewhere else that is walkable. */
+  const spot = g.currentFloor.rooms
+    .flatMap((r) => [{ x: r.x + 1, y: r.y + 1 }])
+    .find((c) => isTravelable(g.currentFloor.tiles[c.y][c.x]) && (c.x !== p.x || c.y !== p.y));
+  assert.ok(spot, 'no second walkable tile on the floor');
+  p.x = spot.x; p.y = spot.y;
+
+  g.loadFloor(1, 'keep');
+  assert.deepEqual({ x: p.x, y: p.y }, spot, 'the player was moved to the stairs');
+});
+
+test('a remembered spot that is no longer walkable falls back to the stairs', () => {
+  const g = newGame('stairs-stale', 'fighter');
+  const p = g.state.player;
+  p.dungeonId = 'temple';
+  g.loadFloor(1);
+  /* A wall, which is what a stale position looks like after a re-cut. */
+  let wall = null;
+  for (let y = 0; y < g.currentFloor.tiles.length && !wall; y++) {
+    for (let x = 0; x < g.currentFloor.tiles[y].length; x++) {
+      if (g.currentFloor.tiles[y][x] === T.WALL) { wall = { x, y }; break; }
+    }
+  }
+  p.x = wall.x; p.y = wall.y;
+  g.loadFloor(1, 'keep');
+  assert.deepEqual({ x: p.x, y: p.y }, { x: g.currentFloor.up.x, y: g.currentFloor.up.y },
+    'the player was left standing inside a wall');
 });

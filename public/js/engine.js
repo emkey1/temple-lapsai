@@ -338,6 +338,20 @@ export class Game {
     };
   }
 
+  /* Where you are standing when a floor comes up around you. Falls back to the
+   * up-staircase whenever the asked-for spot is not somewhere a person can
+   * stand — a floor with no down-staircase is the bottom one, and a remembered
+   * position can be stale if the generator has been re-cut underneath it. */
+  placeOnArrival(floor, arriveAt) {
+    const p = this.state.player;
+    const standable = (spot) => spot && isTravelable(floor.tiles[spot.y] && floor.tiles[spot.y][spot.x]);
+    let spot = floor.up;
+    if (arriveAt === 'down' && standable(floor.down)) spot = floor.down;
+    else if (arriveAt === 'keep' && standable({ x: p.x, y: p.y })) spot = { x: p.x, y: p.y };
+    p.x = spot.x;
+    p.y = spot.y;
+  }
+
   /* Renewal arrives as a fraction of a point a turn, which rounds to nothing
    * every turn if you let it and to a free point a turn if you round the other
    * way. So it is banked and paid out whole. */
@@ -435,7 +449,13 @@ export class Game {
     this.loadFloor(0);
   }
 
-  loadFloor(floorIdx) {
+  /* `arriveAt` says which end of the floor you come in at:
+   *   'up'   — the up-staircase, which is where you land coming DOWN a flight
+   *   'down' — the down-staircase, which is where you land coming UP one
+   *   'keep' — exactly where you were, for a floor being rebuilt under you
+   * It defaulted to 'up' unconditionally, so climbing a flight put you on the
+   * stairs that go up AGAIN rather than on the ones you had just come down. */
+  loadFloor(floorIdx, arriveAt = 'up') {
     const p = this.state.player;
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
@@ -477,8 +497,7 @@ export class Game {
     const memo = this.floorMemo(d.id, floorIdx);
     this.applyFloorMemo(floor, memo);
     this.currentFloor = floor;
-    p.x = floor.up.x;
-    p.y = floor.up.y;
+    this.placeOnArrival(floor, arriveAt);
     p.pending = undefined;
     if (!p.deepest) p.deepest = {};
     p.deepest[d.id] = Math.max(p.deepest[d.id] || 0, floorIdx);
@@ -823,7 +842,7 @@ export class Game {
         return;
       }
       this.log('You ascend.');
-      this.loadFloor(p.floorIdx - 1);
+      this.loadFloor(p.floorIdx - 1, 'down');
       return;
     }
     if (tile === T.ALTAR) { this.useAltar(x, y); return; }

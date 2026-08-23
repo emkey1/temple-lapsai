@@ -248,3 +248,33 @@ test('a written ward reaches the player through the same door as the shipped one
   g.activateAbility('exp-rime');
   assert.ok(g.derived().resist > 0, 'a ward the Library wrote turned nothing aside');
 });
+
+test('an at-will attack the oracle writes lives inside the budget the game ships', () => {
+  /* powerCost and cooldown both DEFAULT to zero, so a model that simply did
+   * not mention them wrote a free unlimited attack. Unbounded that is
+   * 10d100+30 in an eight-tile blast at range thirty, every turn, for ever. */
+  const free = validateAbility({
+    name: 'Endless Rain', cls: 'mage', kind: 'damage', level: 1,
+    range: 30, aura: 8, damage: { dice: 10, sides: 100, bonus: 30 },
+  });
+  assert.equal(free.powerCost, 0);
+  assert.equal(free.damage.dice, 1, 'a free attack rolls more than one die');
+  assert.ok(free.damage.sides <= 6, `a free attack rolls a d${free.damage.sides}`);
+  assert.ok(free.damage.bonus <= 0, 'a free attack carries a damage bonus');
+  assert.ok(free.range <= 6, `a free attack reaches ${free.range} tiles`);
+  assert.equal(free.aura, undefined, 'a free attack hits an area');
+
+  /* Anything that costs something is left alone. */
+  const paid = validateAbility({
+    name: 'Storm', cls: 'mage', kind: 'damage', level: 9, powerCost: 9, cooldown: 3,
+    range: 8, aura: 3, damage: { dice: 3, sides: 6, bonus: 2 },
+  });
+  assert.equal(paid.damage.dice, 3);
+  assert.equal(paid.aura, 3);
+
+  /* And the one the game ships is inside its own budget. */
+  const spark = ABILITIES.find((a) => a.id === 'witch-spark');
+  assert.equal(spark.damage.dice, 1);
+  assert.ok(spark.damage.sides <= 6);
+  assert.ok(spark.range <= 6);
+});
