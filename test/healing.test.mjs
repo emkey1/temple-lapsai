@@ -194,6 +194,27 @@ test('a written potion is floored gently, whatever tier the oracle called it', (
   assert.equal(healFractionForItem(getItemTemplate('potion-major-heal')), HEAL_FLOORS.greatDraught);
 });
 
+test('power means two different things, and only one of them takes dice', () => {
+  /* On a potion, `power` is power to restore. On a ring it is power added to
+   * your MAXIMUM, and equipmentPower sums it — so a dice string there
+   * concatenates instead of adding and max power comes back NaN. */
+  const ring = validateItem({ name: 'Ring of Wells', kind: 'ring', effects: { power: { dice: 4, sides: 4, bonus: 4 } } });
+  assert.equal(typeof ring.effects.power, 'number');
+  assert.equal(ring.effects.power, 14, 'a dice shape on worn gear should read as its average, not as 1');
+
+  const { g, p } = heroAt(4, 'mage');
+  p.equipment.ring = ring;
+  const maxp = g.computeMaxPower();
+  assert.ok(Number.isFinite(maxp), `max power came back ${maxp}`);
+  assert.ok(maxp > 14, 'the ring added nothing');
+
+  const potion = validateItem({ name: 'Draught of Wells', kind: 'potion', effects: { power: { dice: 4, sides: 4, bonus: 4 } } });
+  assert.equal(potion.effects.power, '4d4+4', 'a draught lost its dice');
+  p.maxpower = 60; p.power = 1;
+  g.useItem({ ...potion, uid: 'probe' });
+  assert.ok(p.power >= 9, `the draught restored ${p.power - 1} power`);
+});
+
 test('a written healing wand is not thirty charges of a fifth of you', () => {
   assert.equal(validateEffects({ spell: 'heal', charges: 30 }).charges, 12);
   assert.equal(validateEffects({ spell: 'firebolt', charges: 30 }).charges, 30, 'the cap leaked onto every wand');

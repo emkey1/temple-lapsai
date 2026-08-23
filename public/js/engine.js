@@ -338,7 +338,12 @@ export class Game {
   equipmentPower() {
     let v = 0;
     const eq = (this.state.player.equipment || {});
-    for (const slot of Object.values(eq)) if (slot && slot.effects && slot.effects.power) v += slot.effects.power;
+    /* Number(), because this sums a field the Library also writes: anything
+     * non-numeric here concatenates instead of adding and max power comes back
+     * as NaN, which is a character sheet full of blanks. */
+    for (const slot of Object.values(eq)) {
+      if (slot && slot.effects && slot.effects.power) v += Number(slot.effects.power) || 0;
+    }
     return v;
   }
 
