@@ -73,8 +73,12 @@ function installDoors(grid, rng) {
       if (horiz !== vert) doors.push([x, y]);
     }
   }
+  /* Ordinary doorways are never secret. These gaps sit on the corridor network,
+   * which is connected by construction, so a secret door here has a way around
+   * it and finding one only ever saves a walk. The only hidden doors on a floor
+   * are the ones that gate something: the cache and the boss den. */
   for (const [x, y] of doors) {
-    grid[y][x] = rng.chance(0.09) ? T.SECRET : (rng.chance(0.14) ? T.DOOR_O : T.DOOR_C);
+    grid[y][x] = rng.chance(0.14) ? T.DOOR_O : T.DOOR_C;
   }
 }
 
@@ -94,7 +98,7 @@ function cy(r) { return r.y + Math.floor(r.h / 2); }
 /* Bumped whenever the generator changes shape or its rng draws move. Floor
  * memories record "monster 4 is dead" by index, so they are only meaningful
  * against the generator that produced them. */
-export const GEN_VERSION = 2;
+export const GEN_VERSION = 3;
 
 const CACHE = 3;   /* a hidden cache is CACHE x CACHE */
 

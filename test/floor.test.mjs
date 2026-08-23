@@ -154,3 +154,48 @@ test('nothing else wanders into the cache', () => {
     }
   }
 });
+
+test('every secret door hides something', () => {
+  /* Ordinary doorways sit on the corridor network, which is connected by
+   * construction — so a secret door there has a way around it and finding one
+   * only ever saves a walk. Measured before this: of 250 generated secret
+   * doors, 220 were pure scenery. The only hidden doors are now the ones that
+   * gate something: the cache, and the boss den. */
+  const openWithoutSecrets = (floor) => {
+    const seen = new Set([floor.up.y * W + floor.up.x]);
+    const queue = [floor.up];
+    for (let i = 0; i < queue.length; i++) {
+      const c = queue[i];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = c.x + dx, y = c.y + dy;
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const k = y * W + x;
+        if (seen.has(k)) continue;
+        const t = floor.tiles[y][x];
+        if (!isTravelable(t) && t !== T.DOOR_C) continue;
+        seen.add(k);
+        queue.push({ x, y });
+      }
+    }
+    return seen;
+  };
+
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < SEEDS; s++) {
+        const { floor } = floorOf(d.id, f, `pointless-${d.id}-${f}-${s}`);
+        const open = openWithoutSecrets(floor);
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (floor.tiles[y][x] !== T.SECRET) continue;
+            const behind = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+              .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+              .filter((n) => isTravelable(floor.tiles[n.y][n.x]) || floor.tiles[n.y][n.x] === T.DOOR_C)
+              .some((n) => !open.has(n.y * W + n.x));
+            assert.ok(behind, `${d.id} floor ${f} seed ${s}: a secret door at ${x},${y} with a way around it`);
+          }
+        }
+      }
+    }
+  }
+});
