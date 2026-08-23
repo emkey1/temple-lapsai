@@ -60,6 +60,11 @@ const MAX_FOCUS_POWER = 3;
  * spends most of its time at the bottom. */
 const BAND_WIDTH = 3;
 
+/* How close you have to be for the thing in the drain to decide you are worth
+ * the trouble. Two, so it breaks the surface the step before it can reach you
+ * rather than out of nowhere. */
+const SURFACE_RANGE = 2;
+
 function bandDistance(tier, bottom, ceiling) {
   if (tier < bottom) return bottom - tier;
   if (tier > ceiling) return tier - ceiling;
@@ -930,9 +935,23 @@ export class Game {
     this.actorTurn().wading = true;
     let roused = 0;
     for (const m of (this.currentFloor.monsters || [])) {
-      if (!m.aggro && dist1(m, { x, y }) <= 6) { m.aggro = true; m.lastSeen = this.turn; roused++; }
+      if (m.hp <= 0) continue;
+      const near = dist1(m, { x, y }) <= 6;
+      if (!m.aggro && near) { m.aggro = true; m.lastSeen = this.turn; roused++; }
+      /* Whatever is lying in the same water certainly hears it. */
+      if (m.submerged && near) this.surface(m);
     }
     if (roused) this.log('Something in the dark hears the splashing.');
+  }
+
+  /* Up it comes. Kept in one place because three things can trigger it: coming
+   * within reach, splashing into the water it is lying in, and being hit. */
+  surface(m) {
+    if (!m || !m.submerged) return;
+    m.submerged = false;
+    m.aggro = true;
+    m.lastSeen = this.turn;
+    this.log('The water breaks — a ' + m.t.name + '!');
   }
 
   /* One roll against one tile. Thieves are better at it; True Seeing skips it. */
@@ -1182,6 +1201,7 @@ export class Game {
   }
 
   applyDamageToMonster(m, dmg, isCrit, der) {
+    this.surface(m);
     m.hp -= dmg;
     if (isCrit) this.log('A grievous blow!');
     if (m.hp <= 0) {
@@ -1405,6 +1425,13 @@ export class Game {
         continue;
       }
 
+      /* Something under the surface does nothing at all until it breaks it —
+       * which is the point of the drains: the water is not only slow and loud,
+       * it is where things wait. */
+      if (m.submerged) {
+        if (dist8(m, p) <= SURFACE_RANGE || m.aggro) this.surface(m);
+        else continue;
+      }
       const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
       if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) continue;
       if (seen && !hidden) {

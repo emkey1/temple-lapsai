@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { T, W, H, isTravelable, isSlowGoing } from '../public/js/mapgen.js';
 import { newGame, floorOf } from './helpers.mjs';
 import { DUNGEONS } from '../public/js/base.js';
+import { validateMonster } from '../lib/expansion.js';
 
 function pond(g) {
   const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
@@ -152,4 +153,99 @@ test('the stairs and the doorways do not flood', () => {
       if (floor.altar) assert.notEqual(floor.tiles[floor.altar.y][floor.altar.x], T.WATER, 'the altar is under water');
     }
   }
+});
+
+/* ---- things that live in it ----
+ *
+ * The Upper Reaches had Giant Leeches standing about on dry stone in a
+ * dungeon whose whole conceit is that it is flooded. A thing that lives in
+ * water lives IN the water — and lies under it until something wades past.
+ */
+
+test('what swims spawns in the water, and nothing else does', () => {
+  let swimmers = 0, swimmersWet = 0, othersWet = 0, others = 0;
+  for (let f = 0; f < 4; f++) {
+    for (let s = 0; s < 8; s++) {
+      const { floor } = floorOf('upper', f, `aquatic-${f}-${s}`);
+      for (const m of floor.monsters) {
+        const wet = floor.tiles[m.y][m.x] === T.WATER;
+        if (m.t.props && m.t.props.includes('aquatic')) { swimmers++; if (wet) swimmersWet++; }
+        else { others++; if (wet) othersWet++; }
+      }
+    }
+  }
+  assert.ok(swimmers > 20, `only ${swimmers} aquatic monsters spawned across the dungeon`);
+  assert.ok(swimmersWet / swimmers > 0.9, `${Math.round(100 * swimmersWet / swimmers)}% of what swims is in the water`);
+  assert.equal(othersWet, 0, `${othersWet} of ${others} land monsters are standing in the drains`);
+});
+
+test('a dungeon with no water still finds its swimmers somewhere to stand', () => {
+  /* The Halls of the Serpent hold Giant Snakes and not a drop of water. */
+  const dry = DUNGEONS.find((d) => d.theme !== 'sewers' && (d.monsterWeights || []).includes('giant-snake'));
+  assert.ok(dry, 'no dry dungeon carries an aquatic monster to check');
+  for (let f = 0; f < dry.floors; f++) {
+    const { floor } = floorOf(dry.id, f, `drylurk-${f}`);
+    for (const m of floor.monsters) {
+      assert.notEqual(floor.tiles[m.y][m.x], T.WATER);
+      assert.ok(!m.submerged, `${m.t.name} is submerged in a dungeon with no water`);
+    }
+  }
+});
+
+/* A floor that actually has something lying in wait on it. */
+function withLurker(seedBase) {
+  for (let s = 0; s < 40; s++) {
+    const g = newGame(`${seedBase}-${s}`, 'fighter');
+    g.state.player.dungeonId = 'upper';
+    g.loadFloor(1);
+    const lurker = g.currentFloor.monsters.find((m) => m.submerged);
+    if (lurker) return { g, lurker };
+  }
+  return null;
+}
+
+test('a submerged thing does nothing and shows nothing until you are close', () => {
+  const found = withLurker('lurk-idle');
+  assert.ok(found, 'no floor in forty had anything lying in the water');
+  const { g, lurker } = found;
+  const p = g.state.player;
+  p.x = lurker.x + 5; p.y = lurker.y;
+  g.computeVisibility();
+  g.logs.length = 0;
+  g.resolveMonsters();
+  assert.equal(lurker.submerged, true, 'it surfaced from across the room');
+  assert.equal(g.logs.length, 0, 'it acted while still under the water');
+});
+
+test('coming within reach brings it up', () => {
+  const { g, lurker } = withLurker('lurk-near');
+  const p = g.state.player;
+  p.x = lurker.x + 2; p.y = lurker.y;
+  g.computeVisibility();
+  g.logs.length = 0;
+  g.resolveMonsters();
+  assert.equal(lurker.submerged, false);
+  assert.match(g.logs.join(' '), /water breaks/i, 'it surfaced without saying so');
+  assert.equal(lurker.aggro, true, 'it surfaced and then ignored you');
+});
+
+test('splashing into the water it is lying in brings it up', () => {
+  const { g, lurker } = withLurker('lurk-splash');
+  const p = g.state.player;
+  p.x = lurker.x + 4; p.y = lurker.y;
+  g.logs.length = 0;
+  g.wadeInto(p.x, p.y);
+  assert.equal(lurker.submerged, false, 'it slept through the splashing');
+});
+
+test('and so does hitting it', () => {
+  const { g, lurker } = withLurker('lurk-hit');
+  assert.equal(lurker.submerged, true);
+  g.applyDamageToMonster(lurker, 1, false, g.derived());
+  assert.equal(lurker.submerged, false, 'it took a blow and stayed under');
+});
+
+test('the oracle may write something that swims', () => {
+  const written = validateMonster({ name: 'Drain Eel', glyph: 'e', tier: 5, properties: ['aquatic', 'poison'] });
+  assert.ok(written.props.includes('aquatic'), 'aquatic is not a property the Library can use');
 });

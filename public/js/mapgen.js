@@ -424,9 +424,16 @@ export function generateFloor(opts) {
   for (let i = 0; i < monsterCount; i++) {
     const t = monsterPool ? pickWeighted(rng, monsterPool) : opts.pickMonster && opts.pickMonster(floorIdx, rng);
     if (!t) continue;
-    const pos = findSpot(grid, rooms, up, rng, 6, den);
+    /* A thing that lives in water lives IN the water. The Upper Reaches had
+     * Giant Leeches standing about on dry stone in a drowned warren. */
+    const swims = t.props && t.props.indexOf('aquatic') >= 0;
+    const wet = swims ? findWetSpot(grid, rng, up, 6) : null;
+    const pos = wet || findSpot(grid, rooms, up, rng, 6, den);
     if (!pos) continue;
-    monsters.push(scaledMonster(t, pos, threat, floorIdx, false));
+    const m = scaledMonster(t, pos, threat, floorIdx, false);
+    /* Lying in wait under the surface, until something wades past. */
+    if (wet) m.submerged = true;
+    monsters.push(m);
   }
 
   const boss = opts.boss;

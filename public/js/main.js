@@ -602,6 +602,8 @@ function renderGame(g) {
 
   for (const m of floor.monsters || []) {
     if (m.hp <= 0 || !m.t) continue;
+    /* Under the surface, and not drawn until it breaks it. */
+    if (m.submerged) continue;
     if (!inView(m.x, m.y) && !m.revealed) continue;
     /* Tinted by tier, never by name: red on this map is always something
      * alive. Loot is drawn from a palette with no red in it. */

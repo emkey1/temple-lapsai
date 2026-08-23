@@ -315,6 +315,17 @@ temple   1  2  3  4     upper  1  2  3  4     serpent  1   2   3   4
         12 17 21 20%           31 31 35 37%            43  47  54  49%  enchanted
 ```
 
+**Things live in the water.** A monster with the `aquatic` property spawns *in* it and lies under
+the surface — undrawn, and doing nothing — until you come within two tiles, splash into the water it
+is lying in, or hit it. The Upper Reaches had Giant Leeches standing about on dry stone. Now:
+
+```
+step 1:  You wade into black water — slow going, and loud.
+         The water breaks — a Giant Leech!
+         Something in the dark hears the splashing.
+         The Ogre hits you for 10 hit points.
+```
+
 **Water is shaped like a drowned warren.** It was sprinkled a tile at a time on a 3.5% roll — about
 eighteen isolated puddles on a floor, every one walkable around — which made wading's costs (the
 turn twice over, and everything within six tiles woken) something no one ever had to weigh. The

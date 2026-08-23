@@ -101,7 +101,7 @@ export const EFFECT_SPELLS = ['firebolt', 'fireball', 'frost', 'reveal', 'light'
 /* The canonical field name is `props`, because that is what the engine reads.
  * The validator accepts `properties` too, since that is what reads naturally in
  * a schema, and always emits `props`. */
-export const MONSTER_PROPS = ['undead', 'poison', 'regenerate', 'ranged', 'flying', 'intelligent', 'cursed', 'pack', 'trap'];
+export const MONSTER_PROPS = ['undead', 'poison', 'regenerate', 'ranged', 'flying', 'intelligent', 'cursed', 'pack', 'trap', 'aquatic'];
 
 export const DUNGEON_THEMES = ['temple', 'cavern', 'sewers', 'crystal', 'fire', 'ice', 'jungle', 'tomb', 'halls', 'abyss', 'arcane'];
 
