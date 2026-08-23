@@ -93,12 +93,37 @@
 
   <div id="library-overlay" class="overlay-card hidden">
     <h2>THE BLACK LIBRARY</h2>
-    <p class="sub">Here the Lore-Weavers (an LLM oracle) write new depths into being. Without an oracle configured, scribes conjure lesser works by candlelight.</p>
-    <div class="lib-status" id="lib-status"></div>
+    <p class="sub">Here the Lore-Weavers write new depths into being. Bind an oracle to the Library, then commission a work.</p>
+
+    <details id="oracle-panel">
+      <summary><span class="oracle-title">THE ORACLE</span><span class="lib-status" id="lib-status"></span></summary>
+      <div class="oracle-grid">
+        <label for="oracle-provider">PROVIDER</label>
+        <select id="oracle-provider"></select>
+
+        <label for="oracle-model">MODEL</label>
+        <input id="oracle-model" list="oracle-models" autocomplete="off" spellcheck="false">
+        <datalist id="oracle-models"></datalist>
+
+        <label for="oracle-base">ENDPOINT</label>
+        <input id="oracle-base" autocomplete="off" spellcheck="false">
+
+        <label for="oracle-key">API KEY</label>
+        <input id="oracle-key" type="password" autocomplete="off">
+      </div>
+      <p class="tiny" id="oracle-note"></p>
+      <div class="row">
+        <button id="btn-oracle-save">BIND THE ORACLE</button>
+        <button id="btn-oracle-test">TEST IT</button>
+        <button id="btn-oracle-forget" class="mini">FORGET</button>
+      </div>
+    </details>
+
+    <h3 class="pane">COMMISSION A WORK</h3>
     <div class="row" id="lib-actions"></div>
     <div id="lib-preload-zone">
-      <h3>ORACLE FOCUS</h3>
-      <textarea id="lib-focus" rows="3" placeholder="Optional creative direction, e.g. 'a flooded crypt where the dead whisper recipes'"></textarea>
+      <label class="tiny" for="lib-focus">ORACLE FOCUS &mdash; optional creative direction</label>
+      <textarea id="lib-focus" rows="3" placeholder="e.g. a flooded crypt where the dead whisper recipes"></textarea>
     </div>
     <div id="lib-result" class="scrolly"></div>
     <div class="row"><button id="btn-library-close">CLOSE</button></div>

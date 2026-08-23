@@ -102,7 +102,9 @@ test('unknown enums fall back instead of leaking through', () => {
   assert.equal(validateDungeon({ name: 'X', theme: 'volcano' }).theme, 'temple');
   assert.equal(validateAbility({ name: 'X', kind: 'summon' }).kind, 'passive');
   assert.equal(validateAbility({ name: 'X', cls: 'bard' }).cls, 'fighter');
-  assert.equal(validateMonster({ name: 'X', color: 'chartreuse' }).color, 'white');
+  /* A monster carries no colour at all — the map tints it from its tier — so
+   * an oracle that sends one is ignored rather than obeyed. */
+  assert.equal(validateMonster({ name: 'X', color: 'gold' }).color, undefined);
 });
 
 test('a garbage payload is refused, not half-built', () => {
@@ -145,11 +147,12 @@ test('prose around the JSON does not defeat the parser', () => {
 test('the prompt offers exactly the vocabulary the validator enforces', () => {
   const monster = buildPrompt('monster', {});
   for (const p of MONSTER_PROPS) assert.ok(monster.includes(`"${p}"`), `prompt never mentions prop ${p}`);
-  for (const c of PALETTE) assert.ok(monster.includes(c), `prompt never mentions colour ${c}`);
-  assert.ok(!monster.includes('"black"'), 'prompt still offers black-on-black');
+  assert.ok(!monster.includes('"color":string'), 'the monster schema still asks for a colour it will not use');
 
   const item = buildPrompt('item', {});
   for (const k of ITEM_KINDS) assert.ok(item.includes(`"${k}"`), `prompt never mentions kind ${k}`);
+  for (const c of PALETTE) assert.ok(item.includes(c), `prompt never mentions colour ${c}`);
+  assert.ok(!item.includes('"black"'), 'prompt still offers black-on-black');
 
   const dungeon = buildPrompt('dungeon', {});
   for (const t of DUNGEON_THEMES) assert.ok(dungeon.includes(`"${t}"`), `prompt never mentions theme ${t}`);

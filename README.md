@@ -29,37 +29,42 @@ the client merges whatever is there into every new game on boot.
 
 ### Configuration
 
-Configure via environment variables:
+**From inside the game.** Open the Black Library (`L`, then OPEN THE BLACK LIBRARY) and unfold
+THE ORACLE. Pick a provider, paste a key, press BIND THE ORACLE, then TEST IT. Nothing needs a
+restart. The choice is written to `config.json` (mode `600`, git-ignored); FORGET drops it again.
+
+Providers are listed in `public/js/providers.js`, which both the menu and the server read — so the
+menu cannot offer an endpoint the server has no dialect for:
+
+| Provider | Dialect | Key |
+| --- | --- | --- |
+| OpenAI, Google Gemini, Groq, Mistral, OpenRouter | `/chat/completions` | yes |
+| Anthropic | `/messages` | yes |
+| Ollama, LM Studio | `/chat/completions` | no — they run on your machine |
+| Custom endpoint | either | as you like |
+
+**From the environment**, if you would rather not type a key into a web page:
 
 ```sh
-OPENAI_API_KEY=sk-... \
-OPENAI_BASE_URL=https://api.openai.com/v1 \
-OPENAI_MODEL=gpt-4o-mini \
-node server.js
+OPENAI_API_KEY=sk-...  node server.js       # or ANTHROPIC_API_KEY
+ORACLE_PROVIDER=groq ORACLE_API_KEY=gsk-... node server.js
 ```
 
-Or drop a `config.json` in the project root (environment variables take precedence):
-
-```json
-{
-  "openai": {
-    "apiKey": "sk-...",
-    "baseUrl": "https://api.openai.com/v1",
-    "model": "gpt-4o-mini"
-  }
-}
-```
-
-Any OpenAI-compatible endpoint works (`OpenAI-Base-URL`, vLLM, local llama.cpp, etc.).
+`OPENAI_BASE_URL` / `OPENAI_MODEL` and `ORACLE_BASE_URL` / `ORACLE_MODEL` override the endpoint and
+model. A `config.json` written from the menu wins over the environment — that is what FORGET is for.
+The older `{"openai": {...}}` and flat `{"apiKey": ...}` shapes are still read.
 
 ## HTTP API
 
 | Method | Path            | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
-| GET    | `/api/status`   | `{ ok, llmConfigured, model, baseUrl, expansions }`                 |
+| GET    | `/api/status`   | `{ ok, llmConfigured, provider, model, baseUrl, expansions }`       |
 | GET    | `/api/health`   | alias of `/api/status`                                              |
 | GET    | `/api/expansions`| JSON array of all installed expansions                              |
-| POST   | `/api/expand`   | Generate an expansion. Returns `201 { ok, expansion }`. `503` if no key configured. |
+| POST   | `/api/expand`   | Generate an expansion. Returns `201 { ok, expansion }`. `503` if no oracle is bound. |
+| GET    | `/api/oracle`   | The provider list, and which one is bound. Never returns the key — only its last four characters. |
+| POST   | `/api/oracle`   | Bind one: `{ provider, model, baseUrl, apiKey }`. An empty `apiKey` keeps the stored one; `{ clearKey: true }` drops it; `{ reset: true }` forgets the saved settings entirely. |
+| POST   | `/api/oracle/test` | One cheap call, to find out whether the key, the model name and the endpoint are real. |
 
 `POST /api/expand` body:
 
@@ -152,10 +157,13 @@ your API key.
 ```
 server.js           HTTP server, static serving, LLM proxy
 lib/expansion.js    Prompt building and validation of everything the oracle returns
+lib/oracle.js       Which model answers the Library, and how to reach it
 public/index.html   Single-page shell
 public/style.css    Layout & theming
 public/js/
   contract.js       THE CONTENT CONTRACT — one vocabulary shared by client and server
+  providers.js      THE PROVIDER LIST — the oracle menu and the server read the same file
+  describe.js       Turns an item's effects into the line of rules text under its name
   base.js           Rules/data: classes, abilities, themes, item templates, XP table
   dice.js           rpg-style dice helpers
   rng.js            seedable RNG
@@ -185,3 +193,9 @@ data/expansions.json  Persisted generated content (server-side)
 | `Enter` | Start the game / send a dialogue line |
 | `Esc` | Close the active dialogue or the controls card |
 | `?` / `H` | Show the controls in-game |
+
+### Reading the map
+
+Colour is not decoration. Everything alive is drawn in the red family, tinted by tier — dull rust
+for vermin, deep red and bright red as it gets worse, ember and a searing pale for the things at the
+bottom. Nothing you can pick up is ever red, and nothing but you is drawn `@`.

@@ -2,12 +2,14 @@
  * Owns the DOM/canvas; every engine callback is routed through the `ui` object.
  */
 
-import { Game, rollStats, initialStats } from './engine.js';
-import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls } from './base.js';
+import { Game, rollStats, initialStats, PACK_LIMIT } from './engine.js';
+import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey } from './base.js';
 import { T, W, H } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
-import { WEARABLE_SLOTS as WEARABLE } from './contract.js';
+import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
+import { PROVIDERS, providerById } from './providers.js';
+import { itemDescription } from './describe.js';
 
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
@@ -65,6 +67,16 @@ const els = {
   libStatus: $('lib-status'),
   libActions: $('lib-actions'),
   libFocus: $('lib-focus'),
+  oraclePanel: $('oracle-panel'),
+  oracleProvider: $('oracle-provider'),
+  oracleModel: $('oracle-model'),
+  oracleModels: $('oracle-models'),
+  oracleBase: $('oracle-base'),
+  oracleKey: $('oracle-key'),
+  oracleNote: $('oracle-note'),
+  btnOracleSave: $('btn-oracle-save'),
+  btnOracleTest: $('btn-oracle-test'),
+  btnOracleForget: $('btn-oracle-forget'),
   libResult: $('lib-result'),
   btnLibClose: $('btn-library-close'),
   itemDetail: $('item-detail'),
@@ -101,9 +113,15 @@ const CONTROLS = [
     ['R', 'Rest. Sit until your wounds close and your power comes back, or until something wakes.'],
     ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
   ]],
+  ['Reading the dark', [
+    ['Anything red', 'Alive, and interested in you. The duller the red the milder the thing — rust and dark red are vermin, bright red and orange are trouble, and something the colour of a hot coal will kill you.'],
+    ['@', 'You. Nothing else on the map is drawn this way.'],
+    ['Everything else', 'Loot, doors, stairs and people. Nothing you can pick up is ever red.'],
+  ]],
   ['Things on the ground', [
     ['G', 'Take what is underfoot. With nothing there, look around instead and see what lies within reach.'],
     ['$ ! ? = &  and other glyphs', 'Loot waiting to be picked up. Coins and treasure are taken automatically as you step on them.'],
+    ['GEAR panel', 'Every item lists what it actually does under its name. Identical things stack.'],
   ]],
   ['Your character', [
     ['1 – 9', 'Use the matching power from the STAT SHEET.'],
@@ -125,7 +143,6 @@ let game = null;
 let currentTab = 'stats';
 let selClass = 'fighter';
 let rolled = null;
-let llmConfigured = false;
 let initializing = false;
 
 // Expansion registry merged into every Game; persists locally and is
@@ -208,6 +225,13 @@ function makeUI() {
 
 /* ---------------- overlays -------------*/
 function overlayShow(el) {
+  /* One card at a time. Showing a card without hiding the others is what put
+   * the Black Library on screen beside a story beat, and four CAMP cards in a
+   * row — every path that shows a card comes through here, so the rule belongs
+   * here rather than in each of them. */
+  for (const card of els.overlay.querySelectorAll('.overlay-card')) {
+    if (card !== el) card.classList.add('hidden');
+  }
   els.overlay.classList.remove('hidden');
   el.classList.remove('hidden');
 }
@@ -216,8 +240,9 @@ function overlayHideAll() {
   // Query rather than list ids: the camp card is built at runtime, and a card
   // left visible reappears under the next overlay that opens.
   for (const card of els.overlay.querySelectorAll('.overlay-card')) card.classList.add('hidden');
-  const camp = $('camp-card');
-  if (camp) camp.remove();
+  /* getElementById finds one. Anything that ever managed to build a second
+   * camp card would leave it on screen forever. */
+  for (const camp of els.overlay.querySelectorAll('#camp-card')) camp.remove();
 }
 
 /* Narrative cards queue instead of racing. Arriving in a dungeon, the beat for
@@ -302,7 +327,9 @@ function showDeath(msg) {
 }
 
 function showCamp(g) {
-  const p = g.state.player;
+  /* Camp is a place, not an event: arriving at it twice must not put two
+   * cards on the screen side by side. */
+  for (const old of els.overlay.querySelectorAll('#camp-card')) old.remove();
   const box = document.createElement('div');
   box.id = 'camp-card';
   box.className = 'overlay-card';
@@ -548,7 +575,9 @@ function renderGame(g) {
   for (const m of floor.monsters || []) {
     if (m.hp <= 0 || !m.t) continue;
     if (!inView(m.x, m.y) && !m.revealed) continue;
-    drawGlyph(m.x, m.y, m.t.glyph, cls(m.t.color), !inView(m.x, m.y));
+    /* Tinted by tier, never by name: red on this map is always something
+     * alive. Loot is drawn from a palette with no red in it. */
+    drawGlyph(m.x, m.y, m.t.glyph, cls(monsterTint(m.t.tier, m.boss)), !inView(m.x, m.y));
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;
@@ -562,7 +591,7 @@ function renderGame(g) {
     drawGlyph(n.x, n.y, NPC_GLYPH, cls((n.tpl && n.tpl.color) || 'amber'), false);
   }
   if (game && p) {
-    drawGlyph(p.x, p.y, '@', '#f0f0e0', false, true);
+    drawGlyph(p.x, p.y, PLAYER_GLYPH, '#f0f0e0', false, true);
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
     ctx.fillRect((p.x - camX) * s, (p.y - camY) * s, s, s);
   }
@@ -677,6 +706,37 @@ function itemVerb(it) {
   return WEARABLE.includes(it.slot) ? 'WEAR' : 'USE';
 }
 
+/* Interchangeable things share one row. The pack keeps holding individual
+ * objects — uids, curses and charges all still belong to a single potion —
+ * this only collapses the ones a player would never want to tell apart.
+ * First-seen order is kept so the pack does not reshuffle as you pick things
+ * up. */
+function stackInventory(inv) {
+  const groups = [];
+  const byKey = new Map();
+  inv.forEach((it, i) => {
+    if (!it) return;
+    const key = itemStackKey(it);
+    const found = byKey.get(key);
+    if (found) { found.indices.push(i); return; }
+    const grp = { key, item: it, indices: [i] };
+    byKey.set(key, grp);
+    groups.push(grp);
+  });
+  return groups;
+}
+
+/* The rules under the name. Flavour goes in the tooltip: it is lovely and it
+ * is not what you are deciding on. */
+function descRow(it) {
+  const d = itemDescription(it);
+  return d ? '<div class="i-desc">' + esc(d) + '</div>' : '';
+}
+
+function flavorTitle(it) {
+  return it && it.flavor ? ' title="' + esc(it.flavor).replace(/"/g, '&quot;') + '"' : '';
+}
+
 function renderGear(g) {
   const p = g.state.player;
   if (!p) return;
@@ -687,21 +747,30 @@ function renderGear(g) {
     const mag = it && it.cursed === false && (it.effects && (it.effects.toHit || it.effects.acBonus || it.effects.damage));
     html += '<div class="eq-row"><span class="slot">' + label + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
-      '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '">' + (it ? esc(it.name) : '—') + '</span>' +
+      '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '"' + flavorTitle(it) + '>' +
+      (it ? esc(it.name) : '—') + '</span>' +
       (it ? '<button data-act="unequip" data-slot="' + slot + '">TAKE OFF</button>' : '') +
-      '</div>';
+      '</div>' + descRow(it);
   }
   els.equipmentBlock.innerHTML = '<h3 class="pane">EQUIPPED</h3>' + html;
 
   const inv = p.inventory || [];
   const onBelt = (it) => (p.belt || []).some((e) => e && (typeof e === 'string' ? e : e.uid) === it.uid);
-  const ih = inv.map((it, i) =>
-    '<div class="eq-row"><span class="ico">' + itemIcon(it) + '</span>' +
-    '<span class="i-name' + (it.cursed ? ' cursed' : '') + '">' + esc(it.name) + '</span>' +
-    '<button data-inv="' + i + '">' + itemVerb(it) + '</button>' +
-    (onBelt(it) ? '' : '<button data-bind="' + i + '">BELT</button>') +
-    '<button data-drop="' + i + '">DROP</button></div>').join('');
-  els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + ')</h3>' + (ih || '<div class="tiny">You carry nothing.</div>');
+  const ih = stackInventory(inv).map((grp) => {
+    const it = grp.item;
+    /* Bind and drop act on a copy that is not already on the belt, so a stack
+     * of three potions can put one in a loop and keep two in the pack. */
+    const free = grp.indices.find((i) => !onBelt(inv[i]));
+    return '<div class="eq-row"><span class="ico">' + itemIcon(it) + '</span>' +
+      '<span class="i-name' + (it.cursed ? ' cursed' : '') + '"' + flavorTitle(it) + '>' + esc(it.name) +
+      (grp.indices.length > 1 ? ' <b class="qty">&times;' + grp.indices.length + '</b>' : '') + '</span>' +
+      '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>' +
+      (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
+      '<button data-drop="' + (free === undefined ? grp.indices[0] : free) + '">DROP</button></div>' +
+      descRow(it);
+  }).join('');
+  els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + '/' + PACK_LIMIT + ')</h3>' +
+    (ih || '<div class="tiny">You carry nothing.</div>');
 
   let belt = '';
   const b = p.belt || [null, null, null, null];
@@ -793,6 +862,7 @@ function renderLibrary(g) {
     '<h3 class="pane">THE BLACK LIBRARY</h3>' +
     '<div class="lib-status">Base chronicle: ' + cleared + '/3 sanctums conquered. ' +
     (scrambled ? scrambled : 'Press the sigil below to petition the oracle.') +
+    (oracle && oracle.ready ? '' : ' <b>No oracle is bound.</b>') +
     '</div>' +
     '<div class="row"><button id="btn-open-library">OPEN THE BLACK LIBRARY</button></div>';
   const b = els.libraryBlock.querySelector('#btn-open-library');
@@ -856,6 +926,11 @@ function onKey(e) {
     if (dialogueOpen) { dlgSend(); }
     return;
   }
+  /* Every branch above this one already refused to fire behind a card; this
+   * one did not, so arrow keys walked the player around underneath the camp,
+   * arrival and death overlays — taking real turns you could not see. On the
+   * up-stairs that meant a second CAMP card for every step. */
+  if (cardUp) return;
   if (game) {
     game.handleKey(e.key, {});
     /* Picking something up from the keyboard changed the pack and left the
@@ -979,12 +1054,152 @@ const EXP_ACTIONS = [
 
 function openLibrary() {
   els.libResult.innerHTML = '';
-  els.libStatus.textContent = llmConfigured
-    ? 'The oracle is awake (' + (window.__lapsaiModel || '') + '). Bound new depths to the world.'
-    : 'No oracle is configured (set OPENAI_API_KEY and restart). Scribes offer candlelight placeholder only.';
   els.libActions.innerHTML = EXP_ACTIONS.map(([a, label]) =>
     '<button data-act="' + a + '">' + label + '</button>').join('');
+  paintOracle();
   overlayShow(els.libOverlay);
+  /* Ask again on the way in: the oracle may have been bound from a different
+   * tab, or the server restarted since boot. */
+  refreshOracle();
+}
+
+/* ---------------- the oracle ---------------- *
+ *
+ * The panel used to be one line of text telling you to set an environment
+ * variable and restart, above four buttons that would fail if you had not.
+ * Everything it needs is here now, and nothing it changes needs a restart.
+ */
+
+/* What the server last told us. `null` means we have not managed to ask. */
+let oracle = null;
+
+function fillProviderMenu() {
+  if (els.oracleProvider.options.length) return;
+  els.oracleProvider.innerHTML = PROVIDERS.map((p) =>
+    '<option value="' + p.id + '">' + esc(p.label) + '</option>').join('');
+}
+
+/* Picking a provider fills in its endpoint and a model to start from, but only
+ * over fields the player has not already made their own — retyping the model
+ * every time you glance at the menu would be its own small hell. */
+function onProviderPicked() {
+  const p = providerById(els.oracleProvider.value);
+  if (!p) return;
+  const prev = oracle && oracle.current;
+  const sameAsBound = prev && prev.provider === p.id;
+  els.oracleBase.value = sameAsBound ? prev.baseUrl : p.baseUrl;
+  els.oracleModel.value = sameAsBound ? prev.model : (p.models[0] || '');
+  paintProviderHints(p, sameAsBound ? prev : null);
+}
+
+function paintProviderHints(p, current) {
+  els.oracleModels.innerHTML = (p.models || []).map((m) =>
+    '<option value="' + esc(m) + '"></option>').join('');
+  const needsKey = p.keyRequired !== false;
+  els.oracleKey.disabled = !needsKey;
+  els.oracleKey.placeholder = !needsKey
+    ? 'not needed'
+    : (current && current.hasKey ? 'kept (' + current.keyTail + ') — type to replace' : 'paste your key');
+  els.oracleBase.readOnly = false;
+  note(p.keyHint ? 'Keys: ' + p.keyHint : '', '');
+}
+
+function note(text, kind) {
+  els.oracleNote.textContent = text || '';
+  els.oracleNote.className = 'tiny' + (kind ? ' ' + kind : '');
+}
+
+/* One sentence in the summary line, because that is all you see when the panel
+ * is folded away — and folded away is where it lives once it works. */
+function paintOracle() {
+  fillProviderMenu();
+  const cur = oracle && oracle.current;
+  if (!cur) {
+    els.libStatus.textContent = 'not reachable — is the server running?';
+    els.libStatus.className = 'lib-status unbound';
+    setExpandEnabled(false);
+    return;
+  }
+  els.oracleProvider.value = cur.provider;
+  els.oracleBase.value = cur.baseUrl;
+  els.oracleModel.value = cur.model;
+  els.oracleKey.value = '';
+  paintProviderHints(providerById(cur.provider) || PROVIDERS[0], cur);
+
+  const ready = oracle.ready;
+  const from = cur.source === 'environment' ? ' · from the environment' : '';
+  els.libStatus.textContent = ready
+    ? cur.label + ' · ' + cur.model + from
+    : (cur.keyRequired && !cur.hasKey ? 'no key yet — bind one to wake it' : 'not bound yet');
+  els.libStatus.className = 'lib-status ' + (ready ? 'bound' : 'unbound');
+  els.oraclePanel.open = !ready;
+  setExpandEnabled(ready);
+}
+
+function setExpandEnabled(on) {
+  els.libActions.querySelectorAll('button').forEach((b) => { b.disabled = !on; });
+  els.libFocus.disabled = !on;
+}
+
+async function refreshOracle() {
+  try {
+    const res = await fetch('/api/oracle', { headers: { 'Content-Type': 'application/json' } });
+    oracle = res.ok ? await res.json() : null;
+  } catch {
+    oracle = null;
+  }
+  paintOracle();
+}
+
+async function postOracle(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText || 'the Library refused that');
+  return data;
+}
+
+async function bindOracle() {
+  note('binding…', '');
+  try {
+    oracle = await postOracle('/api/oracle', {
+      provider: els.oracleProvider.value,
+      model: els.oracleModel.value.trim(),
+      baseUrl: els.oracleBase.value.trim(),
+      apiKey: els.oracleKey.value,
+    });
+    paintOracle();
+    note('Bound. Test it, or commission a work.', 'good');
+  } catch (e) {
+    note(e.message || String(e), 'bad');
+  }
+}
+
+/* BIND only writes down what you typed; TEST is the one that finds out whether
+ * the key is real, the model name exists and the local server is running. */
+async function testOracle() {
+  note('asking…', '');
+  try {
+    const data = await postOracle('/api/oracle/test', {});
+    if (data.ok) note('It answers: "' + String(data.reply || '').slice(0, 60) + '"', 'good');
+    else note(data.error || 'no answer', 'bad');
+  } catch (e) {
+    note(e.message || String(e), 'bad');
+  }
+}
+
+async function forgetOracle() {
+  note('forgetting…', '');
+  try {
+    oracle = await postOracle('/api/oracle', { reset: true });
+    paintOracle();
+    note('Forgotten. Back to whatever the environment says.', '');
+  } catch (e) {
+    note(e.message || String(e), 'bad');
+  }
 }
 
 /* The engine reads `props`. Expansions written before the content contract
@@ -1075,7 +1290,8 @@ async function doExpand(action) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       els.libResult.innerHTML = '<div class="lib-status" style="color:var(--red)">The oracle is silent: ' + esc(data.error || res.statusText || 'unknown error') + '</div>' +
-        (res.status === 503 ? '<p class="tiny">Set OPENAI_API_KEY (or config.json) and restart the server to awaken the oracle.</p>' : '');
+        (res.status === 503 ? '<p class="tiny">Open THE ORACLE above and bind a provider — no restart needed.</p>' : '');
+      if (res.status === 503) { els.oraclePanel.open = true; refreshOracle(); }
       return;
     }
     const exp = data.expansion;
@@ -1106,14 +1322,7 @@ function setBootNote() {
 async function boot() {
   migrateLegacyStorage();
   loadRegistry();
-  try {
-    const res = await fetch('/api/status', { headers: { 'Content-Type': 'application/json' } });
-    if (res.ok) {
-      const s = await res.json();
-      llmConfigured = !!s.llmConfigured;
-      window.__lapsaiModel = s.model || '';
-    }
-  } catch (e) { /* offline */ }
+  await refreshOracle();
   await fetchExpansions();
 
   els.btnNew.onclick = () => beginCreate();
@@ -1133,8 +1342,12 @@ async function boot() {
 
   els.libActions.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]');
-    if (b) doExpand(b.dataset.act);
+    if (b && !b.disabled) doExpand(b.dataset.act);
   });
+  els.oracleProvider.onchange = () => onProviderPicked();
+  els.btnOracleSave.onclick = () => bindOracle();
+  els.btnOracleTest.onclick = () => testOracle();
+  els.btnOracleForget.onclick = () => forgetOracle();
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);

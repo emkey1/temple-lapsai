@@ -184,6 +184,15 @@ h3.pane {
 .eq-row .ico { width: 20px; text-align: center; }
 .eq-row .i-name { flex: 1; }
 .eq-row .i-name.cursed { color: var(--red); }
+.eq-row .i-name .qty { color: var(--amb); font-weight: bold; }
+/* The rules text under an item's name. Dim and tight: it should be readable
+   when you look for it and quiet when you are not. */
+.i-desc {
+  color: var(--ink-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: -2px 0 4px 26px;
+}
 .eq-row .i-name.mag { color: var(--blue); }
 .eq-row button, button.mini {
   background: var(--panel);
@@ -287,6 +296,59 @@ input, textarea {
 input:focus, textarea:focus { outline: 1px solid var(--amb); }
 
 .lib-status { color: var(--ink-dim); font-size: 12px; }
+.lib-status.bound { color: var(--ink); }
+.lib-status.unbound { color: var(--amb); }
+
+/* The oracle panel. Collapsed once something is bound, open when nothing is —
+   the settings are the first thing you need exactly once. */
+#oracle-panel {
+  border: 1px solid var(--ink-faint);
+  background: var(--panel2);
+  padding: 8px 10px;
+  margin-bottom: 14px;
+}
+#oracle-panel > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+#oracle-panel > summary::-webkit-details-marker { display: none; }
+#oracle-panel > summary::before {
+  content: '\25B8';
+  color: var(--amb-dim);
+}
+#oracle-panel[open] > summary::before { content: '\25BE'; }
+#oracle-panel > summary:hover .oracle-title { color: var(--amb); }
+.oracle-title { color: var(--amb-dim); letter-spacing: 2px; font-size: 12px; }
+
+.oracle-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 12px 0 8px;
+}
+.oracle-grid label { color: var(--ink-dim); font-size: 11px; letter-spacing: 1px; }
+.oracle-grid input, .oracle-grid select { width: 100%; min-width: 0; }
+select {
+  background: #050705;
+  border: 1px solid var(--ink-dim);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 5px 8px;
+}
+select:focus { outline: 1px solid var(--amb); }
+#oracle-note { margin: 4px 0 0; min-height: 1.2em; }
+#oracle-note.bad { color: var(--red); }
+#oracle-note.good { color: var(--ink); }
+
+#lib-preload-zone { margin-top: 10px; }
+#lib-preload-zone label { display: block; margin-bottom: 4px; }
+#lib-focus { width: 100%; resize: vertical; }
 #lib-result { max-height: 220px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--ink-faint); background:#050705; padding:6px; }
 .expansion-card { border: 1px solid var(--ink-faint); padding: 6px; margin: 6px 0; background: var(--panel2); }
 .expansion-card b { color: var(--amb); }

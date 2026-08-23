@@ -15,6 +15,11 @@ import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, deepItem } from './dice.js';
 import { WEARABLE_SLOTS } from './contract.js';
+import { itemStackKey } from './base.js';
+
+/* How much the pack holds. Named because the Gear tab shows it, and a limit
+ * the player only discovers by hitting it is not a limit, it is a surprise. */
+export const PACK_LIMIT = 32;
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -884,7 +889,7 @@ export class Game {
       this.uiLog('Picked up ' + v + ' gold' + (it.name && it.name !== 'Pile of Gold' ? ' (' + it.name + ')' : '') + '.');
       return true;
     }
-    if (p.inventory.length >= 32) { this.log('Your pack is full.'); return false; }
+    if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is full.'); return false; }
     p.inventory.push(it);
     const idk = !it.identified ? ' unknown' : '';
     this.uiLog('You take: ' + it.name + idk + '.');
@@ -1617,7 +1622,24 @@ export class Game {
     else { this.log('It does nothing you can perceive.'); }
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
+    /* Drinking the potion that was in a belt loop used to empty the loop, even
+     * with four more of the same in the pack — so every draught cost a trip to
+     * the Gear tab. The loop refills itself from the rest of the stack. */
+    const loop = p.belt.findIndex((e) => this.beltUid(e) === item.uid);
     this.unbindItem(item);
+    if (loop >= 0) this.refillBeltLoop(loop, item);
+  }
+
+  /* The replacement has to be one nothing else is holding, or refilling one
+   * loop would quietly empty another. */
+  refillBeltLoop(loop, spent) {
+    const p = this.state.player;
+    const key = itemStackKey(spent);
+    const bound = new Set(p.belt.map((e) => this.beltUid(e)).filter(Boolean));
+    const next = p.inventory.find((it) => it && !bound.has(it.uid) && itemStackKey(it) === key);
+    if (!next) return;
+    if (!next.uid) next.uid = rngIntId();
+    p.belt[loop] = next.uid;
   }
 
   scrollFlame(dice) {
@@ -1691,7 +1713,7 @@ export class Game {
     const cur = p.equipment[slot];
     if (!cur) return;
     if (cur.cursed) { this.log('The cursed ' + cur.name + ' will not come off! Seek a Draught of Unbinding.'); return; }
-    if (p.inventory.length >= 32) { this.log('Your pack is full.'); return; }
+    if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is full.'); return; }
     p.inventory.push(cur);
     p.equipment[slot] = null;
     p.maxpower = this.computeMaxPower();

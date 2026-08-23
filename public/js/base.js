@@ -126,8 +126,11 @@ export const XP_FOR_LEVEL = (lvl) => Math.floor(150 * (lvl * (lvl + 1) / 2));
 
 /* ---------------- Monsters ---------------- */
 
-const M = (id, name, glyph, color, tier, hpMax, ac, toHit, dmg, xp, goldMin, goldMax, props = [], flavor = '', speed = 1, aggroRange = 8) => ({
-  id, name, glyph, color, tier, hpMax, ac, toHit, damage: parseDmg(dmg), xp, goldMin, goldMax, speed, aggroRange, props: props.slice(), flavor,
+/* No colour column. A monster is painted from its tier by monsterTint, so the
+ * whole bestiary reads as a heat ramp and nothing on the map can be red unless
+ * it is alive. */
+const M = (id, name, glyph, tier, hpMax, ac, toHit, dmg, xp, goldMin, goldMax, props = [], flavor = '', speed = 1, aggroRange = 8) => ({
+  id, name, glyph, tier, hpMax, ac, toHit, damage: parseDmg(dmg), xp, goldMin, goldMax, speed, aggroRange, props: props.slice(), flavor,
 });
 
 function parseDmg(s) {
@@ -136,43 +139,43 @@ function parseDmg(s) {
 }
 
 export const MONSTERS = [
-  M('rat', 'Sewer Rat', 'r', 'gray', 0, 3, 10, 0, '1d2', 5, 1, 4, [], 'A bristling grey thing with eyes like wet beads.'),
-  M('giant-rat', 'Giant Rat', 'R', 'brown', 1, 6, 10, 0, '1d3', 12, 2, 8, [], 'A rat the size of a hound, all teeth and whiskers.'),
-  M('giant-spider', 'Giant Spider', 'S', 'magenta', 1, 6, 12, 1, '1d4', 15, 3, 9, ['poison'], 'Web-slick legs and a bite that burns at the veins.'),
-  M('goblin', 'Goblin', 'g', 'green', 2, 8, 11, 1, '1d6', 25, 5, 15, ['intelligent'], 'A knuckle-dragging knave with a stolen blade.'),
-  M('kobold', 'Kobold', 'k', 'amber', 2, 5, 11, 0, '1d4', 20, 4, 12, ['intelligent'], 'A yelping whelp of the dark, jabbing at your shins.'),
-  M('giant-ant', 'Giant Ant', 'A', 'brown', 2, 10, 12, 1, '1d4', 18, 2, 6, ['pack'], 'Carries off the remains of things bigger than you.'),
-  M('centipede', 'Giant Centipede', 'c', 'red', 2, 7, 13, 1, '1d3', 16, 2, 8, ['poison'], 'A horrid bracelet of legs that spits venom.'),
-  M('skeleton', 'Skeleton', 's', 'white', 3, 10, 10, 2, '1d6', 40, 5, 12, ['undead'], 'Old bones that remember marching orders.'),
-  M('orc', 'Orc', 'o', 'green', 3, 13, 9, 2, '1d8', 45, 8, 20, ['intelligent'], 'A green brute with a notched cleaver and a grudge.'),
-  M('hobgoblin', 'Hobgoblin', 'H', 'brown', 4, 16, 8, 2, '1d8', 55, 10, 25, ['intelligent'], 'Bigger, uglier, and nastier than its little kin.'),
-  M('ghoul', 'Ghoul', 'G', 'gray', 4, 14, 9, 2, '1d6', 60, 6, 18, ['undead', 'pack'], 'Ravenous yeti-pale grave-things that eat warm flesh.'),
-  M('giant-snake', 'Giant Snake', 'S', 'green', 4, 18, 8, 2, '1d6', 65, 8, 20, ['poison'], 'A coil of muscle and bad intention.'),
-  M('zombie', 'Zombie', 'z', 'darkgray', 4, 20, 9, 1, '1d8', 55, 5, 15, ['undead'], 'A slow shambling ruin of a person, still hungry.'),
-  M('ghast', 'Ghast', 'Q', 'brightgreen', 5, 24, 7, 3, '1d8', 90, 10, 24, ['undead', 'poison', 'pack'], 'A ghoul grown old and powerful, stinking of the grave.'),
-  M('wererat', 'Wererat', 'W', 'brown', 5, 22, 7, 3, '1d6', 85, 15, 35, ['intelligent'], 'Man-shaped, whiskered, and half-bald with age and greed.'),
-  M('giant-leech', 'Giant Leech', 'L', 'red', 5, 18, 8, 2, '1d6', 80, 8, 20, [], 'Drains you drink by drink; do not let it hold you.'),
-  M('living-statue', 'Living Statue', 'h', 'gray', 6, 32, 4, 3, '2d6', 130, 15, 40, [], 'The temple guards that never stood guard — until now.'),
-  M('gargoyle', 'Gargoyle', 'v', 'gray', 6, 30, 4, 3, '1d8', 125, 15, 35, [], 'A stone demon fixed to chew on intruders.'),
-  M('mummy', 'Mummy', 'M', 'amber', 6, 28, 5, 3, '1d8', 135, 20, 45, ['undead', 'cursed'], 'Linen and rage. Its touch leaves a failing of the flesh.'),
-  M('wraith', 'Wraith', 'w', 'cyan', 7, 32, 4, 4, '1d8', 160, 20, 45, ['undead'], 'A cold wind that remembers being a person.'),
-  M('spectre', 'Spectre', 'P', 'brightblue', 7, 34, 4, 4, '2d6', 180, 24, 50, ['undead'], 'Ectoplasm with a grudge against the living.'),
-  M('ogre', 'Ogre', 'O', 'brown', 7, 42, 7, 4, '2d6', 175, 30, 60, [], 'A mountain of bad decisions with a club to match.'),
-  M('displacer-beast', 'Displacer Beast', 'D', 'violet', 8, 46, 4, 5, '2d6', 210, 30, 65, [], 'Seems to stand two feet from where it truly is.'),
-  M('gelatinous-cube', 'Gelatinous Cube', 'C', 'teal', 8, 50, 8, 3, '2d4', 200, 40, 80, ['trap'], 'A clear slab of jelly that dissolves anything it swallows.'),
-  M('minotaur', 'Minotaur', 'B', 'red', 8, 55, 5, 6, '3d6', 240, 50, 100, ['intelligent'], 'Half bull, wholly furious. The maze is its hoarse memory.'),
-  M('otyugh', 'Otyugh', 'Y', 'green', 8, 46, 5, 5, '2d6', 230, 40, 90, [], 'A three-legged garbage god that minds the temple drains.'),
-  M('troll', 'Troll', 'T', 'green', 9, 66, 6, 6, '2d6', 300, 60, 120, ['regenerate'], 'Flesh knits as you watch. Burn it; burn it twice.'),
-  M('basilisk', 'Basilisk', 'b', 'brightgreen', 9, 60, 4, 5, '2d8', 320, 70, 140, ['poison'], 'The gaze is a sentence. Do not look beneath the hood.'),
-  M('wyvern', 'Wyvern', 'V', 'green', 9, 70, 4, 6, '2d6', 340, 80, 150, ['flying'], 'A dragon that flunked the final grade, and holds a grudge.'),
-  M('fire-elemental', 'Fire Elemental', 'E', 'red', 9, 60, 3, 6, '2d8', 340, 50, 100, [], 'Heat given appetite. It feeds on what you burn.'),
-  M('ettin', 'Ettin', 'E', 'brown', 10, 90, 4, 7, '3d6', 420, 90, 170, ['intelligent'], 'Two heads, four fists, one shared hatred of doors.'),
-  M('stone-giant', 'Stone Giant', 'N', 'gray', 10, 96, 4, 7, '3d6', 450, 100, 190, [], 'Ancient mountain-bones wrapped in patience.'),
-  M('gorgon', 'Gorgon', 'n', 'silver', 11, 100, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
-  M('umber-hulk', 'Umber Hulk', 'U', 'brown', 11, 102, 3, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
-  M('dracolisk', 'Dracolisk', 'D', 'green', 11, 108, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
-  M('great-wyrm', 'Great Wyrm', 'd', 'red', 12, 140, 2, 9, '4d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
-  M('lapsai-demon', 'Demon of Lapsai', '@', 'brightred', 13, 170, 1, 10, '4d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed.'),
+  M('rat', 'Sewer Rat', 'r', 0, 3, 10, 0, '1d2', 5, 1, 4, [], 'A bristling grey thing with eyes like wet beads.'),
+  M('giant-rat', 'Giant Rat', 'R', 1, 6, 10, 0, '1d3', 12, 2, 8, [], 'A rat the size of a hound, all teeth and whiskers.'),
+  M('giant-spider', 'Giant Spider', 'S', 1, 6, 12, 1, '1d4', 15, 3, 9, ['poison'], 'Web-slick legs and a bite that burns at the veins.'),
+  M('goblin', 'Goblin', 'g', 2, 8, 11, 1, '1d6', 25, 5, 15, ['intelligent'], 'A knuckle-dragging knave with a stolen blade.'),
+  M('kobold', 'Kobold', 'k', 2, 5, 11, 0, '1d4', 20, 4, 12, ['intelligent'], 'A yelping whelp of the dark, jabbing at your shins.'),
+  M('giant-ant', 'Giant Ant', 'A', 2, 10, 12, 1, '1d4', 18, 2, 6, ['pack'], 'Carries off the remains of things bigger than you.'),
+  M('centipede', 'Giant Centipede', 'c', 2, 7, 13, 1, '1d3', 16, 2, 8, ['poison'], 'A horrid bracelet of legs that spits venom.'),
+  M('skeleton', 'Skeleton', 's', 3, 10, 10, 2, '1d6', 40, 5, 12, ['undead'], 'Old bones that remember marching orders.'),
+  M('orc', 'Orc', 'o', 3, 13, 9, 2, '1d8', 45, 8, 20, ['intelligent'], 'A green brute with a notched cleaver and a grudge.'),
+  M('hobgoblin', 'Hobgoblin', 'H', 4, 16, 8, 2, '1d8', 55, 10, 25, ['intelligent'], 'Bigger, uglier, and nastier than its little kin.'),
+  M('ghoul', 'Ghoul', 'G', 4, 14, 9, 2, '1d6', 60, 6, 18, ['undead', 'pack'], 'Ravenous yeti-pale grave-things that eat warm flesh.'),
+  M('giant-snake', 'Giant Snake', 'S', 4, 18, 8, 2, '1d6', 65, 8, 20, ['poison'], 'A coil of muscle and bad intention.'),
+  M('zombie', 'Zombie', 'z', 4, 20, 9, 1, '1d8', 55, 5, 15, ['undead'], 'A slow shambling ruin of a person, still hungry.'),
+  M('ghast', 'Ghast', 'Q', 5, 24, 7, 3, '1d8', 90, 10, 24, ['undead', 'poison', 'pack'], 'A ghoul grown old and powerful, stinking of the grave.'),
+  M('wererat', 'Wererat', 'W', 5, 22, 7, 3, '1d6', 85, 15, 35, ['intelligent'], 'Man-shaped, whiskered, and half-bald with age and greed.'),
+  M('giant-leech', 'Giant Leech', 'L', 5, 18, 8, 2, '1d6', 80, 8, 20, [], 'Drains you drink by drink; do not let it hold you.'),
+  M('living-statue', 'Living Statue', 'h', 6, 32, 4, 3, '2d6', 130, 15, 40, [], 'The temple guards that never stood guard — until now.'),
+  M('gargoyle', 'Gargoyle', 'v', 6, 30, 4, 3, '1d8', 125, 15, 35, [], 'A stone demon fixed to chew on intruders.'),
+  M('mummy', 'Mummy', 'M', 6, 28, 5, 3, '1d8', 135, 20, 45, ['undead', 'cursed'], 'Linen and rage. Its touch leaves a failing of the flesh.'),
+  M('wraith', 'Wraith', 'w', 7, 32, 4, 4, '1d8', 160, 20, 45, ['undead'], 'A cold wind that remembers being a person.'),
+  M('spectre', 'Spectre', 'P', 7, 34, 4, 4, '2d6', 180, 24, 50, ['undead'], 'Ectoplasm with a grudge against the living.'),
+  M('ogre', 'Ogre', 'O', 7, 42, 7, 4, '2d6', 175, 30, 60, [], 'A mountain of bad decisions with a club to match.'),
+  M('displacer-beast', 'Displacer Beast', 'D', 8, 46, 4, 5, '2d6', 210, 30, 65, [], 'Seems to stand two feet from where it truly is.'),
+  M('gelatinous-cube', 'Gelatinous Cube', 'C', 8, 50, 8, 3, '2d4', 200, 40, 80, ['trap'], 'A clear slab of jelly that dissolves anything it swallows.'),
+  M('minotaur', 'Minotaur', 'B', 8, 55, 5, 6, '3d6', 240, 50, 100, ['intelligent'], 'Half bull, wholly furious. The maze is its hoarse memory.'),
+  M('otyugh', 'Otyugh', 'Y', 8, 46, 5, 5, '2d6', 230, 40, 90, [], 'A three-legged garbage god that minds the temple drains.'),
+  M('troll', 'Troll', 'T', 9, 66, 6, 6, '2d6', 300, 60, 120, ['regenerate'], 'Flesh knits as you watch. Burn it; burn it twice.'),
+  M('basilisk', 'Basilisk', 'b', 9, 60, 4, 5, '2d8', 320, 70, 140, ['poison'], 'The gaze is a sentence. Do not look beneath the hood.'),
+  M('wyvern', 'Wyvern', 'V', 9, 70, 4, 6, '2d6', 340, 80, 150, ['flying'], 'A dragon that flunked the final grade, and holds a grudge.'),
+  M('fire-elemental', 'Fire Elemental', 'E', 9, 60, 3, 6, '2d8', 340, 50, 100, [], 'Heat given appetite. It feeds on what you burn.'),
+  M('ettin', 'Ettin', 'E', 10, 90, 4, 7, '3d6', 420, 90, 170, ['intelligent'], 'Two heads, four fists, one shared hatred of doors.'),
+  M('stone-giant', 'Stone Giant', 'N', 10, 96, 4, 7, '3d6', 450, 100, 190, [], 'Ancient mountain-bones wrapped in patience.'),
+  M('gorgon', 'Gorgon', 'n', 11, 100, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
+  M('umber-hulk', 'Umber Hulk', 'U', 11, 102, 3, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
+  M('dracolisk', 'Dracolisk', 'D', 11, 108, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
+  M('great-wyrm', 'Great Wyrm', 'd', 12, 140, 2, 9, '4d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
+  M('lapsai-demon', 'Demon of Lapsai', '&', 13, 170, 1, 10, '4d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed.'),
 ];
 
 export function getMonster(id) {
@@ -206,7 +209,7 @@ export const baseWeapons = [
   makeItem('war-hammer', 'War Hammer', 'weapon', 'W', 'silver', 20, 3, { toHit: 0, damage: { dice: 1, sides: 8, bonus: 1 } }),
   makeItem('battle-axe', 'Battle Axe', 'weapon', 'A', 'gray', 26, 4, { toHit: 0, damage: { dice: 1, sides: 10, bonus: 0 } }),
   makeItem('two-handed-sword', 'Two-Handed Sword', 'weapon', 'T', 'brightblue', 40, 5, { toHit: 0, damage: { dice: 2, sides: 6, bonus: 0 } }),
-  makeItem('wand-of-fire', 'Wand of Fire', 'wand', '~', 'red', 60, 3, { spell: 'firebolt', charges: 12 }, 'Flickering like a live coal.'),
+  makeItem('wand-of-fire', 'Wand of Fire', 'wand', '~', 'yellow', 60, 3, { spell: 'firebolt', charges: 12 }, 'Flickering like a live coal.'),
   makeItem('wand-of-healing', 'Wand of Healing', 'wand', '~', 'brightgreen', 70, 3, { spell: 'heal', charges: 8 }, 'Warm as a hearth.'),
   makeItem('wand-of-frost', 'Wand of Frost', 'wand', '~', 'cyan', 80, 4, { spell: 'frost', charges: 10 }, 'Hoar-frost crawls along the haft.'),
 ];
@@ -234,10 +237,10 @@ export const baseJewelry = [
 ];
 
 export const basePotions = [
-  makeItem('potion-heal', 'Potion of Healing', 'potion', '!', 'red', 15, 1, { heal: '2d4+2' }, 'Bitter and vine-tart. Kills the hurting.'),
-  makeItem('potion-major-heal', 'Potion of Superior Healing', 'potion', '!', 'brightred', 45, 3, { heal: '4d6+4' }, 'Thick as syrup; you can feel the mending.'),
+  makeItem('potion-heal', 'Potion of Healing', 'potion', '!', 'pink', 15, 1, { heal: '2d4+2' }, 'Bitter and vine-tart. Kills the hurting.'),
+  makeItem('potion-major-heal', 'Potion of Superior Healing', 'potion', '!', 'magenta', 45, 3, { heal: '4d6+4' }, 'Thick as syrup; you can feel the mending.'),
   makeItem('potion-power', 'Potion of Arcana', 'potion', '!', 'violet', 35, 2, { power: '4d4+4' }, 'Tastes of the crackling between worlds.'),
-  makeItem('potion-strength', 'Potion of Titan’s Grip', 'potion', '!', 'orange', 40, 3, { buffStr: 10 }, 'Spoils of a giant’s cellar. Bulges every vein.'),
+  makeItem('potion-strength', 'Potion of Titan’s Grip', 'potion', '!', 'yellow', 40, 3, { buffStr: 10 }, 'Spoils of a giant’s cellar. Bulges every vein.'),
   makeItem('potion-remove-curse', 'Draught of Unbinding', 'potion', '!', 'cyan', 80, 4, { removeCurse: true }, 'Cold as a mountain spring; slips curses like wax.'),
 ];
 
@@ -246,7 +249,7 @@ export const baseScrolls = [
   makeItem('scroll-remove-curse', 'Scroll of Remove Curse', 'scroll', '?', 'cyan', 70, 3, { removeCurse: true }),
   makeItem('scroll-teleport', 'Scroll of Recall', 'scroll', '?', 'violet', 60, 3, { teleport: true }),
   makeItem('scroll-reveal', 'Scroll of Cartography', 'scroll', '?', 'brightgreen', 40, 2, { map: true }, 'Lines crawl to truth across the whole floor.'),
-  makeItem('scroll-flame', 'Scroll of Flame Burst', 'scroll', '?', 'red', 50, 3, { flame: '3d6' }, 'Do not read aloud indoors.'),
+  makeItem('scroll-flame', 'Scroll of Flame Burst', 'scroll', '?', 'yellow', 50, 3, { flame: '3d6' }, 'Do not read aloud indoors.'),
   makeItem('scroll-sanctuary', 'Scroll of Sanctuary', 'scroll', '?', 'white', 55, 3, { sanctuary: 12 }, 'For a few quiet steps, the dark forgets you.'),
 ];
 
@@ -261,6 +264,36 @@ export const ALL_ITEMS = [...baseWeapons, ...baseArmor, ...baseJewelry, ...baseP
 
 export function getItemTemplate(id) {
   return ALL_ITEMS.find((i) => i.id === id) || null;
+}
+
+/* Two items stack only if swapping one for the other would change nothing:
+ * same template, same name, same worth, same effects, same curse, same state
+ * of knowledge. A +2 Dagger, a cursed Dagger and a plain Dagger are three
+ * stacks, because a pack that hid that distinction would be a trap — and a
+ * half-spent wand never merges with a full one, since charges live in effects.
+ *
+ * The pack used to render one row per object, so eight Potions of Healing were
+ * eight identical lines and the Gear tab scrolled for the wrong reason. */
+export function itemStackKey(it) {
+  if (!it) return '';
+  return [
+    it.id || it.name,
+    it.name,
+    it.kind,
+    it.value,
+    it.cursed ? 'c' : '',
+    it.identified === false ? 'u' : 'i',
+    stableJson(it.effects || {}),
+  ].join('|');
+}
+
+/* Key order is insertion order, and applyMagic adds effects to a clone in a
+ * different order than the template declares them — so a plain JSON.stringify
+ * would rule two identical potions unstackable on a technicality. */
+function stableJson(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableJson).join(',') + ']';
+  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stableJson(v[k])).join(',') + '}';
 }
 
 export function scaleDice(d, factor) {

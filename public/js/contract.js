@@ -19,9 +19,15 @@ export const COLORS = {
   white: '#e8e8d8',
   gray: '#9aaa88',
   silver: '#c8d0c8',
+  /* The red family is reserved for monsters — see MONSTER_TINTS. Nothing the
+   * player can pick up is painted in it, so red on the map always means
+   * something that wants to kill you. */
+  rust: '#8f5a48',
+  blood: '#b8362e',
   red: '#e05a4e',
   brightred: '#ff6a5a',
-  orange: '#e08a4a',
+  ember: '#ff8a3a',
+  searing: '#ffbfa0',
   yellow: '#e8d85a',
   brightgreen: '#aef08a',
   cyan: '#7ad8d0',
@@ -37,9 +43,39 @@ export const COLORS = {
   black: '#000000',
 };
 
-/* Offered to the oracle. `black` on black is unreadable and amber2 is an
- * internal shade, so neither is advertised — but both still render. */
-export const PALETTE = Object.keys(COLORS).filter((c) => c !== 'black' && c !== 'amber2');
+/* Monsters are not painted by name — they are tinted by how dangerous they
+ * are, coldest to hottest. Before this every glyph on the map was drawn from
+ * one shared palette, so a gargoyle and a gemstone were the same grey and the
+ * only way to tell loot from a thing with teeth was to walk into it.
+ *
+ * The ramp carries information a name could not: colour is threat. */
+export const MONSTER_TINTS = ['rust', 'blood', 'red', 'brightred', 'ember', 'searing'];
+
+/* The player is a white '@', so nothing that can kill you may be one too —
+ * at the top of the ramp the tint is pale enough that the two would sit a
+ * shade apart. The Demon wears '&' instead, which no colour in the loot
+ * palette can now imitate. */
+export const PLAYER_GLYPH = '@';
+
+/* Upper tier of each band, by index into MONSTER_TINTS. */
+const TINT_CEILINGS = [1, 3, 5, 7, 10];
+
+export function monsterTint(tier, boss = false) {
+  const t = Number.isFinite(Number(tier)) ? Number(tier) : 0;
+  let band = TINT_CEILINGS.findIndex((c) => t <= c);
+  if (band < 0) band = MONSTER_TINTS.length - 1;
+  if (boss) band = Math.min(MONSTER_TINTS.length - 1, band + 1);
+  return MONSTER_TINTS[band];
+}
+
+const TINT_SET = new Set(MONSTER_TINTS);
+
+/* Offered to the oracle for the things it may colour, which is everything
+ * except monsters. `black` on black is unreadable, amber2 is an internal
+ * shade, and the red family belongs to the bestiary — none are advertised,
+ * though all still render. */
+export const PALETTE = Object.keys(COLORS)
+  .filter((c) => c !== 'black' && c !== 'amber2' && !TINT_SET.has(c));
 
 export const ITEM_KINDS = ['weapon', 'armor', 'shield', 'ring', 'amulet', 'potion', 'wand', 'scroll', 'special', 'misc'];
 

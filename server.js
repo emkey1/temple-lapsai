@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt, extractJSON, validateExpansion } from './lib/expansion.js';
+import {
+  loadOracle, writeOracle, describeOracle, applySettings, callOracle, probeOracle,
+} from './lib/oracle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -22,23 +25,15 @@ const MIME = {
 };
 
 const PORT = process.env.PORT || 8080;
+const CONFIG_PATH = path.join(__dirname, 'config.json');
 
-const CONFIG = {
-  apiKey: process.env.OPENAI_API_KEY || '',
-  baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-  model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-};
+/* Who the oracle is, and whether it has anything to prove itself with. Held in
+ * one place so the Black Library can rebind it at runtime — the whole reason
+ * this used to need a restart is that the answer was frozen at import. */
+let oracle = loadOracle(CONFIG_PATH);
 
-try {
-  const cfgPath = path.join(__dirname, 'config.json');
-  if (fs.existsSync(cfgPath)) {
-    const fileCfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    CONFIG.apiKey = CONFIG.apiKey || (fileCfg.openai && fileCfg.openai.apiKey) || fileCfg.apiKey || CONFIG.apiKey;
-    CONFIG.baseUrl = CONFIG.baseUrl || (fileCfg.openai && fileCfg.openai.baseUrl) || fileCfg.baseUrl || CONFIG.baseUrl;
-    CONFIG.model = CONFIG.model || (fileCfg.openai && fileCfg.openai.model) || fileCfg.model || CONFIG.model;
-  }
-} catch (err) {
-  console.warn('[expand-server] Could not read config.json (optional):', err.message);
+function oracleReadyNow() {
+  return describeOracle(oracle).ready;
 }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -72,46 +67,9 @@ function appendExpansion(expansion) {
   return writeQueue.then(() => expansion);
 }
 
-async function callLLM(prompt) {
-  if (!CONFIG.apiKey) {
-    const err = new Error('No LLM API key configured');
-    err.code = 'NO_KEY';
-    throw err;
-  }
-  const body = {
-    model: CONFIG.model,
-    messages: [
-      { role: 'system', content: 'You are a creative content designer for a classic D&D-style dungeon crawler. Always reply with strict JSON only.' },
-      { role: 'user', content: prompt },
-    ],
-    temperature: 0.9,
-  };
-  const res = await fetch(`${CONFIG.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${CONFIG.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = await res.text(); } catch {}
-    const err = new Error(`LLM request failed (${res.status}): ${detail.slice(0, 300)}`);
-    err.status = res.status;
-    throw err;
-  }
-  const data = await res.json();
-  const text = data && data.choices && data.choices[0] && data.choices[0].message
-    ? data.choices[0].message.content
-    : '';
-  if (!text) { const e = new Error('LLM returned empty content'); e.code = 'EMPTY'; throw e; }
-  return text;
-}
-
 async function handleExpand(action, context) {
   const prompt = buildPrompt(action, context);
-  const text = await callLLM(prompt);
+  const text = await callOracle(oracle, prompt);
   const parsed = extractJSON(text);
   const expansion = validateExpansion(parsed);
   return await appendExpansion(expansion);
@@ -220,11 +178,56 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && (pathname === '/api/health' || pathname === '/api/status')) {
       return sendJSON(res, 200, {
         ok: true,
-        llmConfigured: Boolean(CONFIG.apiKey),
-        model: CONFIG.model,
-        baseUrl: CONFIG.baseUrl,
+        llmConfigured: oracleReadyNow(),
+        provider: oracle.settings.provider,
+        model: oracle.settings.model,
+        baseUrl: oracle.settings.baseUrl,
         expansions: readExpansions().length,
       });
+    }
+
+    /* The Black Library's own settings. Everything that mutates them is held
+     * to the same origin and content-type rules as /api/expand, because a
+     * drive-by that could repoint the endpoint could also read the key back
+     * out of the next request the server makes. */
+    if (req.method === 'GET' && pathname === '/api/oracle') {
+      return sendJSON(res, 200, describeOracle(oracle));
+    }
+
+    if (req.method === 'POST' && (pathname === '/api/oracle' || pathname === '/api/oracle/test')) {
+      if (!sameOrigin(req)) return sendJSON(res, 403, { error: 'cross-origin requests are not accepted' });
+      if (!isJson(req)) return sendJSON(res, 415, { error: 'send application/json' });
+      let body;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJSON(res, 400, { error: 'could not read that request: ' + (err.message || 'bad JSON') });
+      }
+
+      if (pathname === '/api/oracle/test') {
+        /* A test is a real call, so it comes out of the same budget. */
+        if (rateLimited()) return sendJSON(res, 429, { error: 'the scribes need a moment — try again shortly' });
+        try {
+          const reply = await probeOracle(oracle);
+          return sendJSON(res, 200, { ok: true, model: oracle.settings.model, reply });
+        } catch (err) {
+          return sendJSON(res, 200, { ok: false, error: err.message || 'the oracle did not answer' });
+        }
+      }
+
+      /* FORGET: drop the saved block and fall back to whatever the environment
+       * says, so a player can undo a menu choice without editing JSON. */
+      if (body.reset === true) {
+        writeOracle(CONFIG_PATH, null);
+        oracle = loadOracle(CONFIG_PATH);
+        return sendJSON(res, 200, describeOracle(oracle));
+      }
+
+      const next = applySettings(oracle, body);
+      writeOracle(CONFIG_PATH, next.settings, next.apiKey);
+      oracle = next;
+      console.log(`[oracle] bound to ${oracle.settings.provider} · ${oracle.settings.model}`);
+      return sendJSON(res, 200, describeOracle(oracle));
     }
 
     if (req.method === 'GET' && pathname === '/api/expansions') {
@@ -236,7 +239,7 @@ const server = http.createServer(async (req, res) => {
       if (!isJson(req)) return sendJSON(res, 415, { error: 'send application/json' });
       /* Check the key BEFORE spending the budget: a 429 that hides "no key
        * configured" sends you looking for the wrong problem. */
-      if (!CONFIG.apiKey) return sendJSON(res, 503, { error: 'No LLM API key configured' });
+      if (!oracleReadyNow()) return sendJSON(res, 503, { error: 'No oracle is bound — choose one in the Black Library' });
       if (rateLimited()) return sendJSON(res, 429, { error: 'the scribes need a moment — try again shortly' });
       let body;
       try {
@@ -266,7 +269,9 @@ const server = http.createServer(async (req, res) => {
 const HOST = process.env.HOST || '127.0.0.1';
 
 server.listen(PORT, HOST, () => {
-  const llm = CONFIG.apiKey ? `${CONFIG.model} @ ${CONFIG.baseUrl}` : 'NOT CONFIGURED (set OPENAI_API_KEY)';
+  const llm = oracleReadyNow()
+    ? `${oracle.settings.provider} · ${oracle.settings.model} @ ${oracle.settings.baseUrl} (${oracle.source})`
+    : 'NOT BOUND — pick a provider in the Black Library, in game';
   console.log(`Temple Lapsai server on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`  LLM: ${llm}`);
   console.log(`  Expansions: ${EXPANSIONS_FILE}`);
