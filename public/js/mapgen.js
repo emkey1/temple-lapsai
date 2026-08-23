@@ -199,14 +199,21 @@ function installBossDen(grid, up) {
  * gains tier-6 mummies with nothing at tier 5, and a level-2 character met
  * three of them at the same odds as a rat. Weighting toward the shallow end
  * keeps the deep things as an occasional shock rather than the average case. */
+/* Weighted towards the gentle end of the POOL — which is now the gentle end of
+ * a narrow band around this floor's depth, not the gentle end of the whole
+ * bestiary. That distinction is the whole fix: the weighting was always right,
+ * and it was drawing from a pool that still had Sewer Rats in it on the last
+ * floor of the second dungeon. Reversing it instead makes every floor in the
+ * game harder and breaks the ramp — measured, and put back. */
 function pickWeighted(rng, pool) {
   if (!pool.length) return undefined;
   const n = pool.length;
+  const weight = (i) => n - i;
   let total = 0;
-  for (let i = 0; i < n; i++) total += n - i;
+  for (let i = 0; i < n; i++) total += weight(i);
   let roll = rng.next() * total;
   for (let i = 0; i < n; i++) {
-    roll -= n - i;
+    roll -= weight(i);
     if (roll < 0) return pool[i];
   }
   return pool[n - 1];

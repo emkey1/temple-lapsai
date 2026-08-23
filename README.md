@@ -281,14 +281,43 @@ Witch-Spark used to hand a point of power back too; measured, a Mage with both e
 the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
 of the economy.
 
+### The descent is one curve
+
+A dungeon's floors are numbered from the **start of the game**, not from the start of the dungeon.
+The second dungeon's first floor is the fifth floor of the game and is stocked accordingly.
+
+It used to restart the ramp at every threshold, and three things compounded: every dungeon counted
+its own floors from zero; the tier band had a ceiling but no floor, so tier-0 vermin stayed in every
+pool for ever; and the draw leans towards the gentle end of the pool, which made those vermin the
+commonest thing on every floor of the game. Measured, the average monster on the Upper Reaches'
+opening floor had **9 hit points against 17** on the Temple's last, its floor held a seventh of the
+experience, and the commonest thing on either was a Sewer Rat.
+
+Now, averaged over seeds:
+
+```
+temple   1  2  3  4     upper  1  2  3  4     serpent  1   2   3   4
+         5  8 11 21            25 36 65 75             92 135 155 176   hp a monster
+```
+
+Three tests hold it there: no dungeon may open softer than the one before it closed, no floor may
+be gentler than the floor above it, and what you fought three floors ago may not still be the
+commonest thing you meet.
+
+A boss's **tier says where it is met**, not how the stories rate it. The Demon of Lapsai is the god
+of the first sanctum you go down and is sized for whoever gets there; carrying tier 13 while being
+fought at level 5 made it the feeblest card above tier 9 and put the whole top of the bestiary out
+of order.
+
 ### Experience
 
 `gainXP` subtracts as it goes, so reaching level N costs the sum of every step below it — which made
 the old curve far steeper than it read. Measured against what the generator actually puts on the
 floors, clearing the whole of Temple floor one paid **106** against the **150** level two cost, so a
 player finished the first floor of the game still at level one. The curve now matches the content:
-level two arrives partway through floor one, a full Temple leaves you at six, the whole game reaches
-twelve — and each boss is met at the level it was tuned against (5, 8 and 12).
+level two arrives partway through floor one, and each boss is met at the level it was measured
+against — the Demon at 5, the Umber Hulk at 9, the Great Wyrm at 14. The coefficient is fitted to
+what the floors hold and refitted whenever they change: it has been 150, 70 and 100.
 
 ### Reading the map
 

@@ -148,13 +148,14 @@ export function abilityMod(v) { return Math.floor((v - 10) / 2); }
  * paid 106 against the 150 that level two cost, so a player finished the first
  * floor of the game still at level one and barely past halfway.
  *
- * At 70 the curve matches the content instead of the other way round. Clearing
- * a floor pays for the level it took to clear it: level two arrives partway
- * through floor one, a full Temple leaves you at six, and the whole game
- * reaches twelve — which is where the three bosses were tuned to be fought.
- * Before this you met the Demon of Lapsai at level FOUR, below the bottom of
- * the range anyone had measured it at. */
-export const XP_FOR_LEVEL = (lvl) => Math.floor(70 * (lvl * (lvl + 1) / 2));
+ * The coefficient is fitted to what the floors hold, and refitted whenever
+ * they change — it moved from 150 to 70 when the floors were thin, and back to
+ * 100 when the later dungeons were restocked to follow on from the earlier
+ * ones instead of restarting. What it has to hit: level two arrives partway
+ * through floor one, and each boss is met at the level it was measured
+ * against — the Demon at five, the Umber Hulk at nine or ten, the Great Wyrm
+ * at twelve or thirteen. */
+export const XP_FOR_LEVEL = (lvl) => Math.floor(100 * (lvl * (lvl + 1) / 2));
 
 /* ---------------- Healing ---------------- */
 
@@ -261,12 +262,14 @@ export const MONSTERS = [
   M('ghoul', 'Ghoul', 'G', 4, 14, 9, 2, '1d6', 60, 6, 18, ['undead', 'pack'], 'Ravenous yeti-pale grave-things that eat warm flesh.'),
   M('giant-snake', 'Giant Snake', 'S', 4, 18, 8, 2, '1d6', 65, 8, 20, ['poison'], 'A coil of muscle and bad intention.'),
   M('zombie', 'Zombie', 'z', 4, 20, 9, 1, '1d8', 55, 5, 15, ['undead'], 'A slow shambling ruin of a person, still hungry.'),
+  /* The Temple's own elite, at the tier the band can actually reach on its
+   * last floor. At six they were content no player ever met. */
   M('ghast', 'Ghast', 'Q', 5, 24, 7, 3, '1d8', 90, 10, 24, ['undead', 'poison', 'pack'], 'A ghoul grown old and powerful, stinking of the grave.'),
   M('wererat', 'Wererat', 'W', 5, 22, 7, 3, '1d6', 85, 15, 35, ['intelligent'], 'Man-shaped, whiskered, and half-bald with age and greed.'),
   M('giant-leech', 'Giant Leech', 'L', 5, 18, 8, 2, '1d6', 80, 8, 20, [], 'Drains you drink by drink; do not let it hold you.'),
-  M('living-statue', 'Living Statue', 'h', 6, 32, 4, 3, '2d6', 130, 15, 40, [], 'The temple guards that never stood guard — until now.'),
-  M('gargoyle', 'Gargoyle', 'v', 6, 30, 4, 3, '1d8', 125, 15, 35, [], 'A stone demon fixed to chew on intruders.'),
-  M('mummy', 'Mummy', 'M', 6, 28, 5, 3, '1d8', 135, 20, 45, ['undead', 'cursed'], 'Linen and rage. Its touch leaves a failing of the flesh.'),
+  M('living-statue', 'Living Statue', 'h', 5, 32, 4, 3, '2d6', 130, 15, 40, [], 'The temple guards that never stood guard — until now.'),
+  M('gargoyle', 'Gargoyle', 'v', 5, 30, 4, 3, '1d8', 125, 15, 35, [], 'A stone demon fixed to chew on intruders.'),
+  M('mummy', 'Mummy', 'M', 5, 28, 5, 3, '1d8', 135, 20, 45, ['undead', 'cursed'], 'Linen and rage. Its touch leaves a failing of the flesh.'),
   M('wraith', 'Wraith', 'w', 7, 32, 4, 4, '1d8', 160, 20, 45, ['undead'], 'A cold wind that remembers being a person.'),
   M('spectre', 'Spectre', 'P', 7, 34, 4, 4, '2d6', 180, 24, 50, ['undead'], 'Ectoplasm with a grudge against the living.'),
   M('ogre', 'Ogre', 'O', 7, 42, 7, 4, '2d6', 175, 30, 60, [], 'A mountain of bad decisions with a club to match.'),
@@ -278,13 +281,13 @@ export const MONSTERS = [
   M('basilisk', 'Basilisk', 'b', 9, 60, 4, 5, '2d8', 320, 70, 140, ['poison'], 'The gaze is a sentence. Do not look beneath the hood.'),
   M('wyvern', 'Wyvern', 'V', 9, 70, 4, 6, '2d6', 340, 80, 150, ['flying'], 'A dragon that flunked the final grade, and holds a grudge.'),
   M('fire-elemental', 'Fire Elemental', 'E', 9, 60, 3, 6, '2d8', 340, 50, 100, [], 'Heat given appetite. It feeds on what you burn.'),
-  M('ettin', 'Ettin', 'E', 10, 90, 4, 7, '3d6', 420, 90, 170, ['intelligent'], 'Two heads, four fists, one shared hatred of doors.'),
-  M('stone-giant', 'Stone Giant', 'N', 10, 96, 4, 7, '3d6', 450, 100, 190, [], 'Ancient mountain-bones wrapped in patience.'),
-  M('gorgon', 'Gorgon', 'n', 11, 82, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
-  M('umber-hulk', 'Umber Hulk', 'U', 11, 62, 4, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
-  M('dracolisk', 'Dracolisk', 'D', 11, 82, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
-  M('great-wyrm', 'Great Wyrm', 'd', 12, 110, 3, 9, '3d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
-  M('lapsai-demon', 'Demon of Lapsai', '&', 13, 57, 4, 8, '2d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed.'),
+  M('ettin', 'Ettin', 'E', 10, 88, 4, 7, '3d6', 420, 90, 170, ['intelligent'], 'Two heads, four fists, one shared hatred of doors.'),
+  M('stone-giant', 'Stone Giant', 'N', 10, 92, 4, 7, '3d6', 450, 100, 190, [], 'Ancient mountain-bones wrapped in patience.'),
+  M('gorgon', 'Gorgon', 'n', 11, 98, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
+  M('umber-hulk', 'Umber Hulk', 'U', 9, 79, 4, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
+  M('dracolisk', 'Dracolisk', 'D', 11, 100, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
+  M('great-wyrm', 'Great Wyrm', 'd', 12, 138, 3, 9, '3d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
+  M('lapsai-demon', 'Demon of Lapsai', '&', 7, 57, 4, 8, '2d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed. Tier says where it is met, not how the stories rate it: this is the first sanctum you go down, and its god is sized for whoever gets there.'),
 ];
 
 export function getMonster(id) {
@@ -436,7 +439,14 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'sewers',
     threat: 2,
-    monsterWeights: ['giant-rat', 'giant-spider', 'giant-ant', 'centipede', 'wererat', 'giant-snake', 'giant-leech', 'ghast', 'otyugh', 'gorgon'],
+    /* Stocked for the depths it sits at, which are the fifth to the eighth
+     * floor of the game and not the first to the fourth again. It used to open
+     * with Giant Rats and Giant Spiders — the same tier-1 vermin as the Temple
+     * — so the second dungeon began softer than the first one ended.
+     * Drowned-warren things: leeches and wererats in the water, ghasts and a
+     * wraith in the silt, an ogre and a troll in the big drains, a gelatinous
+     * cube that IS the drain, and an otyugh minding it. */
+    monsterWeights: ['giant-snake', 'wererat', 'giant-leech', 'ghast', 'wraith', 'ogre', 'gelatinous-cube', 'otyugh', 'troll', 'umber-hulk'],
     bossId: 'umber-hulk',
   },
   {
@@ -447,7 +457,12 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'cavern',
     threat: 4,
-    monsterWeights: ['giant-snake', 'basilisk', 'wyvern', 'minotaur', 'troll', 'umber-hulk', 'dracolisk', 'gorgon', 'great-wyrm'],
+    /* Four floors need four bands to walk through, and a roster of 4, 8, 9, 9,
+     * 9, 11, 11, 11 only has two — so its floors came out identical. Widened
+     * with things that belong in a swallowed spiral of stone: the ghosts of
+     * the worshippers who learned to crawl, a hunter that is never quite where
+     * it looks, and the mountain-bones the halls were cut out of. */
+    monsterWeights: ['giant-snake', 'spectre', 'displacer-beast', 'minotaur', 'basilisk', 'wyvern', 'troll', 'ettin', 'stone-giant', 'gorgon', 'dracolisk', 'umber-hulk', 'great-wyrm'],
     bossId: 'great-wyrm',
   },
 ];

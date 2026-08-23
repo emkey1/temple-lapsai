@@ -53,6 +53,18 @@ const PWR_REGEN_FRACTION = 0.045;
  * an attack that cannot miss. */
 const MAX_COMBAT_PWR_REGEN = 0.04;
 const MAX_FOCUS_POWER = 3;
+
+/* How many tiers of monster share a floor. Wide enough that a floor has
+ * variety, narrow enough that what you met three floors ago has been left
+ * behind — and the draw leans towards the gentle end of it, so a wide band
+ * spends most of its time at the bottom. */
+const BAND_WIDTH = 3;
+
+function bandDistance(tier, bottom, ceiling) {
+  if (tier < bottom) return bottom - tier;
+  if (tier > ceiling) return tier - ceiling;
+  return 0;
+}
 const DESCENT_RECOVERY = 0.15;  /* stairs are a breather, not a bed */
 
 /* ---------------- Character creation ---------------- */
@@ -521,6 +533,38 @@ export class Game {
     if (this.ui.refreshHud) this.ui.refreshHud(this);
   }
 
+  /* HOW DEEP THIS FLOOR IS IN THE WHOLE DESCENT, not just in its own dungeon.
+   *
+   * The second dungeon's first floor is the FIFTH floor of the game and should
+   * be harder than the fourth, not softer than the first — and it was softer
+   * than the first: measured, the average monster on the Upper Reaches' opening
+   * floor had 9 hit points against 17 on the Temple's last, and the commonest
+   * thing you met on either was a Sewer Rat. Every dungeon restarted the curve
+   * from zero because every dungeon counted its own floors from zero. */
+  dungeonStartDepth(d, seen) {
+    if (!d) return 0;
+    const guard = seen || new Set();
+    if (guard.has(d.id)) return 0;   /* a cycle in the chain is not fatal here */
+    guard.add(d.id);
+    const bases = this.baseDungeonIds();
+    const at = bases.indexOf(d.id);
+    if (at >= 0) {
+      let depth = 0;
+      for (let i = 0; i < at; i++) depth += (this.dungeonById(bases[i]) || {}).floors || 0;
+      return depth;
+    }
+    /* Anything the Library wrote hangs off whatever it requires. */
+    const req = d.requires || d.unlockAfter || bases[bases.length - 1];
+    const first = Array.isArray(req) ? req[0] : req;
+    const prev = this.dungeonById(first);
+    if (!prev) return 0;
+    return this.dungeonStartDepth(prev, guard) + (prev.floors || 0);
+  }
+
+  floorDepth(d, floorIdx) {
+    return this.dungeonStartDepth(d) + (floorIdx || 0);
+  }
+
   resolveMonsterPool(d, floorIdx) {
     let templates = (d.monsterWeights || []).map((id) => {
       const t = this.monsterTemplate(id);
@@ -536,13 +580,39 @@ export class Game {
     /* Open the pool by TIER, not by a fraction of the list. Opening by fraction
      * ignores gaps in a bestiary, so wherever a dungeon's roster jumps — the
      * Temple's leap from tier 3 to tier 6, the Upper Reaches' from 5 to 11 —
-     * a whole band of monsters arrived on one floor and built a wall there. */
-    const threat = d.threat || 0;
-    const ceiling = threat + 2 + floorIdx * 2;
-    const inBand = sorted.filter((m) => m.tier <= ceiling);
-    /* A dungeon whose roster is entirely above the band still needs something
-     * to put on the floor: take the gentlest few it has. */
-    return inBand.length >= 3 ? inBand : sorted.slice(0, Math.min(3, sorted.length));
+     * a whole band of monsters arrived on one floor and built a wall there.
+     *
+     * The band has a FLOOR as well as a ceiling, and both ride the depth of
+     * the whole descent. Without a floor every tier from zero up stayed in the
+     * pool for ever, so Sewer Rats were still turning up on the last floor of
+     * the second dungeon — and since the draw is weighted towards the gentlest
+     * thing in the pool, they were the commonest thing there. */
+    const depth = this.floorDepth(d, floorIdx);
+    /* floor(), not round(): rounding made the ceiling climb two tiers between
+     * one floor and the next wherever the fraction crossed a half, which put a
+     * wall in the middle of a dungeon. */
+    const want = Math.floor(2 + depth * 1.25);
+    /* The CEILING is capped at the top of this dungeon's own roster, so the
+     * band cannot float above everything the dungeon has to offer. The FLOOR
+     * is not capped — it keeps rising, and only relaxes when it would leave
+     * too little to build a floor from. Capping both is what made the Serpent's
+     * four floors identical: the band stopped moving on its first one. */
+    const topTier = sorted[sorted.length - 1].tier;
+    const ceiling = Math.min(topTier, want);
+    let bottom = Math.max(0, want - BAND_WIDTH);
+    let inBand = sorted.filter((m) => m.tier >= bottom && m.tier <= ceiling);
+    while (inBand.length < 3 && bottom > 0) {
+      bottom--;
+      inBand = sorted.filter((m) => m.tier >= bottom && m.tier <= ceiling);
+    }
+    if (inBand.length >= 3) return inBand;
+    /* A roster with nothing in the band still needs something on the floor.
+     * Take whatever sits NEAREST to it — taking the gentlest few instead is
+     * how a dungeon full of trolls ended up putting out rats. */
+    return [...sorted]
+      .sort((a, b) => bandDistance(a.tier, bottom, ceiling) - bandDistance(b.tier, bottom, ceiling))
+      .slice(0, Math.min(3, sorted.length))
+      .sort((a, b) => a.tier - b.tier);
   }
 
   pickItem(floorIdx, rng) {

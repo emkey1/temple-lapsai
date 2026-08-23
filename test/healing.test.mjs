@@ -300,12 +300,15 @@ test('a boss is a hard fight, not a wall', () => {
     const ordinary = floor.monsters.filter((m) => !m.boss);
     const toughest = ordinary.reduce((a, m) => Math.max(a, m.maxhp), 0);
 
-    /* Big enough to be the boss, small enough to be a fight. Before this the
-     * Demon was twenty-two times the toughest thing standing beside it. */
+    /* Big enough to be the boss, small enough to be a fight — measured against
+     * the floor it stands on rather than against a number typed in here. The
+     * absolute cap this replaces went stale the moment the dungeons were
+     * restocked and the player started arriving three levels stronger; the
+     * relationship it was really guarding does not. Before this the Demon was
+     * twenty-two times the toughest thing standing beside it. */
     assert.ok(boss.maxhp > toughest, `${d.id}: the boss is smaller than the trash around it`);
-    assert.ok(boss.maxhp <= toughest * 6,
-      `${d.id}: boss has ${boss.maxhp} hp against ${toughest} for the toughest ordinary monster on the floor`);
-    assert.ok(boss.maxhp < 260, `${d.id}: a ${boss.maxhp} hp boss is a war of attrition, not a fight`);
+    assert.ok(boss.maxhp <= toughest * 3,
+      `${d.id}: boss has ${boss.maxhp} hp against ${toughest} for the toughest ordinary monster on the floor — a war of attrition, not a fight`);
   }
 });
 
