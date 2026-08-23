@@ -44,7 +44,12 @@ const STRENGTH_BUFF = 4;
  * of the run. Out of combat both come back, slowly, which is what makes
  * retreating a tactic instead of a longer death. */
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
-const HP_REGEN_FRACTION = 0.02;
+/* Halved from 0.02. It had made the altar — which mends 35% of maximum health
+ * once, and lifts every curse — worth about a third of what one free keypress
+ * of R gives you. Note what the max(1, ...) floor below does to this: at a
+ * small maximum the floor already dominated the fraction, so the halving only
+ * bites once a character is big. */
+const HP_REGEN_FRACTION = 0.01;
 const PWR_REGEN_FRACTION = 0.045;
 /* Renewal DURING a fight, which only a passive grants. Both are ceilings on
  * what any one ability may hand out, because a number the engine reads should
