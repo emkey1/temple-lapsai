@@ -8,7 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame } from './helpers.mjs';
+import { newGame, savedPlayer, legacyShape } from './helpers.mjs';
 import {
   LEDGER_KEY, LEGACY_SLOT, slotKey, newCharId, summarise,
   readLedger, writeLedger, rememberCharacter, readCharacter, forgetCharacter,
@@ -150,7 +150,7 @@ test('the fallen are marked on the ledger, not in the record', () => {
   put(store, 'c1', 'Marlyle');
   markFallen(store, 'c1');
   assert.equal(playable(store)[0].fallen, true);
-  assert.ok(readCharacter(store, 'c1').state.player, 'the record itself was disturbed');
+  assert.ok(savedPlayer(readCharacter(store, 'c1').state), 'the record itself was disturbed');
 });
 
 test('saving again does not quietly un-kill someone', () => {
@@ -180,8 +180,9 @@ test('marking someone who is not there changes nothing', () => {
 /* ---- the save that already exists ---- */
 
 test('the one save the game used to keep becomes the first name in the ledger', () => {
+  /* In the shape it really had: a plain player, no party. */
   const { data } = saveOf('Old Hand', 'cleric', 6);
-  const store = fakeStore({ [LEGACY_SLOT]: JSON.stringify(data) });
+  const store = fakeStore({ [LEGACY_SLOT]: JSON.stringify({ ...data, state: legacyShape(data.state) }) });
   const id = adoptLegacySave(store, 'c-adopted', null, 5000);
   assert.equal(id, 'c-adopted');
   const rows = playable(store);
@@ -189,7 +190,14 @@ test('the one save the game used to keep becomes the first name in the ledger', 
   assert.equal(rows[0].name, 'Old Hand');
   assert.equal(rows[0].level, 6);
   assert.equal(store.getItem(LEGACY_SLOT), null, 'the old slot was left behind to be adopted twice');
-  assert.ok(readCharacter(store, 'c-adopted').state.player, 'the record did not come across');
+  assert.ok(savedPlayer(readCharacter(store, 'c-adopted').state), 'the record did not come across');
+});
+
+test('and so does one written after the party existed', () => {
+  const { data } = saveOf('Newer Hand', 'thief', 3);
+  const store = fakeStore({ [LEGACY_SLOT]: JSON.stringify(data) });
+  assert.equal(adoptLegacySave(store, 'c-new', null, 5000), 'c-new');
+  assert.equal(playable(store)[0].name, 'Newer Hand');
 });
 
 test('adopting nothing is not an error, and does not invent a name', () => {

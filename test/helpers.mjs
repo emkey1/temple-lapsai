@@ -14,6 +14,27 @@ export function newGame(seed = 'test', clsId = 'fighter') {
   return g;
 }
 
+/* The character inside a SAVED state — a JSON blob with no live accessor on
+ * it. state.player is a non-enumerable getter onto the party, so it does not
+ * survive the round trip and a save has to be asked for its members instead. */
+export function savedPlayer(state) {
+  if (!state) return null;
+  if (state.party && Array.isArray(state.party.members)) {
+    return state.party.members[state.party.active || 0] || null;
+  }
+  return state.player || null;   /* a save from before the party existed */
+}
+
+/* A save in the shape it had before the party existed: a plain `player` field
+ * and no party. Restoring one has to still work, for ever. */
+export function legacyShape(state) {
+  const copy = JSON.parse(JSON.stringify(state));
+  const who = savedPlayer(copy);
+  delete copy.party;
+  copy.player = who;
+  return copy;
+}
+
 /* Every tile the player can get to on foot, given time and patience. Closed
  * doors open on a bump; secret doors open on a search, which always succeeds
  * eventually — and the boss den is behind one, so they have to count here even

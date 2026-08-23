@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, isTravelable } from '../public/js/mapgen.js';
-import { newGame } from './helpers.mjs';
+import { newGame, savedPlayer } from './helpers.mjs';
 
 test('a floor regenerates identically from its seed', () => {
   const a = newGame('same');
@@ -113,8 +113,8 @@ test('a save cannot come back with more power than it can hold', () => {
    * A save with a stale stored maximum filled past its own brim — 26 of 20. */
   const g = newGame('overfull', 'mage');
   const state = JSON.parse(JSON.stringify(g.save()));
-  state.player.maxpower = 4;      /* stale, as a hand-edited or old save is */
-  state.player.power = 4;
+  savedPlayer(state).maxpower = 4;   /* stale, as a hand-edited or old save is */
+  savedPlayer(state).power = 4;
   const back = newGame('overfull-2', 'mage');
   back.restore(state);
   const p = back.state.player;

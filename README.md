@@ -232,6 +232,25 @@ Measured now, 60 duels a cell, in the kit each dungeon can supply:
 Each boss is a real fight that levelling wins. The Mage is the known gap — its
 power is a fixed pool, and once it is spent the Mage is swinging a stick.
 
+### The party
+
+`state.player` is not a field. It is the character whose turn it is — a
+non-enumerable accessor onto `state.party.members[active]` — so the ninety-odd
+places in the engine and seventeen in the UI that read it keep working while
+there stops being exactly one of them. Non-enumerable because `save()` is a JSON
+round trip, and a `player` that serialised alongside the party would come back
+as a second, divergent copy of the same character.
+
+A save written before the party existed carries a plain `player` and no party;
+restoring one makes that character a party of one, and the next save is in the
+new shape.
+
+This comes before initiative, not after, on the evidence of a design review:
+ordering actors is not perceivable in a game with one actor. Measured on a
+working prototype, **no monster ever acted before the player — not once in 9,614
+swings** — because the game only advances on a keypress and the player's action
+always resolves first. Initiative pays once there is more than one of you.
+
 ### Saved adventurers
 
 The game keeps a **ledger**: one record per adventurer, not one save for the whole game. Rolling

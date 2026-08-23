@@ -88,6 +88,58 @@ export function initialStats(clsId) {
   return s;
 }
 
+/* THE PARTY.
+ *
+ * `state.player` stops being a field and becomes the character whose turn it
+ * is — an accessor onto the party — so the ninety-odd places in the engine and
+ * the seventeen in the UI that read it keep working unchanged while there
+ * stops being exactly one of them.
+ *
+ * It is deliberately NOT enumerable. save() is a JSON round trip of state, and
+ * a `player` that serialised alongside the party would come back as a second,
+ * divergent copy of the same character — the belt bug of Phase 0 all over
+ * again, one level up.
+ */
+export function installParty(state) {
+  if (!state.party || !Array.isArray(state.party.members)) {
+    state.party = { members: [], active: 0 };
+  }
+  if (!(state.party.active >= 0) || state.party.active >= state.party.members.length) {
+    state.party.active = 0;
+  }
+  Object.defineProperty(state, 'player', {
+    configurable: true,
+    enumerable: false,
+    get() {
+      const party = this.party;
+      if (!party || !party.members.length) return null;
+      return party.members[party.active] || null;
+    },
+    /* Assigning still works, because foundAdventurer does it: it fills the
+     * active slot rather than shadowing the accessor with a field. */
+    set(who) {
+      if (!this.party || !Array.isArray(this.party.members)) this.party = { members: [], active: 0 };
+      if (!this.party.members.length) this.party.members.push(who);
+      else this.party.members[this.party.active] = who;
+    },
+  });
+  return state;
+}
+
+/* Takes a state from anywhere — freshly built, restored from a save written
+ * today, or restored from one written before the party existed — and leaves it
+ * with a party and a working accessor. A save from before carries a plain
+ * `player` object and no party; that character becomes a party of one. */
+export function adoptParty(state) {
+  const own = Object.getOwnPropertyDescriptor(state, 'player');
+  const legacy = own && 'value' in own ? own.value : null;
+  if (own && 'value' in own) delete state.player;
+  if (!state.party || !Array.isArray(state.party.members)) {
+    state.party = { members: legacy ? [legacy] : [], active: 0 };
+  }
+  return installParty(state);
+}
+
 export function makePlayer(name, clsId, stats) {
   const c = CLASSES[clsId] || CLASSES.fighter;
   const rng = new RNG(hashSeed((name + ':' + clsId + ':' + JSON.stringify(stats)).toLowerCase()));
@@ -139,15 +191,15 @@ export class Game {
   }
 
   newState() {
-    this.state = {
+    this.state = adoptParty({
       version: 2,
       seed: (Math.random() + 1).toString(36).slice(2, 8),
-      player: null,
       created: Date.now(),
       totalKills: 0,
       floors: {},
       genVersion: GEN_VERSION,
-    };
+      party: { members: [], active: 0 },
+    });
   }
 
   /* ---- floor memory ----
@@ -2066,7 +2118,9 @@ export class Game {
   }
 
   restore(state) {
-    this.state = state;
+    /* Whatever shape it arrives in — a save written today, or one written
+     * before there was a party — comes out with a party and a live accessor. */
+    this.state = adoptParty(state);
     /* Saves written before floor memory existed simply have none. */
     if (!this.state.floors) this.state.floors = {};
     /* A floor memory says "monster 4 is dead" by index, which only means

@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, W, H } from '../public/js/mapgen.js';
 import { dist1 } from '../public/js/dice.js';
-import { newGame } from './helpers.mjs';
+import { newGame, legacyShape } from './helpers.mjs';
 
 function arena(g, tiles = {}) {
   const grid = Array.from({ length: H }, () => Array(W).fill(T.WALL));
@@ -367,7 +367,9 @@ test('an old save whose belt held objects still works', () => {
   const p = g.state.player;
   const it = potion();
   p.inventory.push(it);
-  const saved = JSON.parse(JSON.stringify(g.save()));
+  /* The shape a save had before the party existed: a plain `player` field and
+   * no party at all. Restoring one exercises both migrations at once. */
+  const saved = legacyShape(g.save());
   saved.player.belt = [JSON.parse(JSON.stringify(it)), null, null, null];   /* the old shape */
 
   const g2 = newGame('belt-legacy');
@@ -491,7 +493,7 @@ test('every value in p.buffs really is a countdown', () => {
 
 test('an old save without the new state loads and plays', () => {
   const g = newGame('legacy-buffs');
-  const save = JSON.parse(JSON.stringify(g.save()));
+  const save = legacyShape(g.save());
   delete save.player.buffLevels;
   delete save.player.beatsSeen;
   delete save.player.npcsMet;

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { T, W, H } from '../public/js/mapgen.js';
 import { CLASSES, DUNGEONS } from '../public/js/base.js';
 import { RNG } from '../public/js/rng.js';
-import { newGame, floorOf } from './helpers.mjs';
+import { newGame, floorOf, savedPlayer } from './helpers.mjs';
 
 function arena(g) {
   const grid = Array.from({ length: H }, () => Array(W).fill(T.WALL));
@@ -299,8 +299,8 @@ test('finding secrets comes from the ability too', () => {
 test('an existing character is credited when its class is shored up', () => {
   const g = newGame('credit', 'mage');
   const saved = JSON.parse(JSON.stringify(g.save()));
-  saved.player.maxhp = 12;          /* the old mage maximum */
-  saved.player.hp = 12;
+  savedPlayer(saved).maxhp = 12;    /* the old mage maximum */
+  savedPlayer(saved).hp = 12;
   const g2 = newGame('credit', 'mage');
   g2.restore(saved);
   assert.ok(g2.state.player.maxhp > 12,
@@ -322,5 +322,5 @@ test('using an ability is not forgotten on reload', () => {
   g.activateAbility(blast.id);
   assert.ok(p.power < before, 'casting cost nothing');
   const saved = JSON.parse(JSON.stringify(g.save()));
-  assert.ok(saved.player.power < before, 'the save does not reflect the cast');
+  assert.ok(savedPlayer(saved).power < before, 'the save does not reflect the cast');
 });

@@ -135,8 +135,14 @@ export function playable(store) {
  * Returns its id, or null if there was nothing to adopt. */
 export function adoptLegacySave(store, id, summary, now) {
   const old = readJSON(store, LEGACY_SLOT);
-  if (!old || !old.state || !old.state.player) return null;
-  const entry = summary || summarise(old.state.player);
+  if (!old || !old.state) return null;
+  /* Either shape: a lone `player`, which is what the old single slot held, or
+   * a party, in case one was ever written there. */
+  const who = old.state.party && Array.isArray(old.state.party.members)
+    ? old.state.party.members[old.state.party.active || 0]
+    : old.state.player;
+  if (!who) return null;
+  const entry = summary || summarise(who);
   rememberCharacter(store, id, old, entry, (old.saved) || now || 0);
   try { store.removeItem(LEGACY_SLOT); } catch { /* leave it, it is harmless */ }
   return id;
