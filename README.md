@@ -300,6 +300,28 @@ Witch-Spark used to hand a point of power back too; measured, a Mage with both e
 the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
 of the economy.
 
+### Loot, and water
+
+**Loot follows the descent too.** The item tables banded on the floor's index inside its own
+dungeon, took every table from the first one up, and reset the enchantment chance at each threshold
+— so the Temple's last floor averaged 67 gold an item and was 40% enchanted, and the very next floor
+a player walks averaged **21 gold and was 80% drawn from the dagger-and-mace table**. Four tables now
+slide across the twelve floors through a window two wide, one table per dungeon, with the mix
+shifting from the lower table to the upper one as the floors go by:
+
+```
+temple   1  2  3  4     upper  1  2  3  4     serpent  1   2   3   4
+        15 20 29 31            44 52 66 84            102 136 157 146   gold an item
+        12 17 21 20%           31 31 35 37%            43  47  54  49%  enchanted
+```
+
+**Water is shaped like a drowned warren.** It was sprinkled a tile at a time on a 3.5% roll — about
+eighteen isolated puddles on a floor, every one walkable around — which made wading's costs (the
+turn twice over, and everything within six tiles woken) something no one ever had to weigh. The
+drains run with it and the low rooms stand in it now, 10% of the floor rising to 17% as the tide
+comes in, and **some of what is worth having is lying in it**: `findSpot` only ever returned dry
+floor, so nothing in the game had ever been in the water and there was no reason to go in.
+
 ### The descent is one curve
 
 A dungeon's floors are numbered from the **start of the game**, not from the start of the dungeon.

@@ -667,8 +667,20 @@ export class Game {
       .sort((a, b) => a.tier - b.tier);
   }
 
+  /* WHAT IS LYING ON THE FLOOR.
+   *
+   * The same three faults the monster pool had, and the same three fixes. It
+   * banded on floorIdx, so every dungeon restarted the loot curve from
+   * daggers; it took pools 0..top cumulatively, so the starting kit stayed in
+   * the draw for ever; and the enchantment chance and size restarted too.
+   * Measured before this: the Temple's last floor averaged 67 gold an item and
+   * was 40% enchanted, and the Upper Reaches' first floor — the very next
+   * floor a player walks — averaged 21 gold and was 80% drawn from the
+   * dagger-and-mace table. */
   pickItem(floorIdx, rng) {
-    const tierChance = Math.min(0.65, 0.08 + floorIdx * 0.10 + rng.next() * 0.2);
+    const d = this.dungeonById(this.state.player.dungeonId) || {};
+    const depth = this.floorDepth(d, floorIdx);
+    const tierChance = Math.min(0.65, 0.08 + depth * 0.045 + rng.next() * 0.2);
     const pools = [
       /* potion-heal used to be in no pool at all — it survived only as a
        * fallback that could never fire, because the candidate list is never
@@ -678,19 +690,27 @@ export class Game {
       { arr: ['battle-axe', 'studded-armor', 'chainmail', 'large-shield', 'ring-strength', 'amulet-ward', 'potion-major-heal', 'scroll-reveal', 'scroll-flame', 'wand-of-fire'], max: 100 },
       { arr: ['two-handed-sword', 'scale-armor', 'plate', 'tower-shield', 'ring-arcana', 'amulet-seeing', 'amulet-luck', 'scroll-remove-curse', 'scroll-sanctuary', 'wand-of-healing', 'wand-of-frost'], max: 100 },
     ];
-    /* floorIdx maxes out at 3, so dividing by 1.5 capped this at pool 2 and the
-     * deepest table — Deep Ward, True Seeing, the Lucky Coin, Sanctuary — could
-     * never drop at all. Dungeon threat carries the deeper dungeons further. */
-    const threat = Math.max(0, (this.dungeonById(this.state.player.dungeonId) || {}).threat || 0);
-    const tier = Math.min(pools.length - 1, floorIdx + Math.floor(threat / 3));
-    const cands = pools.slice(0, tier + 1).flatMap((p) => p.arr);
+    /* Four tables across twelve floors, seen through a window two tables wide
+     * that slides one table per dungeon — so a dungeon opens on what the last
+     * one was ending with and closes on something new, and what you were
+     * finding three floors ago stops turning up. Within the window the mix
+     * shifts from the lower table to the upper one as the floors go by, so the
+     * step is a slope rather than a door. */
+    const SPAN = 4;
+    const bottom = Math.min(pools.length - 2, Math.floor(depth / SPAN));
+    const top = bottom + 1;
+    const through = Math.min(1, (depth % SPAN) / (SPAN - 1));
+    const cands = [];
+    for (let i = Math.round((1 - through) * 3) + 1; i > 0; i--) cands.push(...pools[bottom].arr);
+    for (let i = Math.round(through * 3) + 1; i > 0; i--) cands.push(...pools[top].arr);
     /* Generated items are drawn from the same table as hand-authored ones,
      * banded by their own tier so a tier-9 blade cannot turn up on floor one.
      * Without this, everything the Library made was unreachable. */
-    const depth = (tier + 1) * 2;
+    const reach = (top + 1) * 2;
     for (const it of this.registry.items || []) {
       if (!it || !it.id) continue;
-      if ((it.tier ?? 1) <= depth) cands.push(it.id);
+      const t = it.tier ?? 1;
+      if (t <= reach && t >= bottom) cands.push(it.id);
     }
     let tpl = this.itemTemplate(rng.pick(cands) || 'potion-heal');
     if (!tpl) tpl = this.itemTemplate('potion-heal');
@@ -701,7 +721,10 @@ export class Game {
      * SLOT is 'consumable' — so enchantment was landing on potions and scrolls,
      * producing a "+2 Potion of Superior Healing" carrying a useless acBonus. */
     if (rng.chance(magicChance) && it.slot !== 'consumable' && it.kind !== 'special') {
-      const mag = 1 + Math.floor(rng.next() * Math.min(3, 1 + floorIdx));
+      /* How big an enchantment can be also rides the whole descent: at one
+       * per dungeon it reset to "+1 only" every time you walked through a
+       * door. */
+      const mag = 1 + Math.floor(rng.next() * Math.min(4, 1 + Math.floor(depth / 3)));
       applyMagic(it, mag);
       if (rng.chance(0.15)) it.cursed = true;
     }
@@ -1008,7 +1031,7 @@ export class Game {
       [T.DOOR_O]: 'You stand in an open doorway.',
       [T.DEN]: 'Worn flagstones, scored by something heavy.',
       [T.ALTAR]: 'A cold altar stands here.',
-      [T.WATER]: 'Black water laps at your boots.',
+      [T.WATER]: 'Black water, deeper than it looks. Slow going, and it carries the sound.',
     };
     this.log(GROUND[floor.tiles[p.y][p.x]] || 'Bare stone underfoot — nothing to take here.');
 

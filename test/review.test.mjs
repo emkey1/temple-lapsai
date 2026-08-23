@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, W, H } from '../public/js/mapgen.js';
 import { dist1, dist8 } from '../public/js/dice.js';
-import { CLASSES } from '../public/js/base.js';
+import { CLASSES, DUNGEONS } from '../public/js/base.js';
 import { RNG } from '../public/js/rng.js';
 import { newGame, floorOf } from './helpers.mjs';
 
@@ -215,17 +215,40 @@ test('the deepest loot table can actually drop', () => {
    * holding the Deep Ward, True Seeing, the Lucky Coin and Sanctuary — three
    * of the effects this work wired up — was unreachable. */
   const g = newGame('deep-loot');
-  g.state.player.dungeonId = 'temple';
   const wanted = ['Ward', 'Seeing', 'Coin', 'Sanctuary'];
   const found = new Set();
-  for (let f = 0; f < 4; f++) {
-    for (let s = 0; s < 300; s++) {
-      const it = g.pickItem(f, new RNG(`deep-${f}-${s}`));
-      if (!it) continue;
-      for (const w of wanted) if (it.name.includes(w)) found.add(w);
+  /* Across the WHOLE descent, not one dungeon of it. The deepest table is
+   * endgame loot now — the Lucky Coin turning up on the Temple's second floor
+   * was part of why the dungeon after it felt like a step down. */
+  for (const d of DUNGEONS) {
+    g.state.player.dungeonId = d.id;
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < 200; s++) {
+        const it = g.pickItem(f, new RNG(`deep-${d.id}-${f}-${s}`));
+        if (!it) continue;
+        for (const w of wanted) if (it.name.includes(w)) found.add(w);
+      }
     }
   }
   assert.ok(found.size >= 3, `only ${[...found].join(', ') || 'nothing'} from the deepest table can ever drop`);
+});
+
+test('the deepest loot table does not drop in the first dungeon', () => {
+  /* The other half of the same property. Finding plate and a Lucky Coin on the
+   * Temple's last floor is why everything after it felt mundane: measured, the
+   * Upper Reaches' opening floor was 80% drawn from the dagger table and worth
+   * 21 gold an item against the Temple's closing 67. */
+  const g = newGame('shallow-loot');
+  g.state.player.dungeonId = 'temple';
+  const deep = ['Seeing', 'Coin', 'Sanctuary', 'Plate', 'Tower'];
+  const seen = [];
+  for (let f = 0; f < 4; f++) {
+    for (let s = 0; s < 300; s++) {
+      const it = g.pickItem(f, new RNG(`shallow-${f}-${s}`));
+      if (it && deep.some((w) => it.name.includes(w))) seen.push(it.name);
+    }
+  }
+  assert.equal(seen.length, 0, `the Temple can drop ${[...new Set(seen)].join(', ')}`);
 });
 
 /* ---- items and the belt ---- */

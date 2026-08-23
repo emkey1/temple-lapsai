@@ -82,14 +82,82 @@ function installDoors(grid, rng) {
   }
 }
 
-function populateWater(grid, rng, theme) {
+/* WATER SHAPED LIKE A DROWNED WARREN.
+ *
+ * It used to be sprinkled a tile at a time on a 3.5% roll — about eighteen
+ * isolated puddles on a floor, every one of them walkable around, in a dungeon
+ * whose whole conceit is that the tide comes in twice a day. Sparse, and
+ * therefore pointless: wading costs the turn twice over and wakes whatever is
+ * within six tiles, and none of that is a decision if you can step past it.
+ *
+ * The drains run with it and the low rooms stand in it, and there is more of
+ * it the deeper you go. */
+function populateWater(grid, rng, theme, rooms, floorIdx, den, cache) {
   if (theme !== 'sewers') return;
+  const inRect = (r, x, y) => r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  /* Only plain floor floods, which spares the stairs, the doors and the altar
+   * by their tile types; the den and the cache are spared by name. */
+  const dry = (x, y) => grid[y][x] !== T.FLOOR ||
+    (den && x >= den.x - 1 && x < den.x + den.w + 1 && y >= den.y - 1 && y < den.y + den.h + 1) ||
+    inRect(cache, x, y);
+  const inAnyRoom = (x, y) => rooms.some((r) => inRect(r, x, y));
+
+  /* THE DRAINS. A channel along a corridor is the decision the whole feature
+   * exists for: wade it, slowly and loudly, or walk the long way round. */
+  const corridors = [];
   for (let y = 1; y < H - 1; y++) {
-    for (let x = 1; x < W - 1; x++) {
-      if (grid[y][x] === T.DOOR_C || grid[y][x] === T.SECRET) continue;
-      if (grid[y][x] === T.FLOOR && rng.chance(0.035)) grid[y][x] = T.WATER;
+    for (let x = 1; x < W - 1; x++) if (!dry(x, y) && !inAnyRoom(x, y)) corridors.push([x, y]);
+  }
+  /* Deeper is wetter: the floors themselves grow with depth, so the number of
+   * drains has to grow faster than they do or the warren dries out as you
+   * descend. */
+  const channels = 3 + floorIdx + rng.int(0, 2);
+  for (let c = 0; c < channels && corridors.length; c++) {
+    const queue = [corridors[rng.int(0, corridors.length - 1)]];
+    const seen = new Set([queue[0][1] * W + queue[0][0]]);
+    let run = 8 + floorIdx * 2 + rng.int(0, 12);
+    while (queue.length && run > 0) {
+      const [x, y] = queue.shift();
+      if (dry(x, y) || inAnyRoom(x, y)) continue;
+      grid[y][x] = T.WATER;
+      run--;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1) continue;
+        const k = ny * W + nx;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        queue.push([nx, ny]);
+      }
     }
   }
+
+  /* STANDING POOLS, with a dry rim so a flooded room is still a room and the
+   * doorways into it stay walkable. */
+  for (const r of rooms) {
+    if (r.w < 5 || r.h < 4) continue;
+    if (!rng.chance(0.35 + floorIdx * 0.12)) continue;
+    const px = r.x + 1 + rng.int(0, Math.max(0, r.w - 4));
+    const py = r.y + 1 + rng.int(0, Math.max(0, r.h - 3));
+    const pw = Math.max(1, Math.min(r.x + r.w - 1 - px, 2 + rng.int(0, 3)));
+    const ph = Math.max(1, Math.min(r.y + r.h - 1 - py, 1 + rng.int(0, 2)));
+    for (let y = py; y < py + ph; y++) {
+      for (let x = px; x < px + pw; x++) if (!dry(x, y)) grid[y][x] = T.WATER;
+    }
+  }
+}
+
+/* Somewhere wet to put something worth wading for. */
+function findWetSpot(grid, rng, up, clearDist) {
+  const wet = [];
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (grid[y][x] !== T.WATER) continue;
+      if (Math.abs(x - up.x) + Math.abs(y - up.y) < clearDist) continue;
+      wet.push({ x, y });
+    }
+  }
+  return wet.length ? wet[rng.int(0, wet.length - 1)] : null;
 }
 
 function cx(r) { return r.x + Math.floor(r.w / 2); }
@@ -98,7 +166,7 @@ function cy(r) { return r.y + Math.floor(r.h / 2); }
 /* Bumped whenever the generator changes shape or its rng draws move. Floor
  * memories record "monster 4 is dead" by index, so they are only meaningful
  * against the generator that produced them. */
-export const GEN_VERSION = 4;
+export const GEN_VERSION = 5;
 
 const CACHE = 3;   /* a hidden cache is CACHE x CACHE */
 
@@ -346,7 +414,7 @@ export function generateFloor(opts) {
   repairConnectivity(grid, rooms, up, rng, den);
 
   const cache = installHiddenCache(grid, rooms, rng, den);
-  populateWater(grid, rng, dungeon.theme);
+  populateWater(grid, rng, dungeon.theme, rooms, floorIdx, den, cache);
 
   const threat = dungeon.threat || 0;
   const monsterPool = opts.monsterPool && opts.monsterPool.length ? opts.monsterPool : null;
@@ -377,7 +445,13 @@ export function generateFloor(opts) {
   for (let i = 0; i < itemCount; i++) {
     const it = opts.pickItem ? opts.pickItem(floorIdx, rng) : null;
     if (!it) continue;
-    const pos = findSpot(grid, rooms, up, rng, 3, den);
+    /* Some of what is on the floor is IN the water, which is the other half of
+     * making water matter: wading is slow and loud, so a thing lying in the
+     * drain is a wager rather than a detour. The same items, not extra ones —
+     * this is a decision, not a bonus. Nothing is placed anywhere the player
+     * cannot see it from dry land, since it has to be a choice you can make. */
+    const wet = rng.chance(0.3) ? findWetSpot(grid, rng, up, 3) : null;
+    const pos = wet || findSpot(grid, rooms, up, rng, 3, den);
     if (!pos) continue;
     items.push({ i: it, x: pos.x, y: pos.y, auto: it.kind === 'special' });
   }
