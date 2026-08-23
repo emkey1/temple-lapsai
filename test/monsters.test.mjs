@@ -99,3 +99,80 @@ test('a monster at your heels does bar the stairs', () => {
   g.stepOn(p.x, p.y);
   assert.equal(p.floorIdx, before, 'walked downstairs with a monster adjacent');
 });
+
+/* ---- what a monster did with its turn ----
+ *
+ * The turn loop used to work out whether a monster had attacked by watching
+ * whether it had MOVED — which reads a missed swing and a blocked corridor as
+ * the same event, and is the first thing to break once a creature can strike
+ * more than once in a turn. monsterAct says what it did.
+ */
+
+/* An open room with the player at one end, so distances are what they look. */
+function arena(g) {
+  partitionedFloor(g);
+  for (let y = 5; y < 20; y++) g.currentFloor.tiles[y][20] = T.FLOOR;
+  return g.currentFloor;
+}
+
+test('a monster in reach strikes, and says so', () => {
+  const g = newGame('act-strike');
+  const floor = arena(g);
+  const p = g.state.player;
+  const m = beast(p.x + 1, p.y);
+  floor.monsters = [m];
+  assert.equal(g.monsterAct(m, true, g.derived(), g.playerDistanceField()), 'strike');
+});
+
+test('a missed swing is still a strike, not a monster standing still', () => {
+  const g = newGame('act-miss');
+  const floor = arena(g);
+  const p = g.state.player;
+  const m = beast(p.x + 1, p.y);
+  floor.monsters = [m];
+  m.toHit = -100;          /* it cannot possibly land */
+  const before = { x: m.x, y: m.y };
+  const did = g.monsterAct(m, true, g.derived(), g.playerDistanceField());
+  assert.equal(did, 'strike', 'a miss read as "did nothing"');
+  assert.deepEqual({ x: m.x, y: m.y }, before);
+});
+
+test('a monster with somewhere to go steps, and one hemmed in does nothing', () => {
+  const g = newGame('act-step');
+  const floor = arena(g);
+  const p = g.state.player;
+  const m = beast(p.x + 4, p.y);
+  floor.monsters = [m];
+  assert.equal(g.monsterAct(m, true, g.derived(), g.playerDistanceField()), 'step');
+
+  /* Wall it in on every side and it has nothing to do. */
+  const boxed = beast(p.x + 8, p.y + 5);
+  floor.monsters = [boxed];
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    g.currentFloor.tiles[boxed.y + dy][boxed.x + dx] = T.WALL;
+  }
+  assert.equal(g.monsterAct(boxed, true, g.derived(), g.playerDistanceField()), 'nothing');
+});
+
+test('speed buys ground and never a second blow', () => {
+  /* A fast thing closes sooner. It does not get to strike twice, and the loop
+   * that grants it its extra steps has to stop the moment it swings. */
+  const g = newGame('act-speed');
+  const floor = arena(g);
+  const p = g.state.player;
+  p.hp = 500;
+  const hp = p.hp;
+  const m = beast(p.x + 1, p.y);
+  m.t = { ...m.t, speed: 4 };
+  m.toHit = 100;           /* it cannot possibly miss */
+  m.revealed = true; m.lastSeen = g.turn;
+  floor.monsters = [m];
+  g.logs.length = 0;
+  g.resolveMonsters();
+  /* Counted off the log rather than off the damage: rollDamage floors the die
+   * at a d2, so one blow can take two hit points and arithmetic cannot tell
+   * one blow from two. */
+  const blows = g.logs.filter((l) => /hits you for/.test(l)).length;
+  assert.equal(blows, 1, `a speed 4 monster landed ${blows} blows in one turn`);
+  assert.ok(hp - p.hp > 0, 'it did not attack at all');
+});

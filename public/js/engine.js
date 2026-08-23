@@ -1269,42 +1269,43 @@ export class Game {
       m.acted = true;
       /* Monster speed (1-4) was carried on every template and never used.
        * Speed buys GROUND, not blows: a fast thing closes sooner, but nothing
-       * gets to strike twice in one turn. */
-      const acts = Math.max(1, Math.min(4, m.t.speed || 1));
-      for (let i = 0; i < acts; i++) {
-        const before = p.hp;
-        const wasAt = { x: m.x, y: m.y };
-        this.monsterAct(m, seen, der, field);
+       * gets to strike twice in one turn. So it keeps going only while it is
+       * STEPPING, and stops the moment it strikes or finds nowhere to go. */
+      const steps = Math.max(1, Math.min(4, m.t.speed || 1));
+      for (let i = 0; i < steps; i++) {
+        const did = this.monsterAct(m, seen, der, field);
         if (this.dying) return;
         if (m.hp <= 0) break;
-        /* It attacked if it did not move — melee, ranged or a missed swing. */
-        if (m.x === wasAt.x && m.y === wasAt.y) break;
-        if (p.hp !== before) break;
+        if (did !== 'step') break;
       }
     }
   }
 
+  /* Says what it DID: 'strike', 'step' or 'nothing'. The caller used to work
+   * that out by watching whether the thing had moved — which read a missed
+   * swing and a blocked corridor as the same event, and is the first thing to
+   * break once a creature can strike more than once in a turn. */
   monsterAct(m, seen, der, field) {
     const p = this.state.player;
     const dist = dist1(m, p);
     const range = m.t.aggroRange || 8;
     const isRanged = m.t.props && m.t.props.some((x) => x === 'ranged');
-    if (!m.aggro) return;
+    if (!m.aggro) return 'nothing';
     if (dist8(m, p) <= 1) {
       this.monsterMelee(m);
-      return;
+      return 'strike';
     }
     if (isRanged && seen && dist <= 12) {
       this.monsterRanged(m);
-      return;
+      return 'strike';
     }
     if (m.fleeing) {
-      this.monsterFlee(m);
-      return;
+      return this.monsterFlee(m) ? 'step' : 'nothing';
     }
     if (dist <= range || seen) {
-      this.monsterChase(m, field);
+      return this.monsterChase(m, field) ? 'step' : 'nothing';
     }
+    return 'nothing';
   }
 
   monsterMelee(m) {
@@ -1353,7 +1354,9 @@ export class Game {
       if (floor.monsters.some((o) => o !== m && o.hp > 0 && o.x === nx && o.y === ny)) continue;
       bestD = d; best = [nx, ny];
     }
-    if (best) { m.x = best[0]; m.y = best[1]; }
+    if (!best) return false;
+    m.x = best[0]; m.y = best[1];
+    return true;
   }
 
   monsterFlee(m) {
@@ -1369,8 +1372,9 @@ export class Game {
       if (floor.monsters.some((o) => o !== m && o.x === nx && o.y === ny)) continue;
       m.x = nx; m.y = ny;
       if (dist1(m, p) > 10) { m.aggro = false; m.fleeing = false; m.revealed = false; }
-      return;
+      return true;
     }
+    return false;
   }
 
   damagePlayer(dmg, m) {
