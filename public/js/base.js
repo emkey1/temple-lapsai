@@ -174,11 +174,17 @@ export function healFractionForItem(it) {
 export function healFractionForAbility(a) {
   if (!a) return 0;
   if (Number.isFinite(a.healFraction)) return a.healFraction;
-  /* A power that costs nothing and waits for nothing is already unlimited, and
-   * a floor tied to your maximum health would make it unlosable. The Library
-   * can write one — validateAbility defaults both powerCost and cooldown to
-   * zero — so a free heal keeps its flat dice and stays a minor thing. */
-  if (!(a.powerCost > 0) && !(a.cooldown > 0)) return 0;
+  /* A power that is not rationed is already unlimited, and a floor tied to your
+   * maximum health would make it unlosable. The Library can write one —
+   * validateAbility defaults both powerCost and cooldown to zero — so an
+   * unrationed heal keeps its flat dice and stays a minor thing.
+   *
+   * The brakes have to be real ones. A cooldown of 1 is not: activateAbility
+   * sets the counter and then ends the turn, and tickStatus decrements it on
+   * that same turn, so it is back to zero before you next press the key. And a
+   * power costing 1 out of a pool of twenty is twenty castings, which inside a
+   * single fight is no ration at all. */
+  if (!(a.powerCost >= 3) && !(a.cooldown >= 2)) return 0;
   return HEAL_FLOORS.writtenPower;
 }
 
@@ -246,11 +252,11 @@ export const MONSTERS = [
   M('fire-elemental', 'Fire Elemental', 'E', 9, 60, 3, 6, '2d8', 340, 50, 100, [], 'Heat given appetite. It feeds on what you burn.'),
   M('ettin', 'Ettin', 'E', 10, 90, 4, 7, '3d6', 420, 90, 170, ['intelligent'], 'Two heads, four fists, one shared hatred of doors.'),
   M('stone-giant', 'Stone Giant', 'N', 10, 96, 4, 7, '3d6', 450, 100, 190, [], 'Ancient mountain-bones wrapped in patience.'),
-  M('gorgon', 'Gorgon', 'n', 11, 100, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
-  M('umber-hulk', 'Umber Hulk', 'U', 11, 102, 3, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
-  M('dracolisk', 'Dracolisk', 'D', 11, 108, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
-  M('great-wyrm', 'Great Wyrm', 'd', 12, 140, 2, 9, '4d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
-  M('lapsai-demon', 'Demon of Lapsai', '&', 13, 170, 1, 10, '4d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed.'),
+  M('gorgon', 'Gorgon', 'n', 11, 82, 3, 7, '3d8', 520, 120, 220, ['ranged'], 'An iron bull whose breath turns flesh to marble.'),
+  M('umber-hulk', 'Umber Hulk', 'U', 11, 62, 4, 8, '3d6', 540, 130, 240, [], 'A burrowing gut of a beast guided by antennae.'),
+  M('dracolisk', 'Dracolisk', 'D', 11, 82, 3, 8, '3d8', 580, 140, 260, ['poison'], 'Dragon by blood, basilisk by nature. The worst of both.'),
+  M('great-wyrm', 'Great Wyrm', 'd', 12, 110, 3, 9, '3d6', 800, 200, 400, ['flying', 'ranged'], 'The old serpent of the deep sanctum, crowned with rusted gold.'),
+  M('lapsai-demon', 'Demon of Lapsai', '&', 13, 57, 4, 8, '2d6', 1200, 300, 600, ['cursed', 'undead'], 'The hungering god of the temple, woken to feed.'),
 ];
 
 export function getMonster(id) {

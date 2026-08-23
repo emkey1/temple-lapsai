@@ -211,6 +211,27 @@ idea reaching the things you carry.
 Every item and power prints what it will actually mend, resolved against your own health, so the
 card and the engine cannot disagree.
 
+### Bosses
+
+A boss is exactly the creature on its card, scaled by depth like everything
+else. It used to be given a silent **4x hit points** on top of that, on top of a
+card that was already the biggest in the bestiary: the Demon of Lapsai arrived
+with **1,129 hit points** — twenty-two times the toughest ordinary monster
+standing on the same floor — against a level 6 character dealing about two
+damage a turn. Measured over 720 duels, every class, every level up to 15, in
+the best kit the game can hand you: nobody ever won, once.
+
+Measured now, 60 duels a cell, in the kit each dungeon can supply:
+
+| boss | at level | fighter | thief | cleric |
+| --- | --- | --- | --- | --- |
+| Demon of Lapsai (Temple) | 5 / 6 / 7 | 57% / 60% / 98% | 82% / 78% / 98% | 40% / 38% / 88% |
+| Umber Hulk (Upper Reaches) | 8 / 9 / 10 | 67% / 72% / 93% | 55% / 75% / 90% | 43% / 37% / 55% |
+| Great Wyrm (Serpent) | 11 / 12 / 13 | 32% / 30% / 82% | 55% / 43% / 85% | 8% / 12% / 53% |
+
+Each boss is a real fight that levelling wins. The Mage is the known gap — its
+power is a fixed pool, and once it is spent the Mage is swinging a stick.
+
 ### Reading the map
 
 Colour is not decoration. Everything alive is drawn in the red family, tinted by tier — dull rust

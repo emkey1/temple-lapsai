@@ -15,6 +15,7 @@ import {
   getItemTemplate, ABILITIES, HEAL_FLOORS,
   healFractionForItem, healFractionForAbility, healthShare,
 } from '../public/js/base.js';
+import * as base from '../public/js/base.js';
 import { itemDescription, abilityHealNote } from '../public/js/describe.js';
 import { deepItem, evaluateDice } from '../public/js/dice.js';
 import { validateEffects, validateAbility, validateItem } from '../lib/expansion.js';
@@ -166,6 +167,20 @@ test('a power that costs nothing and waits for nothing gets no floor at all', ()
   assert.ok(healFractionForAbility(paid) > 0, 'a power that costs something should scale');
 });
 
+test('the brakes on a written heal have to be brakes that exist in play', () => {
+  /* A cooldown of 1 never skips a turn: activateAbility sets the counter and
+   * ends the turn, and tickStatus decrements it on that same turn. A power
+   * costing 1 out of a pool of twenty is not a ration either. */
+  const base = { kind: 'heal', level: 4, powerCost: 0, cooldown: 0 };
+  assert.equal(healFractionForAbility({ ...base, cooldown: 1 }), 0, 'a cooldown of 1 counted as a brake');
+  assert.equal(healFractionForAbility({ ...base, powerCost: 1 }), 0, 'one power counted as a ration');
+  assert.ok(healFractionForAbility({ ...base, cooldown: 2 }) > 0);
+  assert.ok(healFractionForAbility({ ...base, powerCost: 3 }) > 0);
+  for (const a of ABILITIES.filter((x) => x.kind === 'heal')) {
+    assert.ok(healFractionForAbility(a) > 0, `${a.name} lost its floor to the brake test`);
+  }
+});
+
 /* ---- what the Library writes ---- */
 
 test('a written potion heals what it was written to heal', () => {
@@ -216,7 +231,7 @@ test('power means two different things, and only one of them takes dice', () => 
 });
 
 test('a written healing wand is not thirty charges of a fifth of you', () => {
-  assert.equal(validateEffects({ spell: 'heal', charges: 30 }).charges, 12);
+  assert.equal(validateEffects({ spell: 'heal', charges: 30 }).charges, 8);
   assert.equal(validateEffects({ spell: 'firebolt', charges: 30 }).charges, 30, 'the cap leaked onto every wand');
 });
 
@@ -261,4 +276,50 @@ test('but the first trip to a new depth still buys you a breath', () => {
   p.hp = 4;
   g.loadFloor(1);
   assert.ok(p.hp > 4, 'arriving somewhere new at four hit points is an automatic death');
+});
+
+/* ---- the boss ----
+ *
+ * scaledMonster gave a boss FOUR TIMES the hit points on its card, on top of
+ * depth scaling and on top of a card that was already the biggest in the
+ * bestiary. The Demon of Lapsai arrived with 1129 hit points against a level 7
+ * character dealing about two damage a turn: measured over 720 duels, across
+ * every class, at every level to 15, in the best kit in the game, nobody ever
+ * won once. The player who reported it had died "probably a dozen times".
+ */
+
+test('a boss is a hard fight, not a wall', () => {
+  const { DUNGEONS } = base;
+  for (const d of DUNGEONS) {
+    const g = newGame(`boss-scale-${d.id}`, 'fighter');
+    g.state.player.dungeonId = d.id;
+    g.loadFloor(d.floors - 1);
+    const floor = g.currentFloor;
+    const boss = floor.monsters.find((m) => m.boss);
+    assert.ok(boss, `${d.id} has no boss`);
+    const ordinary = floor.monsters.filter((m) => !m.boss);
+    const toughest = ordinary.reduce((a, m) => Math.max(a, m.maxhp), 0);
+
+    /* Big enough to be the boss, small enough to be a fight. Before this the
+     * Demon was twenty-two times the toughest thing standing beside it. */
+    assert.ok(boss.maxhp > toughest, `${d.id}: the boss is smaller than the trash around it`);
+    assert.ok(boss.maxhp <= toughest * 6,
+      `${d.id}: boss has ${boss.maxhp} hp against ${toughest} for the toughest ordinary monster on the floor`);
+    assert.ok(boss.maxhp < 260, `${d.id}: a ${boss.maxhp} hp boss is a war of attrition, not a fight`);
+  }
+});
+
+test('a boss gets no hidden multiplier the bestiary does not show', () => {
+  /* The card is the contract: what it says is what spawns, scaled by depth
+   * alone. A silent 4x is how 170 became 1129 without anything to read. */
+  for (const d of base.DUNGEONS) {
+    const g = newGame(`boss-card-${d.id}`, 'fighter');
+    g.state.player.dungeonId = d.id;
+    g.loadFloor(d.floors - 1);
+    const boss = g.currentFloor.monsters.find((m) => m.boss);
+    const card = base.getMonster(d.bossId);
+    const depth = 1 + (d.floors - 1) * 0.22 + Math.max(0, d.threat || 0) * 0.06;
+    assert.equal(boss.maxhp, Math.round(card.hpMax * depth),
+      `${d.id}: spawned with ${boss.maxhp} hp from a card that says ${card.hpMax}`);
+  }
 });

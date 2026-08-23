@@ -436,8 +436,15 @@ function scaledMonster(t, pos, threat, floorIdx, boss) {
   /* Depth decides how tough a monster is, not the player's level — scaling on
    * dLevel meant every level-up inflated every monster you had yet to meet. */
   const mul = 1 + floorIdx * 0.22 + Math.max(0, threat) * 0.06;
-  const hp = Math.max(1, Math.round((t.hpMax || 8) * mul * (boss ? 4 : 1)));
-  const dmgBonus = ((t.damage && t.damage.bonus) || 0) + Math.floor(floorIdx / 2) + (boss ? 1 : 0);
+  /* A boss used to be given FOUR TIMES the hit points on its card, on top of
+   * depth scaling and on top of a card that was already the biggest in the
+   * bestiary. The Demon of Lapsai arrived with 1129 hit points — twenty-two
+   * times anything else standing on that floor — against a level 7 character
+   * dealing about two damage a turn. Measured over 720 duels across every
+   * class, at every level up to 15, in the best kit in the game: no one ever
+   * won, once. The bosses are big because their cards are big. */
+  const hp = Math.max(1, Math.round((t.hpMax || 8) * mul));
+  const dmgBonus = ((t.damage && t.damage.bonus) || 0) + Math.floor(floorIdx / 2);
   return {
     t,
     x: pos.x, y: pos.y,
