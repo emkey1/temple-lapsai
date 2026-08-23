@@ -37,8 +37,8 @@ export const CLASSES = {
     powerBase: 8,
     toHitBonus: 1,
     acBonus: 2,
-    dmgBonus: 0,
-    critBonus: 0.15,
+    dmgBonus: 1,
+    critBonus: 0.05,   /* the other 10% comes from Sharp & Keen, which now grants it */
     goldMul: 1.5,
     statAdj: { str: 0, dex: 2, con: 0, int: 1, wis: 0, cha: 0 },
     weapon: 'Short Sword',
@@ -49,7 +49,7 @@ export const CLASSES = {
     glyph: 'M',
     desc: 'Reader of the forbidden pages. Frail of frame, terrible of intent.',
     hpDie: 6,
-    hpBase: 7,
+    hpBase: 10,
     powerBase: 16,
     toHitBonus: 0,
     acBonus: 0,
@@ -57,7 +57,9 @@ export const CLASSES = {
     critBonus: 0.05,
     goldMul: 1.0,
     powerPerInt: 1,
-    statAdj: { str: -1, dex: 0, con: -1, int: 2, wis: 1, cha: 0 },
+    /* Was str -1 and con -1, which stacked a damage penalty on top of the
+     * lowest hit points and the worst armour in the game. */
+    statAdj: { str: 0, dex: 0, con: 0, int: 2, wis: 1, cha: 0 },
     weapon: 'Staff',
   },
   cleric: {
@@ -87,7 +89,7 @@ export const ABILITIES = [
   { cls: 'fighter', level: 9, id: 'whirlwind', name: 'Whirlwind', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 6, bonus: 3, dice: 2, n: 'str' }, description: 'A dance of death: deal 2d6+STR to every foe around you.' },
 
   /* Thief */
-  { cls: 'thief', level: 1, id: 'sharp-keen', name: 'Sharp & Keen', kind: 'passive', description: '+15% chance to critically wound; you spot secret doors from nearer.' },
+  { cls: 'thief', level: 1, id: 'sharp-keen', name: 'Sharp & Keen', kind: 'passive', critBonus: 0.10, findsSecrets: true, description: 'You strike where it tells: +10% to wound critically, and your hands find seams other people walk past.' },
   { cls: 'thief', level: 3, id: 'backstab', name: 'Backstab', kind: 'damage', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 4, dice: 1 }, description: 'Find the unguarded flank: deal 1d6+4 to a foe and vanish one tile.' },
   { cls: 'thief', level: 6, id: 'shadow-blink', name: 'Shadow Blink', kind: 'teleport', powerCost: 5, cooldown: 4, teleportRng: 6, description: 'Fold into the dark and reappear up to 6 tiles away. Monsters lose your trail.' },
   { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
@@ -121,10 +123,6 @@ export function abilityMod(v) { return Math.floor((v - 10) / 2); }
  * dungeon's four floors are worth roughly four levels: 150, 450, 900, 1500 …
  * against ~150 XP on floor one rising to ~2900 with the boss on floor four. */
 export const XP_FOR_LEVEL = (lvl) => Math.floor(150 * (lvl * (lvl + 1) / 2));
-
-export function classKillBonus(clsId, xp) {
-  return Math.round(xp * (clsId === 'thief' ? 1.0 : 1.0));
-}
 
 /* ---------------- Monsters ---------------- */
 

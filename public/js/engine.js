@@ -4,7 +4,7 @@
  */
 import { RNG, hashSeed } from './rng.js';
 import {
-  CLASSES, getAbility, abilityMod, XP_FOR_LEVEL, classKillBonus,
+  CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
   scaleDice, randomTreasureValue, getDungeon,
 } from './base.js';
@@ -32,6 +32,15 @@ const AGGRO_MEMORY = 12;
 /* How much a Potion of Titan's Grip actually adds while it lasts. The potion
  * set a countdown that nothing ever read. */
 const STRENGTH_BUFF = 4;
+
+/* Recovery. Nothing in v1 came back: health regenerated only from a ring, and
+ * power never regenerated at all, so a spent caster stayed spent for the rest
+ * of the run. Out of combat both come back, slowly, which is what makes
+ * retreating a tactic instead of a longer death. */
+const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
+const HP_REGEN_FRACTION = 0.02;
+const PWR_REGEN_FRACTION = 0.045;
+const DESCENT_RECOVERY = 0.15;  /* stairs are a breather, not a bed */
 
 /* ---------------- Character creation ---------------- */
 
@@ -82,6 +91,7 @@ export function makePlayer(name, clsId, stats) {
     visitedDungeons: {},
     beatsSeen: {},
     npcsMet: {},
+    deepest: {},
   };
 }
 
@@ -287,7 +297,9 @@ export class Game {
      * Fighter's +1 the instant they picked up a sword. */
     if (eqWeapon) dmg = { dice: eqWeapon.dice, sides: eqWeapon.sides, bonus: (eqWeapon.bonus || 0) + abilityMod(eff.str) + c.dmgBonus };
     dmg.bonus += Math.floor((p.level - 1) / 3);
-    if (p.cls === 'thief') crit = Math.max(crit, 0.15);
+    /* Granted by the ABILITY, not by the class name — the passive previously
+     * gave nothing that lacking it would have taken away. */
+    for (const a of this.passives()) if (a.critBonus) crit += a.critBonus;
     let maxp = c.powerBase + this.equipmentPower();
     if (c.powerPerInt) maxp += abilityMod(eff.int);
     if (c.powerPerChr) maxp += abilityMod(eff.cha);
@@ -338,6 +350,14 @@ export class Game {
     return this.state.player;
   }
 
+  /* The Thief's 1.5x was declared on the class and read by nothing. It is the
+   * half of that class's identity that survives into a game with a town. */
+  goldMul() {
+    const p = this.state.player;
+    const c = (p && CLASSES[p.cls]) || CLASSES.fighter;
+    return c.goldMul || 1;
+  }
+
   maxHp() {
     const p = this.state.player;
     const c = CLASSES[p.cls] || CLASSES.fighter;
@@ -377,9 +397,14 @@ export class Game {
     const pool = this.resolveMonsterPool(d, floorIdx);
     const npcs = npcsForDungeonFloor(d.id, floorIdx);
     const floor = generateFloor({
+      /* Without this every character ever rolled walked the same twelve floors:
+       * generateFloor falls back to hashSeed("temple:0") and the engine never
+       * passed anything else. */
+      seed: hashSeed(this.state.seed + ':' + d.id + ':' + floorIdx),
       dungeon: d, floorIdx, state: this.state,
       monsterPool: pool, boss, npcs,
       pickItem: (fi, rng) => this.pickItem(fi, rng),
+      pickConsumable: (fi, rng) => this.pickConsumable(fi, rng),
       makeTreasure: (fi, rng) => this.makeTreasure(fi, rng),
     });
     if (boss && p.bossesSlain[d.id] && floor.monsters) {
@@ -391,6 +416,8 @@ export class Game {
     p.x = floor.up.x;
     p.y = floor.up.y;
     p.pending = undefined;
+    if (!p.deepest) p.deepest = {};
+    p.deepest[d.id] = Math.max(p.deepest[d.id] || 0, floorIdx);
     this.seen = Array.from({ length: H }, () => Array(W).fill(false));
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
     this.restoreSeen(memo);   /* the map you drew stays drawn */
@@ -399,6 +426,11 @@ export class Game {
     this.fireBeats('enter', floorIdx);
     if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
     if (this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
+    /* A flight of stairs is worth a breath, so arriving on a new floor at two
+     * hit points is not an automatic death. */
+    const der = this.derived();
+    p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.round(p.maxhp * DESCENT_RECOVERY)));
+    p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
@@ -417,16 +449,26 @@ export class Game {
       templates = monstersForFloor(floorIdx, d.threat || 0).map((x) => x.m);
     }
     const sorted = [...templates].sort((a, b) => a.tier - b.tier);
-    const share = Math.min(1, 0.3 + floorIdx * 0.25);
-    const cut = Math.max(1, Math.ceil(sorted.length * share));
-    return cut >= sorted.length ? sorted : sorted.slice(0, cut);
+    /* Open the pool by TIER, not by a fraction of the list. Opening by fraction
+     * ignores gaps in a bestiary, so wherever a dungeon's roster jumps — the
+     * Temple's leap from tier 3 to tier 6, the Upper Reaches' from 5 to 11 —
+     * a whole band of monsters arrived on one floor and built a wall there. */
+    const threat = d.threat || 0;
+    const ceiling = threat + 2 + floorIdx * 2;
+    const inBand = sorted.filter((m) => m.tier <= ceiling);
+    /* A dungeon whose roster is entirely above the band still needs something
+     * to put on the floor: take the gentlest few it has. */
+    return inBand.length >= 3 ? inBand : sorted.slice(0, Math.min(3, sorted.length));
   }
 
   pickItem(floorIdx, rng) {
     const tierChance = Math.min(0.65, 0.08 + floorIdx * 0.10 + rng.next() * 0.2);
     const pools = [
-      { arr: ['dagger', 'short-sword', 'mace', 'staff', 'hand-axe'], max: 2 },
-      { arr: ['broadsword', 'war-hammer', 'padded-armor', 'leather-armor', 'small-shield', 'ring-protection'], max: 3 },
+      /* potion-heal used to be in no pool at all — it survived only as a
+       * fallback that could never fire, because the candidate list is never
+       * empty. The whole shipped game therefore held ONE healing item. */
+      { arr: ['dagger', 'short-sword', 'mace', 'staff', 'hand-axe', 'potion-heal', 'potion-heal'], max: 2 },
+      { arr: ['broadsword', 'war-hammer', 'padded-armor', 'leather-armor', 'small-shield', 'ring-protection', 'potion-heal', 'potion-power'], max: 3 },
       { arr: ['battle-axe', 'studded-armor', 'chainmail', 'large-shield', 'ring-strength', 'amulet-ward', 'potion-major-heal', 'scroll-reveal', 'scroll-flame', 'wand-of-fire'], max: 100 },
       { arr: ['two-handed-sword', 'scale-armor', 'plate', 'tower-shield', 'ring-arcana', 'amulet-seeing', 'amulet-luck', 'scroll-remove-curse', 'scroll-sanctuary', 'wand-of-healing', 'wand-of-frost'], max: 100 },
     ];
@@ -449,12 +491,25 @@ export class Game {
     const it = deepItem(tpl);
     const topTier = tpl.tier >= 3;
     const magicChance = tierChance + (topTier ? 0.12 : 0);
-    if (rng.chance(magicChance) && it.kind !== 'consumable' && it.kind !== 'special') {
+    /* The guard tested `kind`, but a potion's kind is 'potion' and only its
+     * SLOT is 'consumable' — so enchantment was landing on potions and scrolls,
+     * producing a "+2 Potion of Superior Healing" carrying a useless acBonus. */
+    if (rng.chance(magicChance) && it.slot !== 'consumable' && it.kind !== 'special') {
       const mag = 1 + Math.floor(rng.next() * Math.min(3, 1 + floorIdx));
       applyMagic(it, mag);
       if (rng.chance(0.15)) it.cursed = true;
     }
     return it;
+  }
+
+  /* A floor that rolls no consumable at all is a floor you can only leave by
+   * dying. One is guaranteed; the rest is chance. */
+  pickConsumable(floorIdx, rng) {
+    const shallow = ['potion-heal', 'potion-heal', 'potion-power'];
+    const deep = ['potion-heal', 'potion-major-heal', 'potion-power', 'scroll-sanctuary'];
+    const pool = floorIdx >= 2 ? deep : shallow;
+    const tpl = this.itemTemplate(rng.pick(pool)) || this.itemTemplate('potion-heal');
+    return deepItem(tpl);
   }
 
   makeTreasure(floorIdx, rng) {
@@ -529,6 +584,15 @@ export class Game {
     this.secretsRevealed = true;
   }
 
+  /* Nothing awake and hostile within CALM_RADIUS. Asleep monsters do not
+   * count — you are only in a fight when something is in one with you. */
+  outOfCombat() {
+    const p = this.state.player;
+    const floor = this.currentFloor;
+    if (!p || !floor) return false;
+    return !(floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist1(m, p) <= CALM_RADIUS);
+  }
+
   /* ---- input ---- */
   handleKey(keyName, uiFlags = {}) {
     const p = this.state.player;
@@ -561,11 +625,32 @@ export class Game {
       else this.lookAround();
     } else if (k === ' ' || k === 'x') {
       this.endPlayerTurn();
+    } else if (k === 'r') {
+      this.rest();
     } else {
       return false;
     }
     if (turn && !this.dying) this.endPlayerTurn();
     return turn;
+  }
+
+  /* Wait until healed, interrupted, or long enough that something is wrong.
+   * Regeneration without this is twenty presses of the wait key. */
+  rest(maxTurns = 200) {
+    const p = this.state.player;
+    if (!this.outOfCombat()) { this.log('Not with something awake this close.'); return false; }
+    const der = this.derived();
+    if (p.hp >= p.maxhp && p.power >= der.maxpower) { this.log('You are as rested as this place allows.'); return false; }
+    let turns = 0;
+    while (turns < maxTurns && !this.dying) {
+      const full = p.hp >= p.maxhp && p.power >= this.derived().maxpower;
+      if (full) break;
+      if (!this.outOfCombat()) { this.log('Something stirs — you are on your feet again.'); break; }
+      this.endPlayerTurn();
+      turns++;
+    }
+    if (turns) this.log('You sit against the stone for a while. (' + turns + ' turns)');
+    return true;
   }
 
   tryMove(dx, dy) {
@@ -627,7 +712,8 @@ export class Game {
     const floor = this.currentFloor;
     if (!p || !floor || floor.tiles[y][x] !== T.SECRET) return false;
     if (this.derived().seeSecrets) { this.revealSecretAt(x, y); return true; }
-    const odds = Math.min(0.85, (p.cls === 'thief' ? 0.35 : 0.12) + p.level * 0.03);
+    const keen = this.passives().some((a) => a.findsSecrets);
+    const odds = Math.min(0.85, (keen ? 0.35 : 0.12) + p.level * 0.03);
     if (!this.rngOfTurn().chance(odds)) {
       this.log('You run your hands over the stone and find nothing — yet.');
       return true;   /* the search itself costs the turn */
@@ -793,7 +879,7 @@ export class Game {
     const p = this.state.player;
     if (!it) return false;
     if (it.kind === 'special') {
-      const v = it.value || 10;
+      const v = Math.round((it.value || 10) * this.goldMul());
       p.gold = (p.gold || 0) + v;
       this.uiLog('Picked up ' + v + ' gold' + (it.name && it.name !== 'Pile of Gold' ? ' (' + it.name + ')' : '') + '.');
       return true;
@@ -874,12 +960,12 @@ export class Game {
     this.state.totalKills = (this.state.totalKills || 0) + 1;
     const cleaves = this.hasPassive('cleave') && !this.cleavedThisTurn;
     if (m.boss) this.onBossSlain(m);
-    const xp = Math.round((m.xp || 10) * classKillBonus(p.cls, 1));
+    const xp = m.xp || 10;
     this.log('The ' + m.t.name + ' is slain!');
     this.gainXP(xp);
     const goldMin = m.goldMin || 0, goldMax = m.goldMax || 0;
     if (goldMax > 0) {
-      const g = this.rngOfTurn().int(goldMin, goldMax);
+      const g = Math.round(this.rngOfTurn().int(goldMin, goldMax) * this.goldMul());
       p.gold += g;
       this.log('You strip ' + g + ' gold from the corpse.');
     }
@@ -993,6 +1079,10 @@ export class Game {
     const der = this.derived();
     if (der.regen && this.turn % 2 === 1) {
       p.hp = Math.min(p.maxhp, p.hp + der.regen);
+    }
+    if (this.outOfCombat()) {
+      p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION)));
+      p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.ceil(der.maxpower * PWR_REGEN_FRACTION)));
     }
     for (const k in p.cooldowns) if (p.cooldowns[k] > 0) p.cooldowns[k]--;
     /* Every key in p.buffs is a countdown in turns. Anything that is a
@@ -1226,14 +1316,26 @@ export class Game {
     }
     p.hp = p.maxhp;
     p.power = p.maxpower;
-    this.enterDungeon(p.dungeonId);
+    /* Back to the deepest floor you reached, not to the entrance. The floors
+     * above are already cleared, so sending you to the top charged the death
+     * in walking rather than in anything you could weigh. */
+    const deepest = (p.deepest && p.deepest[p.dungeonId]) || 0;
+    if (this.dungeonById(p.dungeonId)) {
+      this.loadFloor(deepest);
+      if (deepest > 0) this.log('You come to at the stairhead of floor ' + (deepest + 1) + ', poorer.');
+    } else {
+      this.enterDungeon(p.dungeonId);
+    }
     if (this.ui.render) this.ui.render(this);
   }
 
+  passives() {
+    if (!this.state.player) return [];
+    return this.allAbilities().filter((a) => a.kind === 'passive');
+  }
+
   hasPassive(id) {
-    const p = this.state.player;
-    if (!p) return false;
-    return this.allAbilities().some((a) => a.id === id && a.kind === 'passive');
+    return this.passives().some((a) => a.id === id);
   }
 
   /* ---- helpers ---- */
@@ -1730,9 +1832,23 @@ export class Game {
     }
     const p = this.state.player;
     if (p) {
+      if (p.hp <= 0) p.hp = 1;   /* a save caught mid-death resumed at zero */
+      if (!p.deepest) p.deepest = {};
       if (!p.buffLevels) p.buffLevels = {};
       if (!p.beatsSeen) p.beatsSeen = {};
       if (!p.npcsMet) p.npcsMet = {};
+      /* A class whose base health was raised should raise it for the character
+       * who reported the problem, not only for freshly rolled ones. */
+      const c = CLASSES[p.cls];
+      if (c && Number.isInteger(p.level)) {
+        const floorHp = c.hpBase + Math.max(1, c.hpDie + abilityMod(p.stats.con));
+        if (p.maxhp < floorHp) {
+          const credit = floorHp - p.maxhp;
+          p.maxhp += credit;
+          p.hp = Math.min(p.maxhp, p.hp + credit);
+          this.log('You are steadier on your feet than you remember. (+' + credit + ' max HP)');
+        }
+      }
       /* Belts used to hold object references, which a JSON round-trip turns
        * into copies that match nothing. Rewrite them as uids. */
       if (Array.isArray(p.belt)) {

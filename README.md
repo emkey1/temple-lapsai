@@ -99,6 +99,10 @@ A few rules worth knowing before you go down:
   within six tiles.
 - **Floors remember you.** What you killed stays dead, what you took stays taken, doors you opened
   stay open, and the map you drew stays drawn — across stairs, saves and reloads.
+- **Wounds close and power returns** while nothing awake is near you, slowly. Retreating out of
+  a fight is a tactic, not a longer death. `R` sits you down until you are whole.
+- **Every character walks a different dungeon.** Floors are seeded from the character, not from
+  the dungeon's name.
 - **Altars** stand once on every floor. Step onto one for a blessing — health, power, and any
   curse lifted. Each gives once, and will not spend itself on someone who needs nothing.
 - **The belt** takes four items. Bind with BELT in the gear panel, use with **shift + 1-4**.
@@ -172,6 +176,7 @@ data/expansions.json  Persisted generated content (server-side)
 | `Y` `U` `B` `N` / numpad | Move diagonally (numpad `5` waits) |
 | `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
 | `Space` / `X` | End your turn (wait) |
+| `R` | Rest until healed, or until something wakes |
 | `1`–`9` | Activate the matching ability |
 | `Tab` | Cycle panels (stats / gear / codex / library) |
 | `I` / `E` | Gear & inventory panel |

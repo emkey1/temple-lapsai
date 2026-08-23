@@ -7,7 +7,7 @@ import { DUNGEONS } from '../public/js/base.js';
 import { T, W, H, isTravelable } from '../public/js/mapgen.js';
 import { floorOf, canReach, reachableFrom } from './helpers.mjs';
 
-const SEEDS = 25;
+const SEEDS = 80;
 
 test('the boss is reachable from the up-stairs on every final floor', () => {
   for (const d of DUNGEONS) {

@@ -98,6 +98,7 @@ const CONTROLS = [
     ['W A S D  ·  arrows', 'Walk one tile. Walk into a monster to attack it, into a door to open it, into a person to talk.'],
     ['Y U B N  ·  numpad', 'Walk a diagonal — Y and U up, B and N down. The numpad works too, with 5 to wait. You cannot cut a corner where two walls meet.'],
     ['Space  ·  X', 'Wait where you are and let the turn pass.'],
+    ['R', 'Rest. Sit until your wounds close and your power comes back, or until something wakes.'],
     ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
   ]],
   ['Things on the ground', [
@@ -836,7 +837,14 @@ function onKey(e) {
   if (k >= '1' && k <= '9') {
     const idx = Number(k) - 1;
     const ab = game.allAbilities();
-    if (ab[idx] && ab[idx].kind !== 'passive') { game.handleKey(null, { ability: ab[idx].id }); e.preventDefault(); }
+    if (ab[idx] && ab[idx].kind !== 'passive') {
+      game.handleKey(null, { ability: ab[idx].id });
+      /* This branch never saved, so every power spent, cooldown started and
+       * wound healed by an ability was lost on the next reload. */
+      if (currentTab === 'gear') renderGear(game);
+      saveGame();
+      e.preventDefault();
+    }
     return;
   }
   if (k === '?' || k === 'h') { helpOpen ? closeHelp() : showHelp(); e.preventDefault(); return; }
@@ -916,6 +924,9 @@ async function dlgSend() {
 /* ---------------- save / load ---------------- */
 function saveGame() {
   if (!game || !game.state || !game.state.player) return;
+  /* Not mid-death. The save fires on the keystroke that kills you, so writing
+   * it here is what let a reload resume alive at zero hit points. */
+  if (game.dying) return;
   try {
     const data = { v: 1, saved: Date.now(), state: game.save(), registry };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
