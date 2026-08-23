@@ -194,6 +194,23 @@ data/expansions.json  Persisted generated content (server-side)
 | `Esc` | Close the active dialogue or the controls card |
 | `?` / `H` | Show the controls in-game |
 
+### Healing
+
+A burst heal mends **at least a share of your maximum health** — a quarter for a
+Potion of Healing, half for Superior Healing, a fifth per charge of a Wand of Healing, a third
+for the Cleric's Lay on Hands, half for the Fighter's Second Wind. The roll still stands whenever
+it is larger, so nothing heals for less than it used to and level 1 plays exactly as it did.
+
+The reason is arithmetic. Flat dice do not scale and everything around them does: 2d4+2 is a third
+of a level-1 character and a twelfth of a level-12 one, while the thing hitting them grew the whole
+way. Beside the Demon of Lapsai a Potion of Healing gave back 7 and the turn it cost gave away 14,
+so drinking one left you **worse off in 97 runs out of 100** — the potion was never broken, the turn
+was. The altar (35% of max) and out-of-combat regeneration already worked this way; this is the same
+idea reaching the things you carry.
+
+Every item and power prints what it will actually mend, resolved against your own health, so the
+card and the engine cannot disagree.
+
 ### Reading the map
 
 Colour is not decoration. Everything alive is drawn in the red family, tinted by tier — dull rust

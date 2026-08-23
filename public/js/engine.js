@@ -7,6 +7,7 @@ import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
   scaleDice, randomTreasureValue, getDungeon,
+  healFractionForItem, healFractionForAbility,
 } from './base.js';
 import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, GEN_VERSION,
@@ -393,6 +394,16 @@ export class Game {
     this.snapshotFloor();   /* remember the floor we are stepping off */
     this.wading = false;
     this.cleavedThisTurn = false;
+    /* The breath at the stairs is paid for reaching somewhere NEW.
+     *
+     * loadFloor is also how you climb back up, how the camp button puts you
+     * back and how a save is loaded, so paying it every time meant 15% of your
+     * maximum health for walking up one flight and straight back down, over
+     * and over, and another 15% on every page reload. Testing "am I going
+     * down" alone does not fix that — down, up, down is still down twice. It
+     * has to be deeper than you have ever been, which the run already tracks. */
+    const deepestSoFar = (p.deepest && p.deepest[d.id] !== undefined) ? p.deepest[d.id] : -1;
+    const wentDeeper = floorIdx > deepestSoFar;
     p.floorIdx = floorIdx;
     const isLast = floorIdx >= d.floors - 1;
     const boss = isLast ? (this.monsterTemplate(d.bossId) || null) : null;
@@ -432,10 +443,12 @@ export class Game {
     if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
     if (this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
     /* A flight of stairs is worth a breath, so arriving on a new floor at two
-     * hit points is not an automatic death. */
+     * hit points is not an automatic death. Once per new depth — see above. */
     const der = this.derived();
-    p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.round(p.maxhp * DESCENT_RECOVERY)));
-    p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
+    if (wentDeeper) {
+      p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.round(p.maxhp * DESCENT_RECOVERY)));
+      p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
+    }
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
@@ -1502,12 +1515,28 @@ export class Game {
     return b;
   }
 
-  abilityHeal(a) {
+  /* EVERY burst heal comes through here, so the floor cannot be applied in
+   * three places and drift apart in two of them. See HEAL_FLOORS in base.js
+   * for why there is a floor at all.
+   *
+   * Returns what was actually mended, not what was rolled: at 55 of 58 the old
+   * log line promised +7 and delivered 3, and under a floor that lie only gets
+   * larger. */
+  applyHeal(rolled, fraction) {
     const p = this.state.player;
+    const roll = Math.max(1, Math.round(Number(rolled) || 0));
+    const floor = fraction > 0 ? Math.max(1, Math.round(p.maxhp * fraction)) : 0;
+    const want = Math.max(roll, floor);
+    const before = p.hp;
+    p.hp = Math.min(p.maxhp, p.hp + want);
+    return p.hp - before;
+  }
+
+  abilityHeal(a) {
     /* Hand-authored abilities carry "3d6"; generated ones carry {dice,sides}. */
-    const v = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal);
-    p.hp = Math.min(p.maxhp, p.hp + Math.max(1, v));
-    this.log('Old forces knit your wounds for ' + Math.max(1, v) + ' hit points.');
+    const rolled = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal);
+    const mended = this.applyHeal(rolled, healFractionForAbility(a));
+    this.log('Old forces knit your wounds for ' + mended + ' hit points.');
   }
 
   /* A short-lived edge on your attacks. The validator accepts kind "buff", so
@@ -1591,7 +1620,8 @@ export class Game {
     if (!item) return;
     const fx = item.effects || {};
     if (item.kind === 'potion' || item.kind === 'scroll' || item.slot === 'consumable') {
-      this.consumeItem(item, fx);
+      /* A refused draught costs neither the flask nor the turn. */
+      if (this.consumeItem(item, fx) === false) return;
     } else if (item.kind === 'wand') {
       this.castWand(item);
     } else if (WEARABLE_SLOTS.includes(item.slot)) {
@@ -1610,7 +1640,10 @@ export class Game {
 
   consumeItem(item, fx) {
     const p = this.state.player;
-    if (fx.heal) { const v = evaluateDice(fx.heal); p.hp = Math.min(p.maxhp, p.hp + v); this.log('Sweet relief: +' + v + ' HP.'); }
+    /* Drinking at full health spent the flask AND the turn for nothing. The
+     * altar has always refused that trade; so does this now. */
+    if (fx.heal && p.hp >= p.maxhp) { this.log('You are whole. The flask stays corked.'); return false; }
+    if (fx.heal) { const v = this.applyHeal(evaluateDice(fx.heal), healFractionForItem(item)); this.log('Sweet relief: +' + v + ' HP.'); }
     else if (fx.power) { const v = evaluateDice(fx.power); p.power = Math.min(p.maxpower, p.power + v); this.log('Crackling force surges: +' + v + ' PWR.'); }
     else if (fx.buffStr) { p.buffs.str = fx.buffStr; this.log('Your arm bulges with borrowed might.'); }
     else if (fx.removeCurse) { this.removeAllCurses(); }
@@ -1666,8 +1699,8 @@ export class Game {
     const r = this.rngOfTurn();
     const spell = fx.spell;
     if (spell === 'heal') {
-      const v = r.d(6) + 3;
-      p.hp = Math.min(p.maxhp, p.hp + v);
+      /* Wands written before the heal was data still roll the old 1d6+3. */
+      const v = this.applyHeal(fx.heal ? evaluateDice(fx.heal) : r.d(6) + 3, healFractionForItem(item));
       this.log('The wand warms: +' + v + ' HP. (' + fx.charges + ' charges)' );
     } else {
       const floor = this.currentFloor;

@@ -9,7 +9,7 @@ import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
-import { itemDescription } from './describe.js';
+import { itemDescription, abilityHealNote } from './describe.js';
 
 /* ---------------- constants ---------------- */
 const SAVE_KEY = 'lapsai-save';
@@ -335,7 +335,10 @@ function showCamp(g) {
   box.className = 'overlay-card';
   box.innerHTML =
     '<h2>CAMP</h2>' +
-    '<p class="sub">Warm firelight. Your wounds knit; your purse lightens. Choose a path:</p>' +
+    /* It used to claim your wounds knit and your purse lightened. Neither was
+     * true: the healing was DESCENT_RECOVERY firing on the way back in, which
+     * is now paid only for going down, and nothing here ever took a coin. */
+    '<p class="sub">Warm firelight, and the road back down. Choose a path:</p>' +
     '<div id="camp-list"></div>' +
     '<div class="row"><button class="mini" id="btn-camp-close">ROAM AGAIN</button></div>';
   els.overlay.appendChild(box);
@@ -678,11 +681,16 @@ function renderStats(g) {
     const can = p.level >= a.level && (a.kind === 'passive' || p.power >= (a.powerCost || 0)) && cd === 0;
     const el = document.createElement('div');
     el.className = 'ability-card' + (cd > 0 ? '' : '');
+    /* A healing power beats its own die roll when you are big enough, so the
+     * floor is appended rather than trusted to the description — which covers
+     * the ones the Library writes as well as the four that shipped. */
+    const heals = abilityHealNote(a, { maxhp: p.maxhp });
     el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>' : ' <span class="tiny">' + (a.powerCost || 0) + ' pwr' + (a.cooldown ? ' · cd ' + a.cooldown : '') + '</span>') +
       (a.level > 1 ? ' <span class="tiny">Lv' + a.level + '</span>' : '') +
       (cd > 0 ? ' <b style="color:var(--red-dim)">(' + cd + ')</b>' : '') +
-      '<div class="desc">' + esc(a.description || '') + '</div>';
+      '<div class="desc">' + esc(a.description || '') +
+      (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') + '</div>';
     if (!can && a.kind !== 'passive') el.style.opacity = 0.55;
     el.onclick = () => { if (game && !game.dying) { game.activateAbility(a.id); canvasFocus(); } };
     els.abilitiesBlock.appendChild(el);
@@ -728,8 +736,8 @@ function stackInventory(inv) {
 
 /* The rules under the name. Flavour goes in the tooltip: it is lovely and it
  * is not what you are deciding on. */
-function descRow(it) {
-  const d = itemDescription(it);
+function descRow(it, p) {
+  const d = itemDescription(it, { maxhp: p && p.maxhp });
   return d ? '<div class="i-desc">' + esc(d) + '</div>' : '';
 }
 
@@ -750,7 +758,7 @@ function renderGear(g) {
       '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '"' + flavorTitle(it) + '>' +
       (it ? esc(it.name) : '—') + '</span>' +
       (it ? '<button data-act="unequip" data-slot="' + slot + '">TAKE OFF</button>' : '') +
-      '</div>' + descRow(it);
+      '</div>' + descRow(it, p);
   }
   els.equipmentBlock.innerHTML = '<h3 class="pane">EQUIPPED</h3>' + html;
 
@@ -767,7 +775,7 @@ function renderGear(g) {
       '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>' +
       (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
       '<button data-drop="' + (free === undefined ? grp.indices[0] : free) + '">DROP</button></div>' +
-      descRow(it);
+      descRow(it, p);
   }).join('');
   els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + '/' + PACK_LIMIT + ')</h3>' +
     (ih || '<div class="tiny">You carry nothing.</div>');

@@ -85,7 +85,9 @@ export const ABILITIES = [
   /* Fighter */
   { cls: 'fighter', level: 1, id: 'cleave', name: 'Cleave', kind: 'passive', description: 'Your blade carries: slaying a foe grants one bonus attack this turn.' },
   { cls: 'fighter', level: 3, id: 'shield-bash', name: 'Shield Bash', kind: 'damage', name2: 'Shield Bash', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 2, n: 'str' }, description: 'Knock a foe senseless: deal 1d6+STR and it cannot attack next turn.' },
-  { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', powerCost: 5, cooldown: 0, heal: '3d6', description: 'Breathe deep and shake off the dark: heal 3d6.' },
+  /* Half a bar, twice a fight. The fraction and the price moved together: with
+   * the old 5 power it would have been four castings and two full bars. */
+  { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', powerCost: 8, cooldown: 0, heal: '3d6', healFraction: 0.5, description: 'Breathe deep and shake off the dark: heal 3d6.' },
   { cls: 'fighter', level: 9, id: 'whirlwind', name: 'Whirlwind', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 6, bonus: 3, dice: 2, n: 'str' }, description: 'A dance of death: deal 2d6+STR to every foe around you.' },
 
   /* Thief */
@@ -101,7 +103,9 @@ export const ABILITIES = [
   { cls: 'mage', level: 9, id: 'fireball', name: 'Fireball', kind: 'damage', powerCost: 9, cooldown: 3, aura: 3, range: 5, damage: { sides: 6, bonus: 0, dice: 3, int: true }, description: 'Ball of doom: 3d6+INT to the target and everything within a 3-tile blast.' },
 
   /* Cleric */
-  { cls: 'cleric', level: 1, id: 'lay-hands', name: 'Lay on Hands', kind: 'heal', powerCost: 4, cooldown: 0, heal: '2d6', description: 'Old gods answer: heal 2d6.' },
+  /* A third, not a quarter: at a quarter this was the same integer as a 15gp
+   * bottle at every level for every Cleric, which is no kind of signature. */
+  { cls: 'cleric', level: 1, id: 'lay-hands', name: 'Lay on Hands', kind: 'heal', powerCost: 5, cooldown: 0, heal: '2d6', healFraction: 1 / 3, description: 'Old gods answer: heal 2d6.' },
   { cls: 'cleric', level: 3, id: 'detect-evil', name: 'Detect Evil', kind: 'reveal', powerCost: 2, cooldown: 0, detectMonsters: true, description: 'Foes burn on your sight: show every monster on the floor until next turn.' },
   { cls: 'cleric', level: 6, id: 'turn-undead', name: 'Turn Undead', kind: 'turn', powerCost: 6, cooldown: 3, range: 6, damage: { sides: 6, bonus: 0, dice: 2 }, description: 'Drive the unhallowed back: undead & cursed creatures take 2d6 and flee.' },
   { cls: 'cleric', level: 9, id: 'judgment', name: 'Judgment', kind: 'damage', powerCost: 8, cooldown: 3, range: 5, damage: { sides: 6, bonus: 0, dice: 3 }, description: 'Sythe of the temple: 3d6 to every foe in a 5-tile blast.' },
@@ -123,6 +127,77 @@ export function abilityMod(v) { return Math.floor((v - 10) / 2); }
  * dungeon's four floors are worth roughly four levels: 150, 450, 900, 1500 …
  * against ~150 XP on floor one rising to ~2900 with the boss on floor four. */
 export const XP_FOR_LEVEL = (lvl) => Math.floor(150 * (lvl * (lvl + 1) / 2));
+
+/* ---------------- Healing ---------------- */
+
+/* A burst heal mends at least a share of what you have.
+ *
+ * Flat dice do not scale and everything around them does. 2d4+2 was generous
+ * on floor one and a rounding error on floor twelve — which is how a Potion of
+ * Healing came to be a net LOSS beside the Demon of Lapsai: it gave back 7
+ * while the turn it cost gave away 14, leaving the player worse off in 97 runs
+ * out of 100. The potion was never broken. The turn was.
+ *
+ * The roll still stands whenever it is the larger number, so nothing heals for
+ * less than it used to and level 1 plays exactly as it did — the floor only
+ * starts to bite around level 4, which is where the dice start falling behind.
+ * The altar has always worked this way (Game.useAltar mends 35% of max), as
+ * has out-of-combat regeneration; this is the same idea reaching the things
+ * you carry.
+ *
+ * Regeneration, rest and the altar are deliberately untouched. */
+export const HEAL_FLOORS = {
+  draught: 0.25,         /* anything you drink, unless it is named below */
+  greatDraught: 0.5,     /* the Potion of Superior Healing */
+  wandCharge: 0.2,       /* eight charges to a wand, so each is worth less than a draught */
+  writtenPower: 0.25,    /* a healing power the Library invented, floored conservatively */
+};
+
+/* The strong draught is named rather than deduced from its tier, because the
+ * two tier scales in this game do not agree: the hand-authored items run 0-5
+ * (potion-heal 1, Superior 3, plate 5) while the prompt tells the oracle
+ * "tier is 0-15, 3 = normal floor 1". A generated floor-one healing draught is
+ * therefore tier 3 — the same number the shipped Superior carries — and a
+ * tier test would hand every invented potion the strong fraction. An invented
+ * potion can still be strong: it keeps whatever heal it was written with, and
+ * the floor only ever raises a number, never lowers one. */
+const GREAT_DRAUGHTS = new Set(['potion-major-heal']);
+
+export function healFractionForItem(it) {
+  if (!it) return 0;
+  if (it.kind === 'wand') return HEAL_FLOORS.wandCharge;
+  return GREAT_DRAUGHTS.has(it.id) ? HEAL_FLOORS.greatDraught : HEAL_FLOORS.draught;
+}
+
+/* A power's share is written on the power, because a class ability is tuned,
+ * not classified. Anything without one is something the Library wrote. */
+export function healFractionForAbility(a) {
+  if (!a) return 0;
+  if (Number.isFinite(a.healFraction)) return a.healFraction;
+  /* A power that costs nothing and waits for nothing is already unlimited, and
+   * a floor tied to your maximum health would make it unlosable. The Library
+   * can write one — validateAbility defaults both powerCost and cooldown to
+   * zero — so a free heal keeps its flat dice and stays a minor thing. */
+  if (!(a.powerCost > 0) && !(a.cooldown > 0)) return 0;
+  return HEAL_FLOORS.writtenPower;
+}
+
+/* The player is told the floor. An item that quietly does more than it says is
+ * the same failure as one that says nothing at all. The whole phrase lives
+ * here rather than a bare word, so "half your health" does not come out as
+ * "half of your health". */
+const HEALTH_SHARES = [
+  [0.2, 'a fifth of your health'],
+  [0.25, 'a quarter of your health'],
+  [1 / 3, 'a third of your health'],
+  [0.5, 'half your health'],
+  [0.75, 'three quarters of your health'],
+];
+
+export function healthShare(f) {
+  const hit = HEALTH_SHARES.find(([v]) => Math.abs(v - f) < 0.005);
+  return hit ? hit[1] : Math.round(f * 100) + '% of your health';
+}
 
 /* ---------------- Monsters ---------------- */
 
@@ -210,7 +285,7 @@ export const baseWeapons = [
   makeItem('battle-axe', 'Battle Axe', 'weapon', 'A', 'gray', 26, 4, { toHit: 0, damage: { dice: 1, sides: 10, bonus: 0 } }),
   makeItem('two-handed-sword', 'Two-Handed Sword', 'weapon', 'T', 'brightblue', 40, 5, { toHit: 0, damage: { dice: 2, sides: 6, bonus: 0 } }),
   makeItem('wand-of-fire', 'Wand of Fire', 'wand', '~', 'yellow', 60, 3, { spell: 'firebolt', charges: 12 }, 'Flickering like a live coal.'),
-  makeItem('wand-of-healing', 'Wand of Healing', 'wand', '~', 'brightgreen', 70, 3, { spell: 'heal', charges: 8 }, 'Warm as a hearth.'),
+  makeItem('wand-of-healing', 'Wand of Healing', 'wand', '~', 'brightgreen', 70, 3, { spell: 'heal', heal: '1d6+3', charges: 8 }, 'Warm as a hearth.'),
   makeItem('wand-of-frost', 'Wand of Frost', 'wand', '~', 'cyan', 80, 4, { spell: 'frost', charges: 10 }, 'Hoar-frost crawls along the haft.'),
 ];
 
