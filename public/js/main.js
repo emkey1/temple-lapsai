@@ -3,16 +3,19 @@
  */
 
 import { Game, rollStats, initialStats, PACK_LIMIT } from './engine.js';
-import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey } from './base.js';
+import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon } from './base.js';
 import { T, W, H } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import { itemDescription, abilityHealNote } from './describe.js';
+import {
+  LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
+  forgetCharacter, markFallen, pickLast, playable, adoptLegacySave,
+} from './roster.js';
 
 /* ---------------- constants ---------------- */
-const SAVE_KEY = 'lapsai-save';
 const REGISTRY_KEY = 'lapsai-registry';
 /* The game has been renamed before and may be again. Rather than naming the
  * old keys — which would keep a retired name alive in the source — adopt any
@@ -20,9 +23,9 @@ const REGISTRY_KEY = 'lapsai-registry';
 function migrateLegacyStorage() {
   try {
     for (const suffix of ['-save', '-registry']) {
-      const current = suffix === '-save' ? SAVE_KEY : REGISTRY_KEY;
+      const current = suffix === '-save' ? LEGACY_SLOT : REGISTRY_KEY;
       for (const key of Object.keys(localStorage)) {
-        if (key === current || !key.endsWith(suffix)) continue;
+        if (key === current || key.startsWith(SLOT_PREFIX) || !key.endsWith(suffix)) continue;
         const carried = localStorage.getItem(key);
         if (carried !== null && localStorage.getItem(current) === null) {
           localStorage.setItem(current, carried);
@@ -30,6 +33,15 @@ function migrateLegacyStorage() {
         localStorage.removeItem(key);
       }
     }
+    /* And the single slot the game kept before it kept several becomes the
+     * first name in the ledger rather than the thing the next adventurer
+     * writes over. Resolve the dungeon's real name here, where the content is
+     * in reach — the ledger itself only stores strings. */
+    const old = JSON.parse(localStorage.getItem(LEGACY_SLOT) || 'null');
+    const was = old && old.state && old.state.player;
+    const d = was && getDungeon(was.dungeonId);
+    adoptLegacySave(localStorage, newCharId(Date.now(), Math.random()),
+      was ? summarise(was, d && d.name) : null, Date.now());
   } catch (e) { /* private mode, quota, an indifferent browser */ }
 }
 
@@ -101,6 +113,11 @@ const els = {
   helpKeys: $('help-keys'),
   btnHelp: $('btn-help'),
   btnHelpClose: $('btn-help-close'),
+  ledger: $('ledger'),
+  ledgerList: $('ledger-list'),
+  btnLedger: $('btn-ledger'),
+  btnLedgerNew: $('btn-ledger-new'),
+  btnLedgerClose: $('btn-ledger-close'),
 };
 
 /* The one list of controls: the help card is built from it, so what the game
@@ -133,6 +150,7 @@ const CONTROLS = [
   ]],
   ['Talking and dialogs', [
     ['Enter', 'Start the game, or send a line of dialogue.'],
+    ['OTHER ADVENTURERS', 'On the title card: everyone you have sent down. Play any of them, or erase one. Whoever went down last is who CONTINUE opens.'],
     ['Esc', 'Leave a conversation.'],
     ['?  ·  H', 'This card.'],
   ]],
@@ -321,6 +339,10 @@ function showVictoryCard(run) {
 
 function showDeath(msg) {
   clearCards();
+  /* Recorded on the ledger rather than in the save, which is deliberately not
+   * written on the killing blow. Rising again clears it, and so does opening
+   * the record from the ledger — at the same price. */
+  markFallen(localStorage, charId, true);
   overlayHideAll();
   els.deathMsg.textContent = msg || 'You were laid low in the dark.';
   overlayShow(els.death);
@@ -397,6 +419,9 @@ function paintAttrs() {
 
 function beginCreate() {
   overlayHideAll();
+  /* A fresh record. Without this, rolling someone new saved over whoever the
+   * last save belonged to — which is the whole of what this replaces. */
+  charId = null;
   rolled = rollStats();
   paintClassPicker();
   paintAttrs();
@@ -1010,33 +1035,61 @@ async function dlgSend() {
 }
 
 /* ---------------- save / load ---------------- */
+
+/* Whose record the next save writes to. Set when an adventurer is rolled and
+ * when one is opened; a save with nobody named would be the old single-slot
+ * behaviour wearing a new key. */
+let charId = null;
+
 function saveGame() {
   if (!game || !game.state || !game.state.player) return;
   /* Not mid-death. The save fires on the keystroke that kills you, so writing
    * it here is what let a reload resume alive at zero hit points. */
   if (game.dying) return;
+  if (!charId) charId = newCharId(Date.now(), Math.random());
   try {
-    const data = { v: 1, saved: Date.now(), state: game.save(), registry };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    const p = game.state.player;
+    const d = game.dungeonById(p.dungeonId);
+    const data = { v: 2, id: charId, saved: Date.now(), state: game.save(), registry };
+    rememberCharacter(localStorage, charId, data, summarise(p, d && d.name), data.saved);
   } catch (e) { /* ignore */ }
 }
 
 function hasSave() {
-  try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
+  return playable(localStorage).length > 0;
 }
 
 function doContinue() {
+  const id = pickLast(localStorage);
+  if (!id) { beginCreate(); return; }
+  openCharacter(id);
+}
+
+/* Opening someone's record. A fallen adventurer is hauled back the same way
+ * the death card does it — half their gold — because the save was written
+ * before the killing blow, so simply loading one would be a free rise. */
+function openCharacter(id) {
+  const entry = playable(localStorage).find((c) => c.id === id);
+  const data = readCharacter(localStorage, id);
+  if (!data || !data.state) {
+    logLine('That record is gone from the ledger.', 'combat');
+    setBootNote();
+    return;
+  }
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) { beginCreate(); return; }
-    const data = JSON.parse(raw);
     if (data.registry) registry = data.registry;
     persistRegistry();
     const g = makeGame();
     g.restore(data.state);
+    charId = id;
     overlayHideAll();
     startGame(g);
-    g.loadFloor(g.state.player.floorIdx);
+    if (entry && entry.fallen) {
+      markFallen(localStorage, id, false);
+      g.returnToCamp(true);
+    } else {
+      g.loadFloor(g.state.player.floorIdx);
+    }
     saveGame();
   } catch (e) {
     logLine('The record is lost: ' + (e.message || 'cannot read the ledger'), 'combat');
@@ -1046,6 +1099,7 @@ function doContinue() {
 
 function doResurrect() {
   overlayHideAll();
+  markFallen(localStorage, charId, false);
   game.returnToCamp(true);
   saveGame();
 }
@@ -1054,6 +1108,54 @@ function doRoster() {
   overlayHideAll();
   els.boot.classList.remove('hidden');
   els.overlay.classList.remove('hidden');
+  setBootNote();
+}
+
+/* ---------------- the ledger ---------------- */
+
+function whenSaved(ms) {
+  if (!ms) return 'never';
+  const mins = Math.floor((Date.now() - ms) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + ' minute' + (mins === 1 ? '' : 's') + ' ago';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + ' hour' + (hours === 1 ? '' : 's') + ' ago';
+  const days = Math.floor(hours / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+}
+
+function renderLedger() {
+  const chars = playable(localStorage);
+  els.ledgerList.innerHTML = chars.length ? chars.map((c) => {
+    const cls = (CLASSES[c.cls] || {}).name || c.cls;
+    const here = c.where ? esc(c.where) + ' · floor ' + (c.floor || 1) : 'not yet gone down';
+    return '<div class="ledger-row' + (c.fallen ? ' fallen' : '') + '">' +
+      '<span class="who"><b>' + esc(c.name) + '</b> <span class="tiny">' + esc(cls) + ' · level ' + (c.level || 1) +
+      (c.fallen ? ' · <b>FALLEN</b>' : '') + '</span>' +
+      '<span class="where">' + here + ' · ' + (c.gold || 0) + ' gp · saved ' + whenSaved(c.savedAt) + '</span></span>' +
+      '<button data-open="' + esc(c.id) + '">' + (c.fallen ? 'RAISE (half your gold)' : 'PLAY') + '</button>' +
+      '<button data-forget="' + esc(c.id) + '">ERASE</button>' +
+      '</div>';
+  }).join('') : '<div class="tiny">Nobody has gone down yet.</div>';
+  overlayShow(els.ledger);
+}
+
+function ledgerClick(e) {
+  const open = e.target.closest('[data-open]');
+  if (open) { openCharacter(open.dataset.open); return; }
+  const forget = e.target.closest('[data-forget]');
+  if (!forget) return;
+  const id = forget.dataset.forget;
+  const row = forget.closest('.ledger-row');
+  /* Erasing is the one thing here that cannot be undone, so it asks. */
+  if (row && row.dataset.sure !== '1') {
+    row.dataset.sure = '1';
+    forget.textContent = 'ERASE FOR GOOD?';
+    return;
+  }
+  forgetCharacter(localStorage, id);
+  if (charId === id) charId = null;
+  renderLedger();
   setBootNote();
 }
 
@@ -1325,11 +1427,15 @@ async function doExpand(action) {
 
 /* ---------------- boot & init ---------------- */
 function setBootNote() {
-  els.saveNote.textContent = hasSave()
-    ? 'A record lies in the archive — the expedition may resume.'
-    : 'No archive yet. Forge a new soul.';
-  const cv = document.getElementById('btn-continue');
-  cv.style.display = hasSave() ? '' : 'none';
+  const chars = playable(localStorage);
+  const last = chars.find((c) => c.id === pickLast(localStorage));
+  els.saveNote.textContent = !chars.length
+    ? 'No archive yet. Forge a new soul.'
+    : (last ? 'Last down: ' + last.name + ', ' + ((CLASSES[last.cls] || {}).name || last.cls) +
+        ' of level ' + (last.level || 1) + (last.fallen ? ', fallen.' : '.') : '') +
+      (chars.length > 1 ? '  ' + chars.length + ' in the ledger.' : '');
+  els.btnContinue.style.display = chars.length ? '' : 'none';
+  els.btnLedger.style.display = chars.length ? '' : 'none';
 }
 
 async function boot() {
@@ -1348,6 +1454,10 @@ async function boot() {
   els.btnArrivalOk.onclick = () => nextCard();
   els.btnVictoryOk.onclick = () => { clearCards(); doRoster(); };
   els.btnLibClose.onclick = () => { overlayHideAll(); canvasFocus(); };
+  els.btnLedger.onclick = () => renderLedger();
+  els.btnLedgerNew.onclick = () => beginCreate();
+  els.btnLedgerClose.onclick = () => doRoster();
+  els.ledgerList.addEventListener('click', ledgerClick);
   els.btnHelp.onclick = () => showHelp();
   els.btnHelpClose.onclick = () => closeHelp();
   els.dlgSend.onclick = () => dlgSend();

@@ -232,6 +232,24 @@ Measured now, 60 duels a cell, in the kit each dungeon can supply:
 Each boss is a real fight that levelling wins. The Mage is the known gap — its
 power is a fixed pool, and once it is spent the Mage is swinging a stick.
 
+### Saved adventurers
+
+The game keeps a **ledger**: one record per adventurer, not one save for the whole game. Rolling
+someone new used to write over whoever went down last.
+
+- **CONTINUE** opens the one you played last.
+- **OTHER ADVENTURERS** opens the ledger — everyone you have sent down, with where they got to,
+  what they are carrying and when they were last saved. Play any of them, or erase one (which asks
+  twice).
+- A character who dies is marked **fallen** on the ledger rather than in their own record, because
+  the record is deliberately not written on the killing blow. Opening a fallen adventurer raises
+  them at the same price the death card charges — half their gold — so a second character is never
+  a way to dodge the cost of dying.
+- An existing single save is adopted as the first name in the ledger the next time the game loads.
+
+Storage lives in `public/js/roster.js` and takes its store as an argument, so all of it is covered
+by tests rather than by clicking around in a browser.
+
 ### The Mage
 
 No Vancian pool. A Mage always has **Witch-Spark** — at will, 1d4 at six paces, and it hands one

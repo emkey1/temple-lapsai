@@ -354,6 +354,27 @@ select:focus { outline: 1px solid var(--amb); }
 .expansion-card b { color: var(--amb); }
 .expansion-card .flavor { margin: 2px 0 0; }
 
+/* The ledger. One row per adventurer: who they are, where they got to, and
+   the one thing you can do with them. */
+#ledger-list { max-height: 320px; overflow-y: auto; margin-bottom: 4px; }
+.ledger-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--ink-faint);
+  background: var(--panel2);
+  padding: 6px 8px;
+  margin: 5px 0;
+}
+.ledger-row.fallen { border-color: var(--red-dim); }
+.ledger-row .who { flex: 1; min-width: 0; }
+.ledger-row .who b { color: var(--amb); }
+.ledger-row.fallen .who b { color: var(--red); }
+.ledger-row .where { color: var(--ink-dim); font-size: 11px; display: block; }
+.ledger-row .last { color: var(--ink-faint); font-size: 11px; }
+.ledger-row button { white-space: nowrap; }
+#ledger-list .tiny { padding: 6px 2px; }
+
 .codex-item { border: 1px solid var(--ink-faint); padding: 4px 6px; margin: 4px 0; font-size: 12px; }
 .codex-item b { color: var(--amb); }
 .codex-item.unread { border-color: var(--amb); }

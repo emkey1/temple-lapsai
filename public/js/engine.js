@@ -1934,6 +1934,14 @@ export class Game {
           this.log('You are steadier on your feet than you remember. (+' + credit + ' max HP)');
         }
       }
+      /* Two numbers claimed to be the maximum power: the one stored on the
+       * player, which the bar and every "is it full" test read, and the one
+       * derived() computes fresh from class, level and gear, which the
+       * regeneration clamps to. A save carrying a stale stored one therefore
+       * filled past its own brim and showed 26/20. One of them has to be the
+       * answer, and it is the derived one. */
+      p.maxpower = this.computeMaxPower();
+      if (!(p.power <= p.maxpower)) p.power = p.maxpower;
       /* Belts used to hold object references, which a JSON round-trip turns
        * into copies that match nothing. Rewrite them as uids. */
       if (Array.isArray(p.belt)) {

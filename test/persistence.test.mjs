@@ -106,3 +106,18 @@ test('a save written before floor memory existed still loads', () => {
   g2.loadFloor(0);
   assert.ok(g2.currentFloor, 'a legacy save could not load its floor');
 });
+
+test('a save cannot come back with more power than it can hold', () => {
+  /* Two numbers claimed to be the maximum: the one on the player, which the
+   * bar reads, and the one derived() computes, which regeneration clamps to.
+   * A save with a stale stored maximum filled past its own brim — 26 of 20. */
+  const g = newGame('overfull', 'mage');
+  const state = JSON.parse(JSON.stringify(g.save()));
+  state.player.maxpower = 4;      /* stale, as a hand-edited or old save is */
+  state.player.power = 4;
+  const back = newGame('overfull-2', 'mage');
+  back.restore(state);
+  const p = back.state.player;
+  assert.ok(p.power <= p.maxpower, `${p.power} of ${p.maxpower}`);
+  assert.equal(p.maxpower, back.computeMaxPower(), 'the stored maximum still disagrees with the real one');
+});
