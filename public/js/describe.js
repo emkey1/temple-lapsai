@@ -10,7 +10,7 @@
  * main.js and free of the DOM so a test can hold it to that.
  */
 
-import { healFractionForItem, healFractionForAbility, healthShare } from './base.js';
+import { healFractionForItem, healFractionForAbility, healthShare, RECOVERY } from './base.js';
 
 export function dieText(d) {
   if (d === null || d === undefined) return '';
@@ -65,9 +65,13 @@ export function itemEffectLines(it, ctx) {
   /* The floor is part of what the thing does, so it is part of what the thing
    * says. A potion that quietly mends a quarter of your health while its own
    * label promises 2d4+2 is the same failure as one that says nothing. */
-  if (fx.heal) out.push(healLine(it, fx, maxhp));
+  if (fx.heal) {
+    out.push(healLine(it, fx, maxhp));
+    /* Why you carry one at all, once sitting down has a limit. */
+    out.push('reaches past the rested line, and closes ' + Math.round(RECOVERY.healMends * 100) + '% of what it mends');
+  }
   if (fx.power) out.push('restores ' + dieText(fx.power) + ' power');
-  if (fx.regen) out.push('mends ' + fx.regen + ' hp a turn');
+  if (fx.regen) out.push('mends ' + fx.regen + ' hp a turn, up to the rested line');
   if (fx.resist) out.push('soaks ' + fx.resist + ' damage from every blow');
   if (fx.undeadResist) out.push('soaks ' + fx.undeadResist + ' more from undead and cursed things');
   if (fx.luck) out.push('a second look at ' + Math.round(Math.min(0.6, fx.luck * 0.15) * 100) + '% of the blows you miss with');

@@ -175,6 +175,27 @@ export const XP_FOR_LEVEL = (lvl) => Math.floor(100 * (lvl * (lvl + 1) / 2));
  * you carry.
  *
  * Regeneration, rest and the altar are deliberately untouched. */
+/* RECOVERY.
+ *
+ * Sitting down mends what sitting down can reach. A share of every blow leaves
+ * a WOUND — a dead zone at the top of the bar that the calm-turn trickle, the
+ * R key and a Ring of Regeneration all refuse to touch. A draught reaches past
+ * it and closes a little of it; an altar closes all of it.
+ *
+ * This is here because the altar had become pointless, and measuring it showed
+ * the cause was not that healing was fast. Out-of-combat regeneration is
+ * oversubscribed by three to twelve times — the engine offers far more free
+ * mending than a player has room to absorb — and the walk to a floor's one
+ * altar is 31 turns, which at a hit point a turn is worth more than the altar
+ * gives. Turning the supply down cannot fix a supply nobody can use up. A
+ * CEILING is the one thing a walk cannot raise.
+ */
+export const RECOVERY = {
+  woundShare: 0.15,   /* of every point taken, this much cannot be rested off */
+  woundFloor: 0.4,    /* and the ceiling never falls below this much of maximum */
+  healMends: 0.25,    /* a draught closes this share of what it mends */
+};
+
 export const HEAL_FLOORS = {
   draught: 0.25,         /* anything you drink, unless it is named below */
   greatDraught: 0.5,     /* the Potion of Superior Healing */

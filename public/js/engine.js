@@ -7,7 +7,7 @@ import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
   scaleDice, randomTreasureValue, getDungeon,
-  healFractionForItem, healFractionForAbility,
+  healFractionForItem, healFractionForAbility, RECOVERY,
 } from './base.js';
 import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, GEN_VERSION,
@@ -50,6 +50,9 @@ const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
  * small maximum the floor already dominated the fraction, so the halving only
  * bites once a character is big. */
 const HP_REGEN_FRACTION = 0.01;
+const WOUND_SHARE = RECOVERY.woundShare;
+const WOUND_FLOOR = RECOVERY.woundFloor;
+const HEAL_MENDS = RECOVERY.healMends;
 const PWR_REGEN_FRACTION = 0.045;
 /* Renewal DURING a fight, which only a passive grants. Both are ceilings on
  * what any one ability may hand out, because a number the engine reads should
@@ -169,6 +172,7 @@ export function makePlayer(name, clsId, stats) {
     belt: [null, null, null, null],
     equipment: { weapon: null, body: null, shield: null, ring: null, amulet: null },
     cooldowns: {},
+    wounds: 0,
     buffs: {},
     buffLevels: {},   /* magnitudes, kept out of p.buffs, which is all countdowns */
     bossesSlain: {},
@@ -586,7 +590,13 @@ export class Game {
      * hit points is not an automatic death. Once per new depth — see above. */
     const der = this.derived();
     if (wentDeeper) {
-      p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.round(p.maxhp * DESCENT_RECOVERY)));
+      const breath = Math.max(1, Math.round(p.maxhp * DESCENT_RECOVERY));
+      /* Mends the ceiling before the bar. Measured before this, the breath
+       * fired 61 times and delivered zero hit points every time, because the
+       * player was already full when they reached the stairs — a ceiling gives
+       * it something to do. */
+      this.mendWounds(Math.round(breath / 2), p);
+      p.hp = Math.max(p.hp, Math.min(this.restedCap(p), p.hp + breath));
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
     }
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
@@ -879,16 +889,28 @@ export class Game {
     const p = this.state.player;
     if (!this.outOfCombat()) { this.log('Not with something awake this close.'); return false; }
     const der = this.derived();
-    if (p.hp >= p.maxhp && p.power >= der.maxpower) { this.log('You are as rested as this place allows.'); return false; }
+    /* "As rested as this place allows" is literally true now: resting ends at
+     * the rested line, not at the top of the bar. It is still free, still
+     * unlimited and still one keypress — it is just shorter. */
+    const cap = this.restedCap(p);
+    if (p.hp >= cap && p.power >= der.maxpower) {
+      this.log('You are as rested as this place allows.');
+      if (p.wounds > 0) this.log('The worst of it will not close on its own: ' + p.wounds + ' hit points beyond your reach.');
+      return false;
+    }
     let turns = 0;
     while (turns < maxTurns && !this.dying) {
-      const full = p.hp >= p.maxhp && p.power >= this.derived().maxpower;
+      const full = p.hp >= this.restedCap(p) && p.power >= this.derived().maxpower;
       if (full) break;
       if (!this.outOfCombat()) { this.log('Something stirs — you are on your feet again.'); break; }
       this.endPlayerTurn();
       turns++;
     }
     if (turns) this.log('You sit against the stone for a while. (' + turns + ' turns)');
+    if (p.wounds > 0) {
+      this.log('You have rested all you can. What is left of this needs mending, not sitting — ' +
+        p.wounds + ' hit points beyond your reach.');
+    }
     return true;
   }
 
@@ -1080,25 +1102,33 @@ export class Game {
   useAltar(x, y) {
     const p = this.state.player;
     const memo = this.currentMemo();
-    const key = x + ',' + y;
+    /* Keyed per character, so one altar serves each member of a party once —
+     * a bare "x,y" from an older save still counts as spent. */
+    const key = x + ',' + y + '#' + (p.name || '');
     if (memo) {
       if (!memo.altars) memo.altars = [];
-      if (memo.altars.includes(key)) {
+      if (memo.altars.includes(key) || memo.altars.includes(x + ',' + y)) {
         this.log('The altar is cold. It gave what it had.');
         return;
       }
       memo.altars.push(key);
     }
     const der = this.derived();
+    const wounded = p.wounds || 0;
     const healed = Math.min(p.maxhp - p.hp, Math.max(1, Math.round(p.maxhp * 0.35)));
     const restored = Math.min(p.maxpower - p.power, Math.max(1, Math.round(der.maxpower * 0.5)));
     const cursedHere = [...p.inventory, ...Object.values(p.equipment || {})].some((it) => it && it.cursed);
     /* Do not spend a one-shot on someone who needs nothing from it. */
-    if (healed <= 0 && restored <= 0 && !cursedHere) {
+    if (healed <= 0 && restored <= 0 && !cursedHere && wounded <= 0) {
       this.log('An altar, still kept. You have nothing to ask it for yet.');
       if (memo && memo.altars) memo.altars = memo.altars.filter((k) => k !== key);
       return;
     }
+    /* Wounds close FIRST, so the 35% is measured against a bar that is whole
+     * again. This is the altar's whole point now: it is the only free thing in
+     * the dungeon that reaches what sitting down cannot. */
+    const lifted = this.mendWounds(wounded, p);
+    if (lifted > 0) this.log('What would not close, closes. (+' + lifted + ' HP you can reach again)');
     p.hp = Math.min(p.maxhp, p.hp + healed);
     p.power = Math.min(p.maxpower, p.power + restored);
     this.log('You set your hands on the altar. Someone kept this rite up long after the last of them stopped being paid.');
@@ -1344,13 +1374,17 @@ export class Game {
      * Regeneration and crossing water only ever landed on even turns and the
      * ring simply stopped working. Measured: five points of mending over ten
      * actions on dry ground, none at all in the water. */
+    /* Everything that mends without costing anything stops at the rested line.
+     * Math.max on the outside, so a character who drank past it is never
+     * dragged back down to it. */
+    const cap = this.restedCap(p);
     if (der.regen) {
       if (!p.counters) p.counters = {};
       p.counters.regenTick = (p.counters.regenTick || 0) + 1;
-      if (p.counters.regenTick % 2 === 0) p.hp = Math.min(p.maxhp, p.hp + der.regen);
+      if (p.counters.regenTick % 2 === 0) p.hp = Math.max(p.hp, Math.min(cap, p.hp + der.regen));
     }
     if (this.outOfCombat()) {
-      p.hp = Math.min(p.maxhp, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION)));
+      p.hp = Math.max(p.hp, Math.min(cap, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION))));
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.ceil(der.maxpower * PWR_REGEN_FRACTION)));
       /* A half point never carries from one fight into the next. */
       if (p.counters) p.counters.mote = 0;
@@ -1590,6 +1624,7 @@ export class Game {
       }
     }
     p.hp -= dmg;
+    this.takeWound(dmg, p);
     if (p.hp <= 0) {
       p.hp = 0;
       this.die(m);
@@ -1618,6 +1653,9 @@ export class Game {
     }
     p.hp = p.maxhp;
     p.power = p.maxpower;
+    /* The one bed in the world: wounds do not follow you out of the dark. */
+    p.wounds = 0;
+    if (p.counters) p.counters.woundMote = 0;
     /* Back to the deepest floor you reached, not to the entrance. The floors
      * above are already cleared, so sending you to the top charged the death
      * in walking rather than in anything you could weigh. */
@@ -1813,6 +1851,46 @@ export class Game {
    * Returns what was actually mended, not what was rolled: at 55 of 58 the old
    * log line promised +7 and delivered 3, and under a floor that lie only gets
    * larger. */
+  /* THE RESTED LINE: how far up the bar sitting down can reach. */
+  restedCap(who) {
+    const p = who || this.state.player;
+    if (!p) return 0;
+    return Math.max(this.woundFloorHp(p), p.maxhp - (p.wounds || 0));
+  }
+
+  /* However badly used, half a bar is always yours to rest back to. */
+  woundFloorHp(who) {
+    const p = who || this.state.player;
+    return Math.max(1, Math.ceil(p.maxhp * WOUND_FLOOR));
+  }
+
+  /* A share of every blow, carried as a FRACTION. Rounding each hit up would
+   * make fifteen scratches worse than one mauling and would be lethal on a
+   * 22 point bar — the same mistake as clamping the regeneration fraction up
+   * to a whole point, which is what made that constant meaningless. */
+  takeWound(dmg, who) {
+    const p = who || this.state.player;
+    if (!p || !(dmg > 0)) return 0;
+    if (!p.counters) p.counters = {};
+    p.counters.woundMote = (p.counters.woundMote || 0) + dmg * WOUND_SHARE;
+    const whole = Math.floor(p.counters.woundMote);
+    if (whole < 1) return 0;
+    p.counters.woundMote -= whole;
+    const room = Math.max(0, p.maxhp - this.woundFloorHp(p) - (p.wounds || 0));
+    const took = Math.min(whole, room);
+    p.wounds = (p.wounds || 0) + took;
+    return took;
+  }
+
+  mendWounds(n, who) {
+    const p = who || this.state.player;
+    if (!p || !(n > 0)) return 0;
+    const closed = Math.min(p.wounds || 0, Math.floor(n));
+    p.wounds = (p.wounds || 0) - closed;
+    if (p.wounds <= 0 && p.counters) p.counters.woundMote = 0;
+    return closed;
+  }
+
   applyHeal(rolled, fraction) {
     const p = this.state.player;
     const roll = Math.max(1, Math.round(Number(rolled) || 0));
@@ -1820,6 +1898,9 @@ export class Game {
     const want = Math.max(roll, floor);
     const before = p.hp;
     p.hp = Math.min(p.maxhp, p.hp + want);
+    /* Past the rested line, and it closes a share of what it mends — which is
+     * what makes a draught worth carrying once sitting down has a limit. */
+    this.mendWounds(Math.round(want * HEAL_MENDS), p);
     return p.hp - before;
   }
 
@@ -2191,6 +2272,7 @@ export class Game {
     if (p) {
       if (p.hp <= 0) p.hp = 1;   /* a save caught mid-death resumed at zero */
       if (!p.deepest) p.deepest = {};
+      if (!Number.isFinite(p.wounds) || p.wounds < 0) p.wounds = 0;
       if (!p.buffLevels) p.buffLevels = {};
       if (!p.beatsSeen) p.beatsSeen = {};
       if (!p.npcsMet) p.npcsMet = {};

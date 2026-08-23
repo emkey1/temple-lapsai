@@ -300,6 +300,34 @@ Witch-Spark used to hand a point of power back too; measured, a Mage with both e
 the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
 of the economy.
 
+### Recovery, and the rested line
+
+Sitting down mends what sitting down can reach. A share of every blow leaves a **wound** — a hatched
+dead zone at the top of the health bar that the calm-turn trickle, the `R` key and a Ring of
+Regeneration all refuse to touch.
+
+This exists because altars had stopped mattering, and measuring said the cause was not that healing
+was fast. Out-of-combat regeneration is **oversubscribed three to twelve times** — the engine offers
+far more free mending than a player has room to absorb — and the walk to a floor's single altar is
+**31 turns**, which at a hit point a turn is worth more than the altar gives. The bot touched an
+altar on 18–29% of floors, arrived at 68–83% of maximum health, and 20–63% of firings landed on a
+full bar, for 1–3.5% of all healing in a run. You cannot fix a supply nobody can use up by turning
+it down; a ceiling is the one thing a walk cannot raise.
+
+The division of labour that falls out of it:
+
+| | reaches | costs |
+| --- | --- | --- |
+| **rest** (`R`) | the rested line, in one press — *shorter* than before, not longer | nothing |
+| **a draught or a heal** | past the line, and closes a quarter of what it mends | an item and a turn |
+| **the stairs** | mends a breath of ceiling, once per depth never reached | going deeper |
+| **an altar** | *all* of it, plus half your power and every curse | walking to it |
+| **camp** | everything; wounds do not follow you out of the dark | leaving |
+
+The wound is carried as a fraction, so fifteen scratches and one mauling leave exactly the same
+mark — rounding each blow up is the same mistake as clamping the regeneration fraction up to a whole
+point, and on a 22-point bar it would be lethal. The line never falls below 40% of maximum.
+
 ### Loot, and water
 
 **Loot follows the descent too.** The item tables banded on the floor's index inside its own

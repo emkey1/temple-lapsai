@@ -184,6 +184,19 @@ h3.pane {
 .eq-row .ico { width: 20px; text-align: center; }
 .eq-row .i-name { flex: 1; }
 .eq-row .i-name.cursed { color: var(--red); }
+/* The wounded part of the bar: a hatched dead zone at the top that resting
+   cannot reach, so a heal that stops short reads as a wound and not a bug. */
+#hud-hp .bar u {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-left: 1px solid var(--red);
+  background: repeating-linear-gradient(135deg,
+    rgba(224,90,78,.32) 0 3px, rgba(0,0,0,0) 3px 6px);
+  pointer-events: none;
+}
+
 .eq-row .i-name .qty { color: var(--amb); font-weight: bold; }
 /* The rules text under an item's name. Dim and tight: it should be readable
    when you look for it and quiet when you are not. */

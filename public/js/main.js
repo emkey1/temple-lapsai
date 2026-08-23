@@ -53,6 +53,7 @@ const els = {
   topstatus: $('topstatus'),
   log: $('log'),
   hpFill: $('hp-fill'),
+  hpWound: $('hp-wound'),
   hpText: $('hp-text'),
   powFill: $('pow-fill'),
   powText: $('pow-text'),
@@ -660,7 +661,17 @@ function renderHud(g) {
   if (!p) return;
   bar(els.hpFill, els.hpText, 100 * p.hp / Math.max(1, p.maxhp));
   bar(els.powFill, els.powText, 100 * p.power / Math.max(1, p.maxpower));
-  els.topstatus.textContent = p.name + ' · Lv ' + p.level + ' · ' + p.hp + '/' + p.maxhp + ' hp · ' + p.power + '/' + p.maxpower + ' pwr · ' + p.gold + ' gp';
+  /* The part of the bar resting cannot reach, hatched off at the top. Without
+   * it a heal that stops short reads as a bug rather than as a wound. */
+  if (els.hpWound) {
+    const cap = g.restedCap(p);
+    const lost = Math.max(0, p.maxhp - cap);
+    els.hpWound.style.width = (100 * lost / Math.max(1, p.maxhp)) + '%';
+    els.hpWound.style.display = lost > 0 ? '' : 'none';
+  }
+  els.topstatus.textContent = p.name + ' · Lv ' + p.level + ' · ' + p.hp + '/' + p.maxhp + ' hp' +
+    (p.wounds > 0 ? ' (' + p.wounds + ' wounded)' : '') +
+    ' · ' + p.power + '/' + p.maxpower + ' pwr · ' + p.gold + ' gp';
 }
 
 /* ---------------- stat sheet ---------------- */
@@ -690,6 +701,9 @@ function renderStats(g) {
   kv('XP', p.xp + ' / next ' + toNext);
   kv('Gold', p.gold + ' gp');
   kv('HP', p.hp + ' / ' + p.maxhp);
+  if (p.wounds > 0) {
+    kv('Wounded', p.wounds + ' <span class="tiny">rest reaches ' + g.restedCap(p) + '</span>');
+  }
   kv('Power', p.power + ' / ' + p.maxpower);
   kv('AC', der.ac + ' <span class="tiny">lower is better</span>');
   kv('To-hit', der.toHit >= 0 ? '+' + der.toHit : der.toHit);
