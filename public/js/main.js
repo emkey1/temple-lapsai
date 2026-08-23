@@ -602,12 +602,16 @@ function renderGame(g) {
 
   for (const m of floor.monsters || []) {
     if (m.hp <= 0 || !m.t) continue;
-    /* Under the surface, and not drawn until it breaks it. */
-    if (m.submerged) continue;
+    /* Under the surface, and not drawn until it breaks it — unless something
+     * has revealed it, because Detect Evil promises every monster on the floor
+     * and quietly missing the ones lying in the drains is a lie the player
+     * would only find out about by dying to one. Drawn dim: you know it is
+     * there, you cannot see it properly. */
+    if (m.submerged && !m.revealed) continue;
     if (!inView(m.x, m.y) && !m.revealed) continue;
     /* Tinted by tier, never by name: red on this map is always something
      * alive. Loot is drawn from a palette with no red in it. */
-    drawGlyph(m.x, m.y, m.t.glyph, cls(monsterTint(m.t.tier, m.boss)), !inView(m.x, m.y));
+    drawGlyph(m.x, m.y, m.t.glyph, cls(monsterTint(m.t.tier, m.boss)), !inView(m.x, m.y) || m.submerged);
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;

@@ -249,3 +249,26 @@ test('the oracle may write something that swims', () => {
   const written = validateMonster({ name: 'Drain Eel', glyph: 'e', tier: 5, properties: ['aquatic', 'poison'] });
   assert.ok(written.props.includes('aquatic'), 'aquatic is not a property the Library can use');
 });
+
+test('magic that shows every monster shows the ones under the water', () => {
+  /* Detect Evil promises "every monster on the floor". Quietly missing the
+   * things lying in the drains is a lie the player only finds out about by
+   * dying to one. */
+  const found = withLurker('lurk-detect');
+  assert.ok(found, 'no floor in forty had anything lying in the water');
+  const { g, lurker } = found;
+  assert.equal(lurker.revealed, undefined, 'the rig started with it already revealed');
+
+  const cleric = newGame('detect-cleric', 'cleric');
+  cleric.state.player.dungeonId = 'upper';
+  for (let i = 1; i < 4; i++) cleric.levelUp();
+  cleric.loadFloor(1);
+  const hidden = cleric.currentFloor.monsters.find((m) => m.submerged);
+  if (!hidden) return;                    /* this seed put nothing in the water */
+  cleric.state.player.power = cleric.state.player.maxpower;
+  cleric.activateAbility('detect-evil');
+  assert.equal(hidden.revealed, true, 'Detect Evil missed what was lying in the water');
+  /* Still submerged — revealed says you know where it is, not that it has
+   * surfaced, so it keeps waiting. */
+  assert.equal(hidden.submerged, true, 'being detected dragged it out of the water');
+});
