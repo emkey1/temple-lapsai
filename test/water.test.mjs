@@ -38,13 +38,22 @@ test('you can wade into water', () => {
 });
 
 test('wading costs the turn twice over', () => {
+  /* Counted as monster ACTIONS now, not phases: the initiative queue walks
+   * monsters one at a time, and only the wading surcharge still sweeps them
+   * all at once. The invariant is what it always was — wade, and everything
+   * hostile moves twice before you move again. */
   const g = newGame('wade-slow');
   pond(g);
-  let turns = 0;
-  const realResolve = g.resolveMonsters.bind(g);
-  g.resolveMonsters = () => { turns++; realResolve(); };
+  const p = g.state.player;
+  p.ini = 30;                        /* the wader goes first, so the count is clean */
+  for (const m of g.currentFloor.monsters) m.ini = 1;
+  g._round = null; g.advanceQueue();
+  let acts = 0;
+  const real = g.monsterTakeTurn.bind(g);
+  g.monsterTakeTurn = (m, f) => { if (m.hp > 0) acts++; real(m, f); };
+  const before = g.currentFloor.monsters.filter((m) => m.hp > 0).length;
   g.handleKey('d');                  /* step east, into the water */
-  assert.equal(turns, 2, `monsters acted ${turns} time(s) — wading should give them two`);
+  assert.equal(acts, before * 2, `${acts} monster actions for ${before} monsters — wading should give each two`);
 });
 
 test('splashing wakes what is nearby, and only what is nearby', () => {

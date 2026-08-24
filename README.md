@@ -232,6 +232,24 @@ Measured now, 60 duels a cell, in the kit each dungeon can supply:
 Each boss is a real fight that levelling wins. The Mage is the known gap — its
 power is a fixed pool, and once it is spent the Mage is swinging a stick.
 
+### Initiative, and claw-claw-bite
+
+Rounds run in **initiative order** — members and monsters interleaved, so a quick thing genuinely
+acts between the fast half of the party and the slow half. Rolled **once per encounter and held**
+(the way the game this is inspired by rolls it): a stable order gives every actor exactly one
+action between two of any member's inputs, where a re-rolled one measurably let a monster land
+twice in that window — a character quaffing at a threshold that never fails today died in
+three-quarters of runs. Your DEX is your edge; a monster's speed is its. Losing initiative means
+the thing that woke gets the jump — once.
+
+Bosses fight with **routines**: claw, claw, bite — each blow rolled on its own (aiming a step
+wide, so armour keeps its meaning), the depth bonus riding one entry, and soak spent once per
+body per action. And the routine **repeats whole, once per body in the company**: the god has arms
+for each of you. That is the boss's answer to the action economy that let any two adventurers beat
+every boss in the game — measured at 100% everywhere before this, and now, at the levels the split
+XP curve actually delivers: a pair wins 38/46/32% at the three bosses, a full company 94/44/20%.
+Alone, every boss fights exactly as it did.
+
 ### The party
 
 Tactical, ToEE-style: each member is a **body on the board**. Monsters hunt the *nearest* one —

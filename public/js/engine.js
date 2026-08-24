@@ -570,7 +570,12 @@ export class Game {
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
     this.snapshotFloor();   /* remember the floor we are stepping off */
-    this.clearActorTurn();
+    for (const m of (this.state.party && this.state.party.members) || []) {
+      if (!m) continue;
+      this.clearActorTurn(m);
+      m.ini = undefined;   /* a new floor is a new encounter */
+    }
+    this._round = null;
     /* The breath at the stairs is paid for reaching somewhere NEW.
      *
      * loadFloor is also how you climb back up, how the camp button puts you
@@ -636,6 +641,10 @@ export class Game {
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
+    /* The first round exists BEFORE the first keypress. Without this, a
+     * monster's round-one slot and round-two opening both fired inside the
+     * first input — the exact twice-in-a-window the stable order forbids. */
+    this.advanceQueue();
   }
 
   /* HOW DEEP THIS FLOOR IS IN THE WHOLE DESCENT, not just in its own dungeon.
@@ -1432,17 +1441,61 @@ export class Game {
     const p = this.state.player;
     if (!p || this.dying) return;
     this.actorTurn(p).acted = true;
-    const next = this.nextUnactedMember();
-    if (next >= 0) {
-      this.state.party.active = next;
-      /* The new member sees from where THEY stand. */
-      this.computeVisibility();
-      if (this.ui.render) this.ui.render(this);
-      if (this.ui.refreshHud) this.ui.refreshHud(this);
-      if (this.ui.refreshStats) this.ui.refreshStats(this);
-      return;
+    this.advanceQueue();
+  }
+
+  /* One pass through the round in INITIATIVE ORDER — members and monsters
+   * interleaved, so a quick thing genuinely goes before the slow half of the
+   * party and after the fast half. Control rests wherever the next unacted
+   * member sits in the order; everything between two member slots plays out
+   * between two keypresses.
+   *
+   * The queue itself is runtime state, never saved: a reload starts a fresh
+   * round, which is the least surprising thing a reload can do. */
+  buildRound() {
+    const order = [];
+    for (const m of this.livingMembers()) {
+      if (!(m.ini > 0)) this.rollInitiative(m, true);
+      order.push({ member: true, ref: m });
     }
-    this.resolveRound();
+    for (const mo of (this.currentFloor && this.currentFloor.monsters) || []) {
+      if (mo.hp > 0 && mo.aggro && !mo.submerged) {
+        if (!(mo.ini > 0)) this.rollInitiative(mo);
+        order.push({ member: false, ref: mo });
+      }
+    }
+    /* Ties go to the party — the benefit of the doubt goes to whoever is
+     * paying for the torches — and then to standing order, so sort is stable. */
+    order.sort((a, b) => (b.ref.ini || 0) - (a.ref.ini || 0) || (b.member ? 1 : 0) - (a.member ? 1 : 0));
+    this._round = { order, idx: 0 };
+  }
+
+  advanceQueue() {
+    if (this.dying) return;
+    if (!this._round) this.buildRound();
+    const r = this._round;
+    const field = this.playerDistanceField();
+    while (r.idx < r.order.length) {
+      const e = r.order[r.idx];
+      if (e.member) {
+        const m = e.ref;
+        if (m.hp > 0 && !this.actorTurn(m).acted) {
+          const at = this.state.party.members.indexOf(m);
+          if (at >= 0) this.state.party.active = at;
+          this.computeVisibility();
+          if (this.ui.render) this.ui.render(this);
+          if (this.ui.refreshHud) this.ui.refreshHud(this);
+          if (this.ui.refreshStats) this.ui.refreshStats(this);
+          return;   /* control rests here until a key spends this action */
+        }
+        r.idx++;
+      } else {
+        r.idx++;
+        this.monsterTakeTurn(e.ref, field);
+        if (this.dying) return;
+      }
+    }
+    this.endRound();
   }
 
   nextUnactedMember() {
@@ -1504,11 +1557,9 @@ export class Game {
     return member === this.state.player ? 'you' : member.name;
   }
 
-  resolveRound() {
+  endRound() {
     const party = this.state.party;
     this.tickStatus();
-    if (this.dying) return;
-    this.resolveMonsters();
     if (this.dying) return;
     /* Wading costs the turn twice over: everything else gets a second move.
      * The flag sits on whichever member waded and survives until here, since
@@ -1519,6 +1570,17 @@ export class Game {
       this.resolveMonsters();
       if (this.dying) return;
     }
+    /* The sleeping look around once a round: anything that spots the party
+     * wakes, rolls its initiative, and joins the NEXT round — you see it
+     * before it moves, which is what spotting something first should buy. */
+    for (const mo of (this.currentFloor && this.currentFloor.monsters) || []) {
+      if (mo.hp <= 0 || mo.aggro || mo.submerged) continue;
+      if (this.vis[mo.y] && this.vis[mo.y][mo.x] && this.targetableMembers().length) {
+        this.rollInitiative(mo);
+        mo.aggro = true;
+        mo.lastSeen = this.turn;
+      }
+    }
     for (const m of party.members) if (m) this.clearActorTurn(m);
     party.active = this.firstLivingMember();
     this.computeVisibility();
@@ -1526,6 +1588,10 @@ export class Game {
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
     if (this.ui.refreshStats) this.ui.refreshStats(this);
+    /* The new round begins at once: whatever outrolled the first member acts
+     * NOW, before control returns — losing initiative means exactly this. */
+    this._round = null;
+    this.advanceQueue();
   }
 
   tickStatus() {
@@ -1619,56 +1685,81 @@ export class Game {
     return dist;
   }
 
+  /* Every monster, all at once — the shape the tests drive and the wading
+   * surcharge uses. Play itself goes through the initiative queue below, which
+   * calls the same monsterTakeTurn one actor at a time. */
   resolveMonsters() {
-    const floor = this.currentFloor;
-    const alive = (floor.monsters || []).filter((m) => m.hp > 0);
+    const alive = ((this.currentFloor.monsters) || []).filter((m) => m.hp > 0);
     const rng = this.rngOfTurn();
     const field = this.playerDistanceField();
+    for (const m of rng.shuffle(alive)) {
+      this.monsterTakeTurn(m, field);
+      if (this.dying) return;
+    }
+  }
+
+  monsterTakeTurn(m, field) {
+    if (m.hp <= 0) return;
     /* The dark forgets the party only when there is nobody left for it to
      * remember: every member under Sanctuary at once. One hidden member does
      * not hide the others standing next to them. */
     const hidden = this.targetableMembers().length === 0;
-    for (const m of rng.shuffle(alive)) {
-      if (m.hp <= 0) continue;
 
-      /* Wand of Frost set `stunned` and nothing ever read it. */
-      if (m.stunned > 0) {
-        m.stunned--;
-        continue;
-      }
-
-      const near = this.nearestMember(m);
-      /* Something under the surface does nothing at all until it breaks it —
-       * which is the point of the drains: the water is not only slow and loud,
-       * it is where things wait. */
-      if (m.submerged) {
-        if ((near && dist8(m, near) <= SURFACE_RANGE) || m.aggro) this.surface(m);
-        else continue;
-      }
-      const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
-      if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) continue;
-      if (seen && !hidden) {
-        m.aggro = true;
-        m.lastSeen = this.turn;
-      } else if (m.aggro && !this.adjacentMember(m) && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
-        m.aggro = false;
-        m.revealed = false;
-      }
-      if (!m.aggro) continue;
-      if (hidden) continue;   /* it knows something is there; it cannot fix on you */
-
-      /* Monster speed (1-4) was carried on every template and never used.
-       * Speed buys GROUND, not blows: a fast thing closes sooner, but nothing
-       * gets to strike twice in one turn. So it keeps going only while it is
-       * STEPPING, and stops the moment it strikes or finds nowhere to go. */
-      const steps = Math.max(1, Math.min(4, m.t.speed || 1));
-      for (let i = 0; i < steps; i++) {
-        const did = this.monsterAct(m, seen, null, field);
-        if (this.dying) return;
-        if (m.hp <= 0) break;
-        if (did !== 'step') break;
-      }
+    /* Wand of Frost set `stunned` and nothing ever read it. */
+    if (m.stunned > 0) {
+      m.stunned--;
+      return;
     }
+
+    const near = this.nearestMember(m);
+    /* Something under the surface does nothing at all until it breaks it —
+     * which is the point of the drains: the water is not only slow and loud,
+     * it is where things wait. */
+    if (m.submerged) {
+      if ((near && dist8(m, near) <= SURFACE_RANGE) || m.aggro) this.surface(m);
+      else return;
+    }
+    const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
+    if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) return;
+    if (seen && !hidden) {
+      if (!m.aggro) this.rollInitiative(m);
+      m.aggro = true;
+      m.lastSeen = this.turn;
+    } else if (m.aggro && !this.adjacentMember(m) && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
+      m.aggro = false;
+      m.revealed = false;
+      m.ini = undefined;   /* the next ambush is a new roll */
+    }
+    if (!m.aggro) return;
+    if (hidden) return;   /* it knows something is there; it cannot fix on you */
+
+    /* Monster speed (1-4) buys GROUND and INITIATIVE, never blows: a fast
+     * thing closes sooner and goes earlier in the round, but nothing strikes
+     * twice in one turn. It keeps going only while it is STEPPING. */
+    const steps = Math.max(1, Math.min(4, m.t.speed || 1));
+    const f = field || this.playerDistanceField();
+    for (let i = 0; i < steps; i++) {
+      const did = this.monsterAct(m, seen, null, f);
+      if (this.dying) return;
+      if (m.hp <= 0) break;
+      if (did !== 'step') break;
+    }
+  }
+
+  /* INITIATIVE, rolled once per encounter and held — the way the game this is
+   * inspired by rolls it. Rolling every round was built and measured first: a
+   * stable order gives every actor exactly one action between two of any
+   * member's inputs, while a re-rolled one lets an actor land twice in that
+   * window — measured, a character quaffing at a threshold that never fails
+   * today died in three-quarters of runs. Dexterity is the member's edge;
+   * speed is the monster's. */
+  rollInitiative(actor, isMember = false) {
+    const r = this.rngOfTurn();
+    const bonus = isMember
+      ? abilityMod(this.derived(actor).effValues.dex)
+      : (Math.max(1, Math.min(4, (actor.t && actor.t.speed) || 1)) - 1) * 2;
+    actor.ini = r.d(20) + bonus;
+    return actor.ini;
   }
 
   /* Per-turn state belongs to the ACTOR, not to the game. It lived on the
@@ -1718,6 +1809,7 @@ export class Game {
   }
 
   monsterMelee(m, target) {
+    if (m.t.attacks && m.t.attacks.length) { this.routineMelee(m, target); return; }
     const mark = target || this.state.player;
     const der = this.derived(mark);
     const r = this.rngOfTurn();
@@ -1730,6 +1822,66 @@ export class Game {
     const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
     this.log('The ' + m.t.name + ' hits ' + this.nameOf(mark) + ' for ' + dmg + ' hit points.');
     this.damageMember(mark, dmg, m);
+  }
+
+  /* CLAW, CLAW, BITE.
+   *
+   * A routine REPLACES a creature's single attack: several blows, each with
+   * its own roll, budgeted so the total against one body is about what the
+   * single attack was. Three rules from the design review that attacked this
+   * before it was written, each of which it failed on paper:
+   *
+   *  - Every entry aims wide (-1 to hit): splitting one roll into three
+   *    collapses armour's whole payoff — the rate at which you walk away
+   *    untouched — while the average stays flat and every test agrees nothing
+   *    changed. The penalty gives armour its meaning back.
+   *  - The depth bonus rides ONE entry, not each: added per blow it multiplied
+   *    by routine length, and a budget-matched routine was measured at 1.8x
+   *    its single-attack twin by floor ten.
+   *  - Soak spends ONCE per body per action, not per blow: floored per blow,
+   *    a ward that only ever saw small nibbles was measured worthless — the
+   *    Mage's Ashen Mantle bought nothing at all against a routine.
+   *
+   * And the reason routines exist at all: THE GOD HAS ARMS FOR EACH OF YOU.
+   * Against a company the routine grows one leading blow per extra body and
+   * the blows spread across everyone in reach — which is the boss's answer to
+   * an action economy that let any two adventurers beat every boss in the
+   * game, measured at one hundred percent. */
+  routineMelee(m, target) {
+    const routine = m.t.attacks;
+    const r = this.rngOfTurn();
+    const reach = this.targetableMembers().filter((mm) => dist8(m, mm) <= 1);
+    if (!reach.length) return;
+    /* Proportional, not additive: one extra claw per body was measured to
+     * leave every boss at a one hundred percent loss to any pair — a company
+     * doubles its damage AND its pooled health, so the routine repeats whole
+     * per body in the company, up to the company's own legal size. Alone, it
+     * is exactly the budgeted routine. */
+    const arms = Math.min(4, Math.max(1, this.targetableMembers().length));
+    const entries = [];
+    for (let a = 0; a < arms; a++) entries.push(...routine);
+    const depthDelta = Math.max(0, (m.dmg.bonus || 0) - ((m.t.damage && m.t.damage.bonus) || 0));
+    const landed = new Map();
+    let ti = Math.max(0, reach.indexOf(target || this.state.player));
+    entries.forEach((entry, i) => {
+      const mark = reach[ti % reach.length];
+      ti++;
+      if (!mark || mark.hp <= 0) return;
+      const der = this.derived(mark);
+      const dc = Math.max(1, 20 - der.ac);
+      const raw = r.d(20);
+      const hit = raw === 20 || raw + m.toHit - 1 >= dc;
+      const label = entry.name || 'blow';
+      if (!hit) { this.log('The ' + m.t.name + '\'s ' + label + ' misses ' + this.nameOf(mark) + '.'); return; }
+      const d = entry.damage || { dice: 1, sides: 3, bonus: 0 };
+      const dmg = this.rollDamage({ dice: d.dice, sides: d.sides, bonus: (d.bonus || 0) + (i === 0 ? depthDelta : 0) }, m.t);
+      this.log('The ' + m.t.name + '\'s ' + label + ' finds ' + this.nameOf(mark) + ' for ' + dmg + '.');
+      landed.set(mark, (landed.get(mark) || 0) + dmg);
+    });
+    for (const [mark, total] of landed) {
+      this.damageMember(mark, total, m);
+      if (this.dying) return;
+    }
   }
 
   monsterRanged(m, target) {
