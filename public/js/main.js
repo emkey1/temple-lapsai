@@ -694,6 +694,13 @@ function renderGame(g) {
     drawGlyph(n.x, n.y, NPC_GLYPH, cls((n.tpl && n.tpl.color) || 'amber'), false);
   }
   if (game && p) {
+    /* Every member on the board; the one at the reins is bright and boxed,
+     * companions a step dimmer, the fallen a dark ember where they dropped. */
+    for (const m of g.state.party.members) {
+      if (!m || m === p) continue;
+      if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) continue;
+      drawGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? '#a8b0a0' : '#7a3a30', false);
+    }
     drawGlyph(p.x, p.y, PLAYER_GLYPH, '#f0f0e0', false, true);
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
     ctx.fillRect((p.x - camX) * s, (p.y - camY) * s, s, s);

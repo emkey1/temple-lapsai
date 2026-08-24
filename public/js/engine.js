@@ -340,8 +340,8 @@ export class Game {
     return !!(d && this.state.player && this.state.player.bossesSlain && this.state.player.bossesSlain[id]);
   }
 
-  derived() {
-    const p = this.state.player;
+  derived(who) {
+    const p = who || this.state.player;
     const c = CLASSES[p.cls] || CLASSES.fighter;
     const st = p.stats;
     const sbonus = {};
@@ -394,7 +394,7 @@ export class Game {
     /* Granted by the ABILITY, not by the class name — the passive previously
      * gave nothing that lacking it would have taken away. */
     let powerRegen = 0, focusPower = 0;
-    for (const a of this.passives()) {
+    for (const a of this.passives(p)) {
       if (a.critBonus) crit += a.critBonus;
       if (a.powerRegen) powerRegen += a.powerRegen;
       if (a.focusPower) focusPower += a.focusPower;
@@ -428,6 +428,38 @@ export class Game {
     else if (arriveAt === 'keep' && standable({ x: p.x, y: p.y })) spot = { x: p.x, y: p.y };
     p.x = spot.x;
     p.y = spot.y;
+  }
+
+  /* The rest of the party arrives with whoever led the way: clustered on the
+   * nearest walkable, unoccupied tiles, all their floor bookkeeping synced.
+   * A ring search rather than anything clever — the party is at most a few
+   * bodies, and stairs always stand on open ground. */
+  placePartyAround(floor, leader) {
+    const party = this.state.party;
+    if (!party || party.members.length <= 1) return;
+    const taken = new Set([leader.y * W + leader.x]);
+    const fits = (x, y) => this.inBounds(x, y) && isTravelable(floor.tiles[y][x]) &&
+      !taken.has(y * W + x) &&
+      !(floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === x && mo.y === y);
+    for (const m of party.members) {
+      if (!m || m === leader) continue;
+      m.dungeonId = leader.dungeonId;
+      m.floorIdx = leader.floorIdx;
+      let placed = false;
+      for (let r = 1; r <= 6 && !placed; r++) {
+        for (let dy = -r; dy <= r && !placed; dy++) {
+          for (let dx = -r; dx <= r && !placed; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const x = leader.x + dx, y = leader.y + dy;
+            if (!fits(x, y)) continue;
+            m.x = x; m.y = y;
+            taken.add(y * W + x);
+            placed = true;
+          }
+        }
+      }
+      if (!placed) { m.x = leader.x; m.y = leader.y; }   /* a crowd, not a crash */
+    }
   }
 
   /* Renewal arrives as a fraction of a point a turn, which rounds to nothing
@@ -575,6 +607,7 @@ export class Game {
     this.applyFloorMemo(floor, memo);
     this.currentFloor = floor;
     this.placeOnArrival(floor, arriveAt);
+    this.placePartyAround(floor, p);
     p.pending = undefined;
     if (!p.deepest) p.deepest = {};
     p.deepest[d.id] = Math.max(p.deepest[d.id] || 0, floorIdx);
@@ -779,18 +812,24 @@ export class Game {
 
   /* ---- vision ---- */
   computeVisibility() {
-    const p = this.state.player;
     const floor = this.currentFloor;
     if (!floor) return;
-    const sight = this.derived().sight;
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
     const side = 17;
-    const sx = Math.max(0, p.x - side), ex = Math.min(W - 1, p.x + side);
-    const sy = Math.max(0, p.y - side), ey = Math.min(H - 1, p.y + side);
-    for (let y = sy; y <= ey; y++) {
-      for (let x = sx; x <= ex; x++) {
-        this.vis[y][x] = this.los(p.x, p.y, x, y, sight);
-        if (this.vis[y][x]) this.seen[y][x] = true;
+    /* The union of everyone's eyes: what any member can see, the party sees.
+     * A party of one reduces to exactly the old loop. */
+    const eyes = this.livingMembers();
+    if (!eyes.length && this.state.player) eyes.push(this.state.player);
+    for (const e of eyes) {
+      const sight = this.derived(e).sight;
+      const sx = Math.max(0, e.x - side), ex = Math.min(W - 1, e.x + side);
+      const sy = Math.max(0, e.y - side), ey = Math.min(H - 1, e.y + side);
+      for (let y = sy; y <= ey; y++) {
+        for (let x = sx; x <= ex; x++) {
+          if (this.vis[y][x]) continue;
+          this.vis[y][x] = this.los(e.x, e.y, x, y, sight);
+          if (this.vis[y][x]) this.seen[y][x] = true;
+        }
       }
     }
     if (this.monstersBurning !== false) {
@@ -844,10 +883,11 @@ export class Game {
   /* Nothing awake and hostile within CALM_RADIUS. Asleep monsters do not
    * count — you are only in a fight when something is in one with you. */
   outOfCombat() {
-    const p = this.state.player;
     const floor = this.currentFloor;
-    if (!p || !floor) return false;
-    return !(floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist1(m, p) <= CALM_RADIUS);
+    const members = this.livingMembers();
+    if (!members.length || !floor) return false;
+    return !(floor.monsters || []).some((m) =>
+      m.hp > 0 && m.aggro && members.some((mm) => dist1(m, mm) <= CALM_RADIUS));
   }
 
   /* ---- input ---- */
@@ -932,6 +972,22 @@ export class Game {
     const mo = floor.monsters.find((m) => m.x === nx && m.y === ny);
     if (mo) {
       this.attackMonster(mo);
+      return true;
+    }
+    /* Walking into a companion trades places — blocking would deadlock a
+     * corridor, and a shuffle that costs the action is the tactical choice
+     * ("you take the front") rather than a wall. */
+    const ally = this.memberAt(nx, ny);
+    if (ally && ally !== p) {
+      const tile2 = floor.tiles[ny][nx];
+      if (dx && dy && !this.canCorner(p.x, p.y, nx, ny)) {
+        this.log('The corner is too tight to trade places through.');
+        return false;
+      }
+      ally.x = p.x; ally.y = p.y;
+      p.x = nx; p.y = ny;
+      this.log('You trade places with ' + ally.name + '.');
+      if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
       return true;
     }
     const npc = (floor.npcs || []).find((n) => n.x === nx && n.y === ny);
@@ -1398,6 +1454,48 @@ export class Game {
     return at >= 0 ? at : 0;
   }
 
+  livingMembers() {
+    const party = this.state.party;
+    return party ? party.members.filter((m) => m && m.hp > 0) : [];
+  }
+
+  /* Who a monster may fix on: the living, minus anyone the dark has forgotten.
+   * Sanctuary used to hide "the player"; with several bodies it hides the one
+   * who read the scroll, and the rest of the party is still very much there. */
+  targetableMembers() {
+    return this.livingMembers().filter((m) => !(m.buffs && m.buffs.sanctuary > 0));
+  }
+
+  memberAt(x, y) {
+    return this.livingMembers().find((m) => m.x === x && m.y === y) || null;
+  }
+
+  nearestMember(from, pool) {
+    let best = null, bd = Infinity;
+    for (const m of (pool || this.targetableMembers())) {
+      const d = dist1(from, m);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  adjacentMember(from) {
+    let best = null, bd = Infinity;
+    for (const m of this.targetableMembers()) {
+      if (dist8(from, m) > 1) continue;
+      const d = dist1(from, m);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  /* 'you' when it is the one at the reins, a name when it is a companion —
+   * "The Ghoul hits Marlyle for 4" has to read differently from a blow you
+   * took yourself. */
+  nameOf(member) {
+    return member === this.state.player ? 'you' : member.name;
+  }
+
   resolveRound() {
     const party = this.state.party;
     this.tickStatus();
@@ -1478,13 +1576,23 @@ export class Game {
 
   /* One BFS out from the player per turn. Every monster then walks downhill on
    * it, which routes them around corners instead of stalling against a wall. */
+  /* Multi-source: seeded at every targetable member, so descending it walks a
+   * monster towards whoever is NEAREST — which is what "the party is several
+   * bodies" means to the thing hunting them. */
   playerDistanceField() {
     const floor = this.currentFloor;
-    const p = this.state.player;
     const dist = Array.from({ length: H }, () => Array(W).fill(-1));
     if (!floor) return dist;
-    dist[p.y][p.x] = 0;
-    const queue = [[p.x, p.y]];
+    const queue = [];
+    for (const m of this.targetableMembers()) {
+      if (dist[m.y][m.x] !== -1) continue;
+      dist[m.y][m.x] = 0;
+      queue.push([m.x, m.y]);
+    }
+    if (!queue.length) {
+      const p = this.state.player;
+      if (p) { dist[p.y][p.x] = 0; queue.push([p.x, p.y]); }
+    }
     for (let i = 0; i < queue.length; i++) {
       const [x, y] = queue[i];
       const d = dist[y][x] + 1;
@@ -1505,12 +1613,13 @@ export class Game {
 
   resolveMonsters() {
     const floor = this.currentFloor;
-    const p = this.state.player;
-    const der = this.derived();
     const alive = (floor.monsters || []).filter((m) => m.hp > 0);
     const rng = this.rngOfTurn();
     const field = this.playerDistanceField();
-    const hidden = der.sanctuary;   /* Scroll of Sanctuary: the dark forgets you */
+    /* The dark forgets the party only when there is nobody left for it to
+     * remember: every member under Sanctuary at once. One hidden member does
+     * not hide the others standing next to them. */
+    const hidden = this.targetableMembers().length === 0;
     for (const m of rng.shuffle(alive)) {
       if (m.hp <= 0) continue;
 
@@ -1520,11 +1629,12 @@ export class Game {
         continue;
       }
 
+      const near = this.nearestMember(m);
       /* Something under the surface does nothing at all until it breaks it —
        * which is the point of the drains: the water is not only slow and loud,
        * it is where things wait. */
       if (m.submerged) {
-        if (dist8(m, p) <= SURFACE_RANGE || m.aggro) this.surface(m);
+        if ((near && dist8(m, near) <= SURFACE_RANGE) || m.aggro) this.surface(m);
         else continue;
       }
       const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
@@ -1532,7 +1642,7 @@ export class Game {
       if (seen && !hidden) {
         m.aggro = true;
         m.lastSeen = this.turn;
-      } else if (m.aggro && dist8(m, p) > 1 && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
+      } else if (m.aggro && !this.adjacentMember(m) && (this.turn - (m.lastSeen ?? -AGGRO_MEMORY)) > AGGRO_MEMORY) {
         m.aggro = false;
         m.revealed = false;
       }
@@ -1545,7 +1655,7 @@ export class Game {
        * STEPPING, and stops the moment it strikes or finds nowhere to go. */
       const steps = Math.max(1, Math.min(4, m.t.speed || 1));
       for (let i = 0; i < steps; i++) {
-        const did = this.monsterAct(m, seen, der, field);
+        const did = this.monsterAct(m, seen, null, field);
         if (this.dying) return;
         if (m.hp <= 0) break;
         if (did !== 'step') break;
@@ -1575,17 +1685,19 @@ export class Game {
    * swing and a blocked corridor as the same event, and is the first thing to
    * break once a creature can strike more than once in a turn. */
   monsterAct(m, seen, der, field) {
-    const p = this.state.player;
-    const dist = dist1(m, p);
-    const range = m.t.aggroRange || 8;
-    const isRanged = m.t.props && m.t.props.some((x) => x === 'ranged');
+    const inReach = this.adjacentMember(m);
     if (!m.aggro) return 'nothing';
-    if (dist8(m, p) <= 1) {
-      this.monsterMelee(m);
+    if (inReach) {
+      this.monsterMelee(m, inReach);
       return 'strike';
     }
+    const mark = this.nearestMember(m);
+    if (!mark) return 'nothing';
+    const dist = dist1(m, mark);
+    const range = m.t.aggroRange || 8;
+    const isRanged = m.t.props && m.t.props.some((x) => x === 'ranged');
     if (isRanged && seen && dist <= 12) {
-      this.monsterRanged(m);
+      this.monsterRanged(m, mark);
       return 'strike';
     }
     if (m.fleeing) {
@@ -1597,9 +1709,9 @@ export class Game {
     return 'nothing';
   }
 
-  monsterMelee(m) {
-    const p = this.state.player;
-    const der = this.derived();
+  monsterMelee(m, target) {
+    const mark = target || this.state.player;
+    const der = this.derived(mark);
     const r = this.rngOfTurn();
     const dc = Math.max(1, 20 - der.ac);
     const raw = r.d(20);
@@ -1608,20 +1720,20 @@ export class Game {
     const hit = raw === 20 || raw + m.toHit >= dc;
     if (!hit) { this.log('The ' + m.t.name + ' lashes out — and misses!'); return; }
     const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
-    this.log('The ' + m.t.name + ' hits you for ' + dmg + ' hit points.');
-    this.damagePlayer(dmg, m);
+    this.log('The ' + m.t.name + ' hits ' + this.nameOf(mark) + ' for ' + dmg + ' hit points.');
+    this.damageMember(mark, dmg, m);
   }
 
-  monsterRanged(m) {
-    const y = this.state.player.y, x = this.state.player.x;
+  monsterRanged(m, target) {
+    const mark = target || this.state.player;
     const r = this.rngOfTurn();
-    const der = this.derived();
+    const der = this.derived(mark);
     const dc = Math.max(1, 20 - der.ac);
     const raw = r.d(20);
     if (raw === 20 || raw + m.toHit >= dc) {
       const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
-      this.log('The ' + m.t.name + ' looses at you and hits for ' + dmg + '.');
-      this.damagePlayer(dmg, m);
+      this.log('The ' + m.t.name + ' looses at ' + this.nameOf(mark) + ' and hits for ' + dmg + '.');
+      this.damageMember(mark, dmg, m);
     } else {
       this.log('The ' + m.t.name + '\'s ranged attack whistles past.');
     }
@@ -1629,7 +1741,6 @@ export class Game {
 
   monsterChase(m, field) {
     const floor = this.currentFloor;
-    const p = this.state.player;
     const here = field[m.y][m.x];
     let best = null;
     let bestD = here >= 0 ? here : Infinity;
@@ -1637,7 +1748,7 @@ export class Game {
       const nx = m.x + dx, ny = m.y + dy;
       if (!this.inBounds(nx, ny)) continue;
       if (dx && dy && !this.canCorner(m.x, m.y, nx, ny)) continue;
-      if (nx === p.x && ny === p.y) continue;
+      if (this.memberAt(nx, ny)) continue;
       const d = field[ny][nx];
       if (d < 0 || d >= bestD) continue;
       if (floor.monsters.some((o) => o !== m && o.hp > 0 && o.x === nx && o.y === ny)) continue;
@@ -1650,7 +1761,7 @@ export class Game {
 
   monsterFlee(m) {
     const floor = this.currentFloor;
-    const p = this.state.player;
+    const p = this.nearestMember(m) || this.state.player;
     const dx = Math.sign(m.x - p.x) || 0, dy = Math.sign(m.y - p.y) || 0;
     const moves = [[dx, 0], [0, dy]];
     for (const [mx, my] of moves) {
@@ -1659,6 +1770,7 @@ export class Game {
       const t = floor.tiles[ny][nx];
       if (!isTravelable(t)) continue;
       if (floor.monsters.some((o) => o !== m && o.x === nx && o.y === ny)) continue;
+      if (this.memberAt(nx, ny)) continue;
       m.x = nx; m.y = ny;
       if (dist1(m, p) > 10) { m.aggro = false; m.fleeing = false; m.revealed = false; }
       return true;
@@ -1666,9 +1778,15 @@ export class Game {
     return false;
   }
 
+  /* Kept as the door everything used to knock on; it hits whoever holds the
+   * reins. Traps, spells and old tests all still work through it. */
   damagePlayer(dmg, m) {
-    const p = this.state.player;
-    const der = this.derived();
+    this.damageMember(this.state.player, dmg, m);
+  }
+
+  damageMember(target, dmg, m) {
+    if (!target) return;
+    const der = this.derived(target);
     let soak = der.resist || 0;
     const unhallowed = m && m.t && m.t.props && (m.t.props.includes('undead') || m.t.props.includes('cursed'));
     if (unhallowed) soak += der.undeadResist || 0;
@@ -1676,14 +1794,32 @@ export class Game {
       const stopped = Math.min(soak, dmg - 1);
       if (stopped > 0) {
         dmg -= stopped;
-        this.log('Your ward turns ' + stopped + ' of it aside.');
+        this.log((target === this.state.player ? 'Your' : target.name + '\'s') + ' ward turns ' + stopped + ' of it aside.');
       }
     }
-    p.hp -= dmg;
-    this.takeWound(dmg, p);
-    if (p.hp <= 0) {
-      p.hp = 0;
+    target.hp -= dmg;
+    this.takeWound(dmg, target);
+    if (target.hp <= 0) {
+      target.hp = 0;
+      this.memberDown(target, m);
+    }
+  }
+
+  /* One body down is a wound to the party; the LAST body down is the death.
+   * The fallen keep their gear and are skipped by the rotation, the field and
+   * every targeting path, all of which ask livingMembers. */
+  memberDown(target, m) {
+    this.clearActorTurn(target);
+    const left = this.livingMembers();
+    if (!left.length) {
       this.die(m);
+      return;
+    }
+    this.log(target.name + ' falls!');
+    const party = this.state.party;
+    if (party.members[party.active] === target) {
+      const next = this.nextUnactedMember();
+      party.active = next >= 0 ? next : this.firstLivingMember();
     }
   }
 
@@ -1707,11 +1843,16 @@ export class Game {
     } else {
       p.gold = (p.gold || 0) - Math.floor((p.gold || 0) / 2);
     }
-    p.hp = p.maxhp;
-    p.power = p.maxpower;
-    /* The one bed in the world: wounds do not follow you out of the dark. */
-    p.wounds = 0;
-    if (p.counters) p.counters.woundMote = 0;
+    /* The one bed in the world, and it sleeps the whole party: the fallen get
+     * up at camp, wounds and all mended — the resurrection fee already paid
+     * for the trip. */
+    for (const m of this.state.party.members) {
+      if (!m) continue;
+      m.hp = m.maxhp;
+      m.power = m.maxpower;
+      m.wounds = 0;
+      if (m.counters) m.counters.woundMote = 0;
+    }
     /* Back to the deepest floor you reached, not to the entrance. The floors
      * above are already cleared, so sending you to the top charged the death
      * in walking rather than in anything you could weigh. */
@@ -1725,9 +1866,9 @@ export class Game {
     if (this.ui.render) this.ui.render(this);
   }
 
-  passives() {
-    if (!this.state.player) return [];
-    return this.allAbilities().filter((a) => a.kind === 'passive');
+  passives(who) {
+    if (!(who || this.state.player)) return [];
+    return this.allAbilities(who).filter((a) => a.kind === 'passive');
   }
 
   hasPassive(id) {
@@ -1793,8 +1934,8 @@ export class Game {
   }
 
   /* ---- abilities ---- */
-  allAbilities() {
-    const p = this.state.player;
+  allAbilities(who) {
+    const p = who || this.state.player;
     if (!p) return [];
     const out = [];
     const seen = {};

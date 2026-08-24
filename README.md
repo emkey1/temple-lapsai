@@ -234,6 +234,18 @@ power is a fixed pool, and once it is spent the Mage is swinging a stick.
 
 ### The party
 
+Tactical, ToEE-style: each member is a **body on the board**. Monsters hunt the *nearest* one —
+the distance field they descend is seeded at every member at once — a blow lands on the body it
+struck (their armour, their soak, their wounds), and sight is the union of the party's eyes. One
+member falling is a wound to the party; the run ends when the **last** of them falls. Walking into
+a companion trades places, the whole party takes the stairs together, calm is calm for everyone,
+one Scroll of Sanctuary hides one member and not the rest, and camp beds the fallen back onto
+their feet.
+
+Turns are rounds: each member spends an action (the bright boxed `@` is whoever holds the reins;
+companions are a step dimmer), and the monsters wait for the last of them. In a party of one, every
+number in the game is measurably unchanged.
+
 `state.player` is not a field. It is the character whose turn it is — a
 non-enumerable accessor onto `state.party.members[active]` — so the ninety-odd
 places in the engine and seventeen in the UI that read it keep working while

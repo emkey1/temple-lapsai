@@ -42,7 +42,9 @@ function recruit(g, name = 'Second') {
   return b;
 }
 
-const blows = (g) => g.logs.filter((l) => /Pest hits you|Pest lashes out/.test(l)).length;
+/* A blow on ANY member counts: the pest names its mark now, and "hits you"
+ * only covers whoever holds the reins at that instant. */
+const blows = (g) => g.logs.filter((l) => /Pest hits |Pest lashes out/.test(l)).length;
 
 test('a party of one plays exactly as before: one action, one monster phase, one turn', () => {
   const { g, p } = rig('r-one');
