@@ -160,3 +160,25 @@ test('a curse from before the rework still works, just visibly', () => {
   g.unequip('weapon');
   assert.ok(p.equipment.weapon, 'an old-style curse let go');
 });
+
+test('an item enchanted under the old scheme loads already read', () => {
+  /* Old applyMagic baked "+3 ..." into the name AND set identified false. The
+   * new unread card would show base stats and a rune under a name that has
+   * already spilled everything — so on load, anything named but unread with no
+   * hidden true name is simply marked read. */
+  const g = newGame('c-oldmagic');
+  const saved = JSON.parse(JSON.stringify(g.save()));
+  const who = saved.party.members[0];
+  const old = deepItem(getItemTemplate('plate'));
+  old.name = '+4 Plate Armor';
+  old.magicLevel = 4;
+  old.effects.acBonus = 10;
+  old.identified = false;          /* the old scheme: renamed, yet "unread" */
+  who.equipment.body = old;
+
+  const back = newGame('c-oldmagic-2');
+  back.restore(saved);
+  const worn = back.state.player.equipment.body;
+  assert.equal(worn.identified, true, 'the card still claims an unread rune under a telltale name');
+  assert.match(itemDescription(worn), /\+10 armour/, 'the card shows base stats instead of the truth');
+});

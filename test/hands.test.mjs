@@ -99,3 +99,18 @@ test('the Library may write a two-handed weapon, and only a weapon', () => {
   const sh = validateItem({ name: 'Broad Wall', kind: 'shield', twoHanded: true, effects: { acBonus: 2 } });
   assert.equal(sh.twoHanded, undefined, 'a two-handed SHIELD leaked through');
 });
+
+test('an old copy asleep in a floor memory cannot dodge the rule', () => {
+  /* Items dropped on floors live in the save as snapshots; the stamp-on-load
+   * migration never saw them. The rule now asks the TEMPLATE at the moment of
+   * equipping, so no copy is old enough to slip past. */
+  const { g, p } = (() => { const g = newGame('h-memo', 'fighter'); g.loadFloor(0); g.currentFloor.monsters.length = 0; return { g, p: g.state.player }; })();
+  p.equipment.shield = deepItem(getItemTemplate('tower-shield'));
+  const old = deepItem(getItemTemplate('two-handed-sword'));
+  delete old.twoHanded;
+  p.inventory.push(old);
+  g.equip(old);
+  assert.ok(!(p.equipment.weapon && p.equipment.shield), 'both ended up equipped');
+  assert.equal(p.equipment.weapon, old);
+  assert.ok(p.inventory.some((x) => x && x.id === 'tower-shield'));
+});

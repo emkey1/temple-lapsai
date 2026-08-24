@@ -2128,6 +2128,17 @@ export class Game {
     return true;
   }
 
+  /* Asked of the TEMPLATE as well as the item, because items in old saves —
+   * including copies asleep in floor memories as dropped loot — are snapshots
+   * from before the rule existed. A stamp-on-load migration missed those:
+   * measured, an unflagged sword from a floor drop equipped beside a shield. */
+  isTwoHandedItem(it) {
+    if (!it) return false;
+    if (it.twoHanded) return true;
+    const t = it.id ? getItemTemplate(it.id) : null;
+    return !!(t && t.twoHanded);
+  }
+
   equip(item) {
     const p = this.state.player;
     const slot = item.slot;
@@ -2139,7 +2150,7 @@ export class Game {
      * held at once. Equipping either slings the other to your pack — with a
      * log line, since gear quietly vanishing reads as a bug — and refuses
      * cleanly when the pack is full or a curse has the conflicting hand. */
-    if (slot === 'weapon' && item.twoHanded && p.equipment.shield) {
+    if (slot === 'weapon' && this.isTwoHandedItem(item) && p.equipment.shield) {
       const shield = p.equipment.shield;
       if (this.curseHolds(shield, 'free your shield arm')) return;
       if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is too full to sling the ' + shield.name + '.'); return; }
@@ -2147,7 +2158,7 @@ export class Game {
       p.inventory.push(shield);
       this.log('Both hands on the ' + item.name + ' — the ' + shield.name + ' goes on your back.');
     }
-    if (slot === 'shield' && p.equipment.weapon && p.equipment.weapon.twoHanded) {
+    if (slot === 'shield' && this.isTwoHandedItem(p.equipment.weapon)) {
       const w = p.equipment.weapon;
       if (this.curseHolds(w, 'put the ' + w.name + ' up')) return;
       if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is too full to sling the ' + w.name + '.'); return; }
@@ -2339,13 +2350,19 @@ export class Game {
        * added to the template since — two-handedness — is re-stamped by id, and
        * the both-hands invariant is enforced on what the save was carrying. */
       const stamp = (it) => {
-        if (!it || !it.id) return;
+        if (!it) return;
+        /* Enchanted under the old scheme: the name already says "+3 ... of the
+         * Whetstone" but identified is false, so the card would show base
+         * stats and an unread rune under a name that has spilled everything.
+         * Nothing hidden remains to reveal — mark it read. */
+        if (it.identified === false && !it.trueName) it.identified = true;
+        if (!it.id) return;
         const t = getItemTemplate(it.id);
         if (t && t.twoHanded) it.twoHanded = true;
       };
       (p.inventory || []).forEach(stamp);
       Object.values(p.equipment || {}).forEach(stamp);
-      if (p.equipment && p.equipment.weapon && p.equipment.weapon.twoHanded && p.equipment.shield) {
+      if (p.equipment && this.isTwoHandedItem(p.equipment.weapon) && p.equipment.shield) {
         p.inventory.push(p.equipment.shield);
         this.log('You cannot hold the ' + p.equipment.weapon.name + ' and the ' + p.equipment.shield.name + ' at once — the shield goes to your pack.');
         p.equipment.shield = null;
