@@ -1352,21 +1352,69 @@ export class Game {
   }
 
   /* ---- turn loop ---- */
+  /* THE ROUND.
+   *
+   * endPlayerTurn no longer means "and now everything else happens" — it means
+   * THIS MEMBER'S ACTION IS SPENT. In a party of one that is the whole round,
+   * and the sequence below is byte-identical to what it replaced. With several
+   * members, control passes to the next one who has not yet acted, and the
+   * monsters wait until the last of them has moved — which is the shape the
+   * initiative review said to build: a queue the player can SEE, because with
+   * more than one of you "whose turn is it" is on the screen.
+   *
+   * Six call sites spend an action (move, wait, search, item, ability, rest);
+   * none of them needs to know any of this. */
   endPlayerTurn() {
     const p = this.state.player;
     if (!p || this.dying) return;
+    this.actorTurn(p).acted = true;
+    const next = this.nextUnactedMember();
+    if (next >= 0) {
+      this.state.party.active = next;
+      /* The new member sees from where THEY stand. */
+      this.computeVisibility();
+      if (this.ui.render) this.ui.render(this);
+      if (this.ui.refreshHud) this.ui.refreshHud(this);
+      if (this.ui.refreshStats) this.ui.refreshStats(this);
+      return;
+    }
+    this.resolveRound();
+  }
+
+  nextUnactedMember() {
+    const party = this.state.party;
+    if (!party) return -1;
+    for (let i = 0; i < party.members.length; i++) {
+      const m = party.members[i];
+      if (m && m.hp > 0 && !this.actorTurn(m).acted) return i;
+    }
+    return -1;
+  }
+
+  firstLivingMember() {
+    const party = this.state.party;
+    if (!party) return 0;
+    const at = party.members.findIndex((m) => m && m.hp > 0);
+    return at >= 0 ? at : 0;
+  }
+
+  resolveRound() {
+    const party = this.state.party;
     this.tickStatus();
     if (this.dying) return;
     this.resolveMonsters();
     if (this.dying) return;
-    /* Wading costs the turn twice over: everything else gets a second move. */
-    if (this.actorTurn().wading) {
-      this.actorTurn().wading = false;
+    /* Wading costs the turn twice over: everything else gets a second move.
+     * The flag sits on whichever member waded and survives until here, since
+     * turn state is cleared at the round's end, not the member's. */
+    if (party.members.some((m) => m && this.actorTurn(m).wading)) {
+      for (const m of party.members) if (m) this.actorTurn(m).wading = false;
       this.turn++;
       this.resolveMonsters();
       if (this.dying) return;
     }
-    this.clearActorTurn();
+    for (const m of party.members) if (m) this.clearActorTurn(m);
+    party.active = this.firstLivingMember();
     this.computeVisibility();
     this.turn++;
     if (this.ui.render) this.ui.render(this);
