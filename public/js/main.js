@@ -10,6 +10,10 @@ import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
+  CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef,
+  creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl, loadImage,
+} from './sprites.js';
+import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
   musterRoster, hireMember,
@@ -237,7 +241,9 @@ function logByKind(text) {
 function makeUI() {
   const self = {
     log: logByKind,
-    render: (g) => { game = g; renderGame(g); },
+    /* The handle on window is a dev tool, the way the console always is in a
+     * single-player game: it is how a bug report becomes a reproduction. */
+    render: (g) => { game = g; window.lapsaiGame = g; renderGame(g); },
     refreshHud: (g) => renderHud(g),
     refreshStats: (g) => { if (currentTab === 'stats') renderStats(g); },
     setLocation: (s) => { els.location.textContent = s; },
@@ -588,6 +594,142 @@ function renderAll(g) {
 
 /*__UI2__*/
 
+/* ---------------- the sprite bridge ----------------
+ *
+ * The Flare sheets drawn onto the old square grid, ahead of the isometric
+ * renderer they were fetched for. Each sheet arrives lazily — image and
+ * definition together — and until it does, or if it never does, the glyph
+ * token underneath keeps the game playable. Bodies stand on tinted rings,
+ * party colours and monster reds, which is where the colour coding lives
+ * now that the sprites themselves cannot be tinted. */
+
+const SPRITE_GRID = 32;    /* minicore's nominal tile, the scale sprites were made for */
+const sheetCache = new Map();
+
+function getSheet(kind, name, sex) {
+  const key = kind + ':' + (sex ? sex + '/' : '') + name;
+  if (sheetCache.has(key)) {
+    const v = sheetCache.get(key);
+    return v === 'pending' ? null : v;
+  }
+  sheetCache.set(key, 'pending');
+  const imgUrl = kind === 'hero' ? heroLayerUrl(sex, name) : creatureSheetUrl(name);
+  const defUrl = kind === 'hero' ? heroDefUrl(sex, name) : creatureDefUrl(name);
+  Promise.all([
+    loadImage(imgUrl),
+    fetch(defUrl).then((r) => (r.ok ? r.text() : null)).catch(() => null),
+  ]).then(([img, text]) => {
+    sheetCache.set(key, img && text ? { img, def: parseAnimationDef(text) } : null);
+    lastTiles = '';   /* so the next paint notices the art arrived */
+  });
+  return null;
+}
+
+/* Flare's compass: eight directions counted clockwise from west. If the art
+ * ever disagrees with this table, this is the one line to argue with. */
+function flareDir(dx, dy) {
+  if (!dx && !dy) return 6;   /* facing the viewer */
+  return Math.round((Math.atan2(dy, dx) + Math.PI) / (Math.PI / 4)) % 8;
+}
+
+function pickFrame(def, animName, dir, hold) {
+  const anim = def.animations[animName] || def.animations.stance;
+  if (!anim) return null;
+  const frames = anim.frames[dir] || anim.frames[6] || anim.frames[0];
+  if (!frames || !frames.length) return null;
+  const n = frames.length;
+  if (hold) return frames[n - 1];
+  const dur = Math.max(100, anim.duration || 1000);
+  let i = Math.floor(((performance.now() % dur) / dur) * n);
+  if (anim.type === 'back_forth' && n > 1) {
+    const cycle = 2 * n - 2;
+    i = Math.floor(((performance.now() % (dur * 2)) / (dur * 2)) * cycle);
+    if (i >= n) i = cycle - i;
+  }
+  return frames[Math.max(0, Math.min(n - 1, i))];
+}
+
+/* The tallest stance frame is what a creature's size means: the number the
+ * artist actually drew, from the 12px antlion to the 114px wyrm. */
+function stanceHeight(def) {
+  let h = 0;
+  const st = def.animations.stance || Object.values(def.animations)[0];
+  if (st) for (const dir of st.frames) for (const f of dir || []) if (f && f.h > h) h = f.h;
+  return h || SPRITE_GRID;
+}
+
+/* Draws one sheet's current frame with its feet on the tile. The frame's
+ * offsets are relative to the entity's anchor, which is what keeps a hero's
+ * six layers of gear standing inside each other rather than beside.
+ *
+ * Two scales: hero layers share one fixed scale, because they must agree
+ * with each other; creatures are scaled from their own stance height along
+ * a compressed curve, so a rat is small without being invisible and a wyrm
+ * is enormous without being the whole room. */
+function drawFrame(x, y, entry, animName, dir, opts = {}) {
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return false;
+  const f = pickFrame(entry.def, animName, dir, opts.hold);
+  if (!f) return false;
+  const s = ts, ctx = els.ctx;
+  let scale;
+  if (opts.fit) {
+    if (!entry.baseH) entry.baseH = stanceHeight(entry.def);
+    const targetH = s * Math.min(1.9, Math.max(0.7, 0.5 + 0.55 * entry.baseH / 40));
+    scale = (targetH / entry.baseH) * (opts.scale || 1);
+  } else {
+    scale = (s / 28) * (opts.scale || 1);
+  }
+  const ax = (x - camX) * s + s / 2;
+  const ay = (y - camY) * s + s * 0.85;
+  if (opts.dim) ctx.globalAlpha = 0.55;
+  ctx.drawImage(entry.img, f.x, f.y, f.w, f.h,
+    ax - f.ox * scale, ay - f.oy * scale, f.w * scale, f.h * scale);
+  ctx.globalAlpha = 1;
+  return true;
+}
+
+function drawRing(x, y, color, opts = {}) {
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
+  const s = ts, ctx = els.ctx;
+  ctx.beginPath();
+  ctx.ellipse((x - camX) * s + s / 2, (y - camY) * s + s * 0.82, s * 0.38, s * 0.17, 0, 0, Math.PI * 2);
+  if (opts.fill) { ctx.fillStyle = opts.fill; ctx.fill(); }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opts.bold ? 2 : 1;
+  ctx.globalAlpha = opts.dim ? 0.5 : 0.9;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+}
+
+/* Nothing on a member says man or woman, so the name decides, stably. */
+function heroSex(m) {
+  let h = 0;
+  for (const c of String(m.name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % 2 ? 'female' : 'male';
+}
+
+/* A member as a paper doll: bare body, then head, then everything worn over
+ * it, in the order the lists in sprites.js were written. The fallen lie on
+ * the last frame of their dying. */
+function drawMember(m, tint, acting) {
+  const sex = heroSex(m);
+  const dead = m.hp <= 0;
+  drawRing(m.x, m.y, dead ? '#7a3a30' : tint, {
+    bold: acting,
+    fill: acting ? 'rgba(255,255,255,0.10)' : undefined,
+    dim: !acting && !dead,
+  });
+  const base = HERO_LAYERS[m.cls] || [];
+  const layers = [...base.slice(0, 2), HERO_HEADS[sex], ...base.slice(2)];
+  let drew = false;
+  for (const layer of layers) {
+    const entry = getSheet('hero', layer, sex);
+    if (entry && drawFrame(m.x, m.y, entry, dead ? 'die' : 'stance', 6, { dim: dead, hold: dead })) drew = true;
+  }
+  if (!drew) drawGlyph(m.x, m.y, PLAYER_GLYPH, dead ? '#7a3a30' : tint, !acting && !dead, acting);
+}
+
 /* ---------------- canvas renderer ---------------- */
 let ts = 20;
 let viewW = W, viewH = H;   /* size of the visible window, in tiles */
@@ -639,8 +781,11 @@ function renderGame(g) {
   const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
   const sa = Math.floor(performance.now() / 700) % 2;
   updateCamera(p);
+  /* The animation bucket: stances breathe at five frames a second, which is
+   * as alive as a 200ms repaint interval can make them. */
+  const ab = Math.floor(performance.now() / 200);
   const key = p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
-    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa;
+    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa + ':' + ab;
   if (key === lastTiles && els.canvas.width) return;
   lastTiles = key;
 
@@ -721,7 +866,19 @@ function renderGame(g) {
     if (!inView(m.x, m.y) && !m.revealed) continue;
     /* Tinted by tier, never by name: red on this map is always something
      * alive. Loot is drawn from a palette with no red in it. */
-    drawGlyph(m.x, m.y, m.t.glyph, cls(monsterTint(m.t.tier, m.boss)), !inView(m.x, m.y) || m.submerged);
+    const tint = cls(monsterTint(m.t.tier, m.boss));
+    const dim = !inView(m.x, m.y) || m.submerged;
+    const sheet = CREATURE_SHEETS[m.t.id];
+    const entry = sheet ? getSheet('creature', sheet) : null;
+    if (entry) {
+      drawRing(m.x, m.y, tint, { dim, bold: !!m.boss });
+      /* Facing whoever holds the reins — a stance, not an intent. */
+      if (!drawFrame(m.x, m.y, entry, 'stance', flareDir(p.x - m.x, p.y - m.y), { dim, fit: true, scale: m.boss ? 1.3 : 1 })) {
+        drawGlyph(m.x, m.y, m.t.glyph, tint, dim);
+      }
+    } else {
+      drawGlyph(m.x, m.y, m.t.glyph, tint, dim);
+    }
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;
@@ -740,11 +897,9 @@ function renderGame(g) {
     g.state.party.members.forEach((m, i) => {
       if (!m || m === p) return;
       if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
-      drawGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? partyTint(i) : '#7a3a30', m.hp > 0);
+      drawMember(m, partyTint(i), false);
     });
-    drawGlyph(p.x, p.y, PLAYER_GLYPH, partyTint(g.state.party.members.indexOf(p)), false, true);
-    ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect((p.x - camX) * s, (p.y - camY) * s, s, s);
+    drawMember(p, partyTint(g.state.party.members.indexOf(p)), true);
   }
 }
 
@@ -1670,7 +1825,7 @@ async function boot() {
 
   window.addEventListener('resize', () => { fitCanvas(); if (game) renderGame(game); });
   document.addEventListener('keydown', onKey);
-  const anim = setInterval(() => { if (game && !document.hidden) renderGame(game); }, 600);
+  const anim = setInterval(() => { if (game && !document.hidden) renderGame(game); }, 200);
   document.addEventListener('keydown', (e) => { if (e.key === 'F5' || (e.key === 's' && (e.metaKey || e.ctrlKey))) saveGame(); });
 
   setBootNote();
