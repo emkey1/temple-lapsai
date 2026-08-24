@@ -12,16 +12,20 @@
  * these functions decide.
  */
 
-import { getItemTemplate } from './base.js';
+import { getItemTemplate, CLASSES } from './base.js';
 import { deepItem } from './dice.js';
-import { PACK_LIMIT } from './engine.js';
+import { PACK_LIMIT, makePlayer, initialStats } from './engine.js';
 
 export const PRICES = {
   buyMarkup: 2,      /* the shop sells at twice an item's worth — it is a shop */
   sellShare: 0.4,    /* and buys at two-fifths, which is how shops go on existing */
   identify: 20,      /* the Lector reads one rune */
   unbind: 80,        /* or prises one curse loose — a Draught costs about this */
+  hire: 60,          /* a sword-arm fresh off the road */
+  hirePerLevel: 40,  /* and more for every level of seasoning they arrive with */
 };
+
+export const PARTY_LIMIT = 4;
 
 /* What is on the shelf. It grows with the expedition's standing: the deeper
  * the world knows you have been, the better the Provisioner's suppliers. */
@@ -110,4 +114,59 @@ export function unbindCurse(game, it) {
   it.cursed = false;
   game.log('The Lector speaks the loosening words over the ' + it.name + '. It is only a thing again.');
   return true;
+}
+
+/* THE MUSTER. Companions are hired here, at the leader's own level — a
+ * level-one hireling walking into the Upper Reaches is a corpse with a salary,
+ * and levelling them by hand would be a chore pretending to be gameplay.
+ * They are seasoned, and the seasoning is what you pay for. */
+
+const MUSTER_NAMES = [
+  'Brant', 'Sethra', 'Wren', 'Aldous', 'Merta', 'Kellin', 'Ophele', 'Dunstan',
+  'Ivette', 'Corwin', 'Hesper', 'Tobias', 'Annis', 'Gareth', 'Lys', 'Roben',
+];
+
+export function hireCost(game) {
+  const leader = game.state.player;
+  const level = leader ? leader.level : 1;
+  return PRICES.hire + PRICES.hirePerLevel * Math.max(0, level - 1);
+}
+
+export function musterRoster(game) {
+  return Object.keys(CLASSES).map((id) => ({
+    id,
+    name: CLASSES[id].name,
+    desc: CLASSES[id].desc,
+    cost: hireCost(game),
+  }));
+}
+
+export function hireMember(game, clsId) {
+  const party = game.state.party;
+  const leader = game.state.player;
+  const c = CLASSES[clsId];
+  if (!c) { game.log('Nobody of that calling is waiting.'); return null; }
+  if (party.members.length >= PARTY_LIMIT) { game.log('The company is full: ' + PARTY_LIMIT + ' is as many as the stairs allow.'); return null; }
+  const cost = hireCost(game);
+  if ((leader.gold || 0) < cost) { game.log('A ' + c.name + ' of that seasoning asks ' + cost + ' gold, and your purse says no.'); return null; }
+
+  const used = new Set(party.members.map((m) => m && m.name));
+  const name = MUSTER_NAMES.find((n) => !used.has(n)) || 'Hireling';
+  const b = makePlayer(name, clsId, initialStats(clsId));
+  const weapon = game.resolveWeapon(c.weapon);
+  if (weapon) b.equipment.weapon = deepItem(weapon);
+  /* Seasoned to the leader's level, using the same growth everyone else gets. */
+  for (let i = 1; i < leader.level; i++) game.levelUp(b);
+  b.maxpower = game.computeMaxPower(b);
+  b.power = b.maxpower;
+  b.hp = b.maxhp;
+  b.dungeonId = leader.dungeonId;
+  b.floorIdx = leader.floorIdx;
+  b.x = leader.x;
+  b.y = leader.y;
+  leader.gold -= cost;
+  party.members.push(b);
+  if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
+  game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');
+  return b;
 }

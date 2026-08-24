@@ -324,6 +324,11 @@ beginning, and there is finally a buyer. The fence pays for **the look of a thin
 it**: an unread +3 blade priced at four times its base would spill the enchantment through the price
 tag, and an unread curse would give itself away by being cheap.
 
+**The Muster** hires companions — up to a company of four, each arriving at your own level with
+their class weapon in hand, priced for the seasoning (60 gold + 40 per level). Experience is split
+among the living, the classic way, and the fallen earn nothing until camp puts them back on their
+feet.
+
 **The Lector** reads a rune for 20 gold and prises a curse loose for 80 — so identification and
 unbinding no longer depend on a lucky scroll drop. Reading a curse warns you; unbinding one names it
 in the act.

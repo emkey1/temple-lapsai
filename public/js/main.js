@@ -10,8 +10,9 @@ import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
-  PRICES, shopStock, buyItem, sellPrice, sellItem,
+  PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
+  musterRoster, hireMember,
 } from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
 import {
@@ -265,7 +266,7 @@ function overlayHideAll() {
   for (const card of els.overlay.querySelectorAll('.overlay-card')) card.classList.add('hidden');
   /* getElementById finds one. Anything that ever managed to build a second
    * town card would leave it on screen forever. */
-  for (const card of els.overlay.querySelectorAll('#camp-card, #shop-card, #sage-card')) card.remove();
+  for (const card of els.overlay.querySelectorAll('#camp-card, #shop-card, #sage-card, #muster-card')) card.remove();
 }
 
 /* Narrative cards queue instead of racing. Arriving in a dungeon, the beat for
@@ -374,12 +375,17 @@ function purseLine(g) {
 }
 
 function showCamp(g) {
+  const company = g.state.party.members.filter(Boolean)
+    .map((m) => esc(m.name) + ' <span class="tiny">' + esc((CLASSES[m.cls] || {}).name || m.cls) + ' ' + m.level +
+      (m.hp <= 0 ? ' · fallen' : '') + '</span>').join(' &nbsp;·&nbsp; ');
   const box = townCard('camp-card', 'THE WHETSTONE',
     'Lamplight on wet cobbles, a ledger open on a table, and the stairs down. Nothing here is ancient — it is only poor.',
     purseLine(g) +
+    '<div class="lib-status">The company: ' + company + '</div>' +
     '<div class="row">' +
       '<button id="btn-town-shop">THE PROVISIONER</button>' +
       '<button id="btn-town-sage">THE LECTOR</button>' +
+      '<button id="btn-town-muster">THE MUSTER</button>' +
     '</div>' +
     '<h3 class="pane">THE STAIRS DOWN</h3><div id="camp-list"></div>',
     'ROAM AGAIN');
@@ -393,6 +399,7 @@ function showCamp(g) {
   }
   box.querySelector('#btn-town-shop').onclick = () => { box.remove(); showShop(g); };
   box.querySelector('#btn-town-sage').onclick = () => { box.remove(); showSage(g); };
+  box.querySelector('#btn-town-muster').onclick = () => { box.remove(); showMuster(g); };
   box.querySelector('[data-town-back]').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx, 'keep'); };
 }
 
@@ -416,6 +423,28 @@ function showShop(g) {
     if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g); return; }
     const sell = e.target.closest('[data-sell]');
     if (sell) { sellItem(g, p.inventory[Number(sell.dataset.sell)]); saveGame(); renderHud(g); box.remove(); showShop(g); }
+  });
+  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
+}
+
+function showMuster(g) {
+  const p = g.state.player;
+  const full = g.state.party.members.length >= PARTY_LIMIT;
+  const rows = full
+    ? '<div class="tiny">The company is full — ' + PARTY_LIMIT + ' is as many as the stairs allow.</div>'
+    : musterRoster(g).map((r) =>
+        '<div class="eq-row"><span class="i-name"><b>' + esc(r.name) + '</b> <span class="tiny">' + esc(r.desc) + '</span></span>' +
+        '<button data-hire="' + esc(r.id) + '"' + ((p.gold || 0) < r.cost ? ' disabled' : '') + '>HIRE · ' + r.cost + ' gp</button></div>').join('');
+  const box = townCard('muster-card', 'THE MUSTER',
+    'Sword-arms and scholars between engagements, seasoned to your own measure and priced for it.',
+    purseLine(g) + '<div class="scrolly" style="max-height:280px">' + rows + '</div>',
+    'BACK TO THE STREET');
+  box.addEventListener('click', (e) => {
+    const hire = e.target.closest('[data-hire]');
+    if (!hire) return;
+    hireMember(g, hire.dataset.hire);
+    saveGame(); renderHud(g); renderStats(g);
+    box.remove(); showMuster(g);
   });
   box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
 }

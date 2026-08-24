@@ -498,8 +498,8 @@ export class Game {
     return this.derived().maxpower;
   }
 
-  computeMaxPower() {
-    return this.derived().maxpower;
+  computeMaxPower(who) {
+    return this.derived(who).maxpower;
   }
 
   equipmentPower() {
@@ -1380,25 +1380,33 @@ export class Game {
     if (this.opts.onAllBaseCleared) this.opts.onAllBaseCleared();
   }
 
+  /* Experience is SPLIT among the living, the classic way — a party of four
+   * levels at a quarter of a soloist's pace and covers four bodies for it. A
+   * party of one takes the whole share, so nothing solo changes. */
   gainXP(xp) {
-    const p = this.state.player;
-    p.xp += xp;
-    while (p.xp >= XP_FOR_LEVEL(p.level)) {
-      p.xp -= XP_FOR_LEVEL(p.level);
-      this.levelUp();
+    const members = this.livingMembers();
+    if (!members.length) return;
+    const share = Math.max(1, Math.round(xp / members.length));
+    for (const m of members) {
+      m.xp += share;
+      while (m.xp >= XP_FOR_LEVEL(m.level)) {
+        m.xp -= XP_FOR_LEVEL(m.level);
+        this.levelUp(m);
+      }
     }
   }
 
-  levelUp() {
-    const p = this.state.player;
+  levelUp(who) {
+    const p = who || this.state.player;
     p.level++;
     const c = CLASSES[p.cls] || CLASSES.fighter;
     const hpGain = this.rngOfTurn().d(Math.max(2, c.hpDie)) + Math.max(0, abilityMod(p.stats.con));
     p.maxhp += Math.max(1, hpGain);
     p.hp = Math.min(p.maxhp, p.hp + Math.max(1, hpGain));
-    p.maxpower = this.computeMaxPower();
-    p.power = Math.min(p.maxpower, p.power + this.computeMaxPower());
-    this.uiLog('You grow wise and strong — ' + CLASSES[p.cls].name + ' level ' + p.level + '!');
+    p.maxpower = this.computeMaxPower(p);
+    p.power = Math.min(p.maxpower, p.power + this.computeMaxPower(p));
+    this.uiLog((p === this.state.player ? 'You grow wise and strong — ' : p.name + ' grows wise and strong — ') +
+      CLASSES[p.cls].name + ' level ' + p.level + '!');
     /* A condition beat is pinned to a floor, but level-ups happen wherever they
      * happen — an exact match meant the beat only fired if you happened to
      * level on that one floor. Fire everything at or above your current depth;

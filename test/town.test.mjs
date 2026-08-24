@@ -15,6 +15,7 @@ import { PACK_LIMIT } from '../public/js/engine.js';
 import {
   PRICES, shopStock, buyItem, apparentValue, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
+  hireMember,
 } from '../public/js/town.js';
 
 function rig(seed = 't', gold = 500) {
@@ -188,4 +189,74 @@ test('the Lector refuses a thin purse and an honest item alike', () => {
   assert.equal(identifyItem(g, honest), false, 'paid to read a thing with nothing written on it');
   assert.equal(unbindCurse(g, honest), false);
   assert.equal(p.gold, 500);
+});
+
+/* ---- the Muster ---- */
+
+test('a hireling arrives seasoned, armed, and paid for', () => {
+  const { g, p } = rig('t-hire', 1000);
+  for (let i = 1; i < 5; i++) g.levelUp();
+  const cost = (5 - 1) * PRICES.hirePerLevel + PRICES.hire;
+  const before = p.gold;
+  const b = hireMember(g, 'mage');
+  assert.ok(b, 'nobody came');
+  assert.equal(p.gold, before - cost);
+  assert.equal(b.level, p.level, 'the hireling arrived green');
+  assert.ok(b.equipment.weapon, 'the hireling arrived unarmed');
+  assert.equal(b.hp, b.maxhp);
+  assert.equal(g.state.party.members.length, 2);
+  assert.ok(!(b.x === p.x && b.y === p.y), 'two bodies on one tile');
+});
+
+test('the company caps at four, and a thin purse hires nobody', () => {
+  const { g, p } = rig('t-hire-cap', 100000);
+  hireMember(g, 'thief');
+  hireMember(g, 'mage');
+  hireMember(g, 'cleric');
+  assert.equal(g.state.party.members.length, 4);
+  assert.equal(hireMember(g, 'fighter'), null, 'a fifth squeezed in');
+
+  const poor = rig('t-hire-poor', 5);
+  assert.equal(hireMember(poor.g, 'thief'), null);
+  assert.equal(poor.p.gold, 5, 'the Muster kept money it refused for');
+  assert.equal(poor.g.state.party.members.length, 1);
+});
+
+test('hirelings take different names', () => {
+  const { g } = rig('t-hire-names', 100000);
+  const a = hireMember(g, 'thief');
+  const b = hireMember(g, 'thief');
+  assert.notEqual(a.name, b.name);
+});
+
+/* ---- experience is split among the living ---- */
+
+test('a soloist keeps the whole share; a pair split it', () => {
+  const { g, p } = rig('t-xp', 100000);
+  g.gainXP(50);
+  assert.equal(p.xp, 50, 'a party of one no longer gets everything');
+
+  const b = hireMember(g, 'thief');
+  const px = p.xp, bx = b.xp;
+  g.gainXP(50);
+  assert.equal(p.xp - px, 25);
+  assert.equal(b.xp - bx, 25);
+});
+
+test('the fallen earn nothing until they are up again', () => {
+  const { g, p } = rig('t-xp-fallen', 100000);
+  const b = hireMember(g, 'thief');
+  b.hp = 0;
+  const px = p.xp;
+  g.gainXP(40);
+  assert.equal(p.xp - px, 40, 'the living split with a corpse');
+  assert.equal(b.xp, 0);
+});
+
+test('each member levels on their own account', () => {
+  const { g, p } = rig('t-xp-level', 100000);
+  const b = hireMember(g, 'mage');
+  g.gainXP(500);   /* 250 each: level 2 costs 100, 3 costs 200 */
+  assert.ok(p.level >= 2 && b.level >= 2, `levels ${p.level}/${b.level}`);
+  assert.equal(p.level, b.level);
 });
