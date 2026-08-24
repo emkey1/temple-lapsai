@@ -300,6 +300,25 @@ Witch-Spark used to hand a point of power back too; measured, a Mage with both e
 the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
 of the economy.
 
+### The Whetstone
+
+Camp grew a town around it, and gold finally has somewhere to go besides the resurrection ledger —
+which was the oldest open playtest note: *"what is the purpose of gold?"* Step onto the surface
+stairs and you are on the street.
+
+**The Provisioner** sells what the dungeon is stingy with (the shelf grows with each boss slain) and
+buys what you haul up — the Gemstone's card has said *"worth 40 gp to the right buyer"* since the
+beginning, and there is finally a buyer. The fence pays for **the look of a thing, not the truth of
+it**: an unread +3 blade priced at four times its base would spill the enchantment through the price
+tag, and an unread curse would give itself away by being cheap.
+
+**The Lector** reads a rune for 20 gold and prises a curse loose for 80 — so identification and
+unbinding no longer depend on a lucky scroll drop. Reading a curse warns you; unbinding one names it
+in the act.
+
+The economy lives in [town.js](public/js/town.js), DOM-free like the ledger, with every price in one
+table.
+
 ### Curses, and reading
 
 An enchantment **hides until read**. A find is "Broadsword" with a blue gleam and *a rune you

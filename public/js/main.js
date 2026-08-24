@@ -9,6 +9,10 @@ import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
+import {
+  PRICES, shopStock, buyItem, sellPrice, sellItem,
+  unreadItems, knownCurses, identifyItem, unbindCurse,
+} from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
 import {
   LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
@@ -260,8 +264,8 @@ function overlayHideAll() {
   // left visible reappears under the next overlay that opens.
   for (const card of els.overlay.querySelectorAll('.overlay-card')) card.classList.add('hidden');
   /* getElementById finds one. Anything that ever managed to build a second
-   * camp card would leave it on screen forever. */
-  for (const camp of els.overlay.querySelectorAll('#camp-card')) camp.remove();
+   * town card would leave it on screen forever. */
+  for (const card of els.overlay.querySelectorAll('#camp-card, #shop-card, #sage-card')) card.remove();
 }
 
 /* Narrative cards queue instead of racing. Arriving in a dungeon, the beat for
@@ -349,23 +353,36 @@ function showDeath(msg) {
   overlayShow(els.death);
 }
 
-function showCamp(g) {
-  /* Camp is a place, not an event: arriving at it twice must not put two
-   * cards on the screen side by side. */
-  for (const old of els.overlay.querySelectorAll('#camp-card')) old.remove();
+/* THE WHETSTONE. Camp grew a town around it: the Provisioner buys and sells,
+ * the Lector reads and unbinds, and gold finally has somewhere to go besides
+ * the resurrection ledger. The card is rebuilt on every open so the purse and
+ * the shelves are always current. */
+function townCard(id, title, sub, bodyHtml, backLabel) {
+  for (const old of els.overlay.querySelectorAll('#' + id)) old.remove();
   const box = document.createElement('div');
-  box.id = 'camp-card';
+  box.id = id;
   box.className = 'overlay-card';
-  box.innerHTML =
-    '<h2>CAMP</h2>' +
-    /* It used to claim your wounds knit and your purse lightened. Neither was
-     * true: the healing was DESCENT_RECOVERY firing on the way back in, which
-     * is now paid only for going down, and nothing here ever took a coin. */
-    '<p class="sub">Warm firelight, and the road back down. Choose a path:</p>' +
-    '<div id="camp-list"></div>' +
-    '<div class="row"><button class="mini" id="btn-camp-close">ROAM AGAIN</button></div>';
+  box.innerHTML = '<h2>' + title + '</h2><p class="sub">' + sub + '</p>' + bodyHtml +
+    '<div class="row"><button class="mini" data-town-back>' + backLabel + '</button></div>';
   els.overlay.appendChild(box);
   overlayShow(box);
+  return box;
+}
+
+function purseLine(g) {
+  return '<div class="lib-status">Your purse: ' + (g.state.player.gold || 0) + ' gold.</div>';
+}
+
+function showCamp(g) {
+  const box = townCard('camp-card', 'THE WHETSTONE',
+    'Lamplight on wet cobbles, a ledger open on a table, and the stairs down. Nothing here is ancient — it is only poor.',
+    purseLine(g) +
+    '<div class="row">' +
+      '<button id="btn-town-shop">THE PROVISIONER</button>' +
+      '<button id="btn-town-sage">THE LECTOR</button>' +
+    '</div>' +
+    '<h3 class="pane">THE STAIRS DOWN</h3><div id="camp-list"></div>',
+    'ROAM AGAIN');
   const list = box.querySelector('#camp-list');
   for (const d of g.availableDungeons()) {
     const b = document.createElement('button');
@@ -374,7 +391,58 @@ function showCamp(g) {
     b.onclick = () => { overlayHideAll(); box.remove(); g.enterDungeon(d.id); };
     list.appendChild(b);
   }
-  box.querySelector('#btn-camp-close').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx, 'keep'); };
+  box.querySelector('#btn-town-shop').onclick = () => { box.remove(); showShop(g); };
+  box.querySelector('#btn-town-sage').onclick = () => { box.remove(); showSage(g); };
+  box.querySelector('[data-town-back]').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx, 'keep'); };
+}
+
+function showShop(g) {
+  const p = g.state.player;
+  const stock = shopStock(g).map((r) =>
+    '<div class="eq-row"><span class="i-name">' + esc(r.name) + '</span>' +
+    '<button data-buy="' + esc(r.id) + '"' + ((p.gold || 0) < r.price ? ' disabled' : '') + '>BUY · ' + r.price + ' gp</button></div>').join('');
+  const goods = (p.inventory || []).map((it, i) =>
+    '<div class="eq-row"><span class="i-name' + (it.cursed && it.identified !== false ? ' cursed' : '') + '">' + esc(it.name) + '</span>' +
+    '<button data-sell="' + i + '">SELL · ' + sellPrice(it) + ' gp</button></div>').join('');
+  const box = townCard('shop-card', 'THE PROVISIONER',
+    'Shelves of what the dungeon is stingy with, and a scale that weighs what you hauled up.',
+    purseLine(g) +
+    '<h3 class="pane">FOR SALE</h3><div class="scrolly" style="max-height:170px">' + stock + '</div>' +
+    '<h3 class="pane">YOUR GOODS</h3><div class="scrolly" style="max-height:170px">' +
+      (goods || '<div class="tiny">You carry nothing worth weighing.</div>') + '</div>',
+    'BACK TO THE STREET');
+  box.addEventListener('click', (e) => {
+    const buy = e.target.closest('[data-buy]');
+    if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g); return; }
+    const sell = e.target.closest('[data-sell]');
+    if (sell) { sellItem(g, p.inventory[Number(sell.dataset.sell)]); saveGame(); renderHud(g); box.remove(); showShop(g); }
+  });
+  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
+}
+
+function showSage(g) {
+  const unread = unreadItems(g);
+  const cursed = knownCurses(g);
+  const rows =
+    unread.map((it, i) =>
+      '<div class="eq-row"><span class="i-name mag">' + esc(it.name) + '</span>' +
+      '<button data-read="' + i + '">READ · ' + PRICES.identify + ' gp</button></div>').join('') +
+    cursed.map((it, i) =>
+      '<div class="eq-row"><span class="i-name cursed">' + esc(it.name) + '</span>' +
+      '<button data-unbind="' + i + '">UNBIND · ' + PRICES.unbind + ' gp</button></div>').join('');
+  const box = townCard('sage-card', 'THE LECTOR',
+    'A reader of runes who has outlived four of the things people brought in to be read.',
+    purseLine(g) +
+    '<div class="scrolly" style="max-height:280px">' +
+      (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>',
+    'BACK TO THE STREET');
+  box.addEventListener('click', (e) => {
+    const read = e.target.closest('[data-read]');
+    if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); return; }
+    const un = e.target.closest('[data-unbind]');
+    if (un) { unbindCurse(g, cursed[Number(un.dataset.unbind)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); }
+  });
+  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
 }
 
 /* ---------------- character creation ---------------- */
