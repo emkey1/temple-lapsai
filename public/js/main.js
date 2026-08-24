@@ -803,10 +803,14 @@ function renderGear(g) {
   let html = '';
   for (const [slot, label] of SLOTS) {
     const it = p.equipment[slot];
-    const mag = it && it.cursed === false && (it.effects && (it.effects.toHit || it.effects.acBonus || it.effects.damage));
+    /* Red means a KNOWN curse. An unread enchantment — blessing or trap —
+     * shows the same magic blue, which is the whole lure. */
+    const known = !it || it.identified !== false;
+    const cursedShow = it && it.cursed && known;
+    const mag = it && !cursedShow && (it.identified === false || it.magicLevel > 0);
     html += '<div class="eq-row"><span class="slot">' + label + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
-      '<span class="i-name' + (it && it.cursed ? ' cursed' : mag ? ' mag' : '') + '"' + flavorTitle(it) + '>' +
+      '<span class="i-name' + (cursedShow ? ' cursed' : mag ? ' mag' : '') + '"' + flavorTitle(it) + '>' +
       (it ? esc(it.name) : '—') + '</span>' +
       (it ? '<button data-act="unequip" data-slot="' + slot + '">TAKE OFF</button>' : '') +
       '</div>' + descRow(it, p);
@@ -820,8 +824,10 @@ function renderGear(g) {
     /* Bind and drop act on a copy that is not already on the belt, so a stack
      * of three potions can put one in a loop and keep two in the pack. */
     const free = grp.indices.find((i) => !onBelt(inv[i]));
+    const cursedShow = it.cursed && it.identified !== false;
+    const magShow = !cursedShow && (it.identified === false || it.magicLevel > 0);
     return '<div class="eq-row"><span class="ico">' + itemIcon(it) + '</span>' +
-      '<span class="i-name' + (it.cursed ? ' cursed' : '') + '"' + flavorTitle(it) + '>' + esc(it.name) +
+      '<span class="i-name' + (cursedShow ? ' cursed' : magShow ? ' mag' : '') + '"' + flavorTitle(it) + '>' + esc(it.name) +
       (grp.indices.length > 1 ? ' <b class="qty">&times;' + grp.indices.length + '</b>' : '') + '</span>' +
       '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>' +
       (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +

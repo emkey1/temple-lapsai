@@ -14,7 +14,7 @@ import {
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
-import { evaluateDice, rngIntId, dist1, dist8, applyMagic, deepItem } from './dice.js';
+import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
 import { WEARABLE_SLOTS } from './contract.js';
 import { itemStackKey } from './base.js';
 
@@ -706,8 +706,11 @@ export class Game {
        * fallback that could never fire, because the candidate list is never
        * empty. The whole shipped game therefore held ONE healing item. */
       { arr: ['dagger', 'short-sword', 'mace', 'staff', 'hand-axe', 'potion-heal', 'potion-heal'], max: 2 },
-      { arr: ['broadsword', 'war-hammer', 'padded-armor', 'leather-armor', 'small-shield', 'ring-protection', 'potion-heal', 'potion-power'], max: 3 },
-      { arr: ['battle-axe', 'studded-armor', 'chainmail', 'large-shield', 'ring-strength', 'amulet-ward', 'potion-major-heal', 'scroll-reveal', 'scroll-flame', 'wand-of-fire'], max: 100 },
+      /* scroll-identify was in NO pool — it existed in the data and had never
+       * once dropped, the same bug shape as the one healing item. Now that
+       * enchantment hides until read, it is the counter to the curse. */
+      { arr: ['broadsword', 'war-hammer', 'padded-armor', 'leather-armor', 'small-shield', 'ring-protection', 'potion-heal', 'potion-power', 'scroll-identify'], max: 3 },
+      { arr: ['battle-axe', 'studded-armor', 'chainmail', 'large-shield', 'ring-strength', 'amulet-ward', 'potion-major-heal', 'scroll-reveal', 'scroll-flame', 'scroll-identify', 'wand-of-fire'], max: 100 },
       { arr: ['two-handed-sword', 'scale-armor', 'plate', 'tower-shield', 'ring-arcana', 'amulet-seeing', 'amulet-luck', 'scroll-remove-curse', 'scroll-sanctuary', 'wand-of-healing', 'wand-of-frost'], max: 100 },
     ];
     /* Four tables across twelve floors, seen through a window two tables wide
@@ -745,8 +748,13 @@ export class Game {
        * per dungeon it reset to "+1 only" every time you walked through a
        * door. */
       const mag = 1 + Math.floor(rng.next() * Math.min(4, 1 + Math.floor(depth / 3)));
-      applyMagic(it, mag);
-      if (rng.chance(0.15)) it.cursed = true;
+      /* A curse used to be a +2 sword you could not put down — the same
+       * bonuses, plus an inconvenience, shown in red the moment it hit the
+       * pack. Now it wears the same blue gleam and the same unread rune as a
+       * blessing, with the enchantment run the other way. The rng draws are in
+       * the old order (next, then chance) so seeded floors do not reshuffle. */
+      if (rng.chance(0.15)) applyCurse(it, mag);
+      else applyMagic(it, mag);
     }
     return it;
   }
@@ -2107,11 +2115,47 @@ export class Game {
     }
   }
 
+  /* A worn curse holds. unequip refused to remove one, but equip would happily
+   * SWAP one out — so "will not come off" was a door with no wall around it.
+   * Failing to shift it is also how a hidden curse announces itself. */
+  curseHolds(cur, doing) {
+    if (!cur || !cur.cursed) return false;
+    const hidden = cur.identified === false;
+    this.revealItem(cur);
+    this.log(hidden
+      ? 'You try to ' + doing + ' — and cannot. The ' + cur.name + ' is cursed! Seek a Draught of Unbinding, or an altar.'
+      : 'The cursed ' + cur.name + ' will not come off! Seek a Draught of Unbinding.');
+    return true;
+  }
+
   equip(item) {
     const p = this.state.player;
     const slot = item.slot;
     if (!WEARABLE_SLOTS.includes(slot)) { this.useItem(item); return; }
     const cur = p.equipment[slot];
+    if (this.curseHolds(cur, 'swap it out')) return;
+
+    /* Both hands are both hands: a two-handed weapon and a shield cannot be
+     * held at once. Equipping either slings the other to your pack — with a
+     * log line, since gear quietly vanishing reads as a bug — and refuses
+     * cleanly when the pack is full or a curse has the conflicting hand. */
+    if (slot === 'weapon' && item.twoHanded && p.equipment.shield) {
+      const shield = p.equipment.shield;
+      if (this.curseHolds(shield, 'free your shield arm')) return;
+      if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is too full to sling the ' + shield.name + '.'); return; }
+      p.equipment.shield = null;
+      p.inventory.push(shield);
+      this.log('Both hands on the ' + item.name + ' — the ' + shield.name + ' goes on your back.');
+    }
+    if (slot === 'shield' && p.equipment.weapon && p.equipment.weapon.twoHanded) {
+      const w = p.equipment.weapon;
+      if (this.curseHolds(w, 'put the ' + w.name + ' up')) return;
+      if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is too full to sling the ' + w.name + '.'); return; }
+      p.equipment.weapon = null;
+      p.inventory.push(w);
+      this.log('You sling the ' + w.name + ' to take up the ' + item.name + '.');
+    }
+
     p.equipment[slot] = item;
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
@@ -2126,7 +2170,7 @@ export class Game {
     const p = this.state.player;
     const cur = p.equipment[slot];
     if (!cur) return;
-    if (cur.cursed) { this.log('The cursed ' + cur.name + ' will not come off! Seek a Draught of Unbinding.'); return; }
+    if (this.curseHolds(cur, 'set it down')) return;
     if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is full.'); return; }
     p.inventory.push(cur);
     p.equipment[slot] = null;
@@ -2213,17 +2257,35 @@ export class Game {
     return true;
   }
 
+  /* The moment a thing stops lying: the true name swaps in, curse and all. */
+  revealItem(it) {
+    if (!it || it.identified !== false) return false;
+    it.identified = true;
+    if (it.trueName) { it.name = it.trueName; delete it.trueName; }
+    return true;
+  }
+
   identifyAll() {
     const p = this.state.player;
-    for (const it of p.inventory) it.identified = true;
-    for (const it of Object.values(p.equipment || {})) if (it) it.identified = true;
-    this.log('You read by touch and firelight — all is known.');
+    const named = [];
+    const read = (it) => { if (this.revealItem(it)) named.push(it.name); };
+    p.inventory.forEach(read);
+    Object.values(p.equipment || {}).forEach(read);
+    if (named.length) {
+      this.log('The letters settle and hold still: ' + named.join('; ') + '.');
+      const cursed = [...p.inventory, ...Object.values(p.equipment || {})]
+        .filter((it) => it && it.cursed).length;
+      if (cursed) this.log('Some of what you carry wishes you ill.');
+    } else {
+      this.log('You read by touch and firelight — all is known.');
+    }
   }
 
   removeAllCurses() {
     const p = this.state.player;
     let n = 0;
-    const unbind = (it) => { if (it && it.cursed) { it.cursed = false; n++; } };
+    /* Lifting a curse also names it: you should know what it was that had you. */
+    const unbind = (it) => { if (it && it.cursed) { this.revealItem(it); it.cursed = false; n++; } };
     p.inventory.forEach(unbind);
     Object.values(p.equipment || {}).forEach(unbind);
     p.belt.filter(Boolean).forEach(unbind);
@@ -2273,6 +2335,21 @@ export class Game {
       if (p.hp <= 0) p.hp = 1;   /* a save caught mid-death resumed at zero */
       if (!p.deepest) p.deepest = {};
       if (!Number.isFinite(p.wounds) || p.wounds < 0) p.wounds = 0;
+      /* Items in a save are copies of their template as it stood then. A rule
+       * added to the template since — two-handedness — is re-stamped by id, and
+       * the both-hands invariant is enforced on what the save was carrying. */
+      const stamp = (it) => {
+        if (!it || !it.id) return;
+        const t = getItemTemplate(it.id);
+        if (t && t.twoHanded) it.twoHanded = true;
+      };
+      (p.inventory || []).forEach(stamp);
+      Object.values(p.equipment || {}).forEach(stamp);
+      if (p.equipment && p.equipment.weapon && p.equipment.weapon.twoHanded && p.equipment.shield) {
+        p.inventory.push(p.equipment.shield);
+        this.log('You cannot hold the ' + p.equipment.weapon.name + ' and the ' + p.equipment.shield.name + ' at once — the shield goes to your pack.');
+        p.equipment.shield = null;
+      }
       if (!p.buffLevels) p.buffLevels = {};
       if (!p.beatsSeen) p.beatsSeen = {};
       if (!p.npcsMet) p.npcsMet = {};

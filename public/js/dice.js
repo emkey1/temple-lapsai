@@ -49,23 +49,53 @@ export function dist8(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
+/* Enchantment, hidden until read.
+ *
+ * The true name goes into `trueName` and `item.name` stays the plain one, so
+ * an unread find is "Broadsword", not "+2 Broadsword" — the name is a claim,
+ * and a claim you have not verified is exactly what a curse hides behind.
+ * Identification (revealItem in the engine) swaps the true name in. */
 export function applyMagic(item, level) {
   item.magicLevel = level;
   item.color = 'brightblue';
   const e = item.effects || (item.effects = {});
+  let trueName;
   if (item.kind === 'weapon' && e.damage) {
     e.toHit = (e.toHit || 0) + level;
     e.damage = { ...e.damage, bonus: (e.damage.bonus || 0) + level };
     const suffixes = ['of the Whetstone', 'of Lapsai', 'Biting', 'Singing', 'of the Far Reach'];
-    item.name = `+${level} ${item.name} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`.trim();
-  } else if (item.kind === 'armor' || item.kind === 'shield') {
-    e.acBonus = (e.acBonus || 0) + level;
-    item.name = `+${level} ${item.name}`;
+    trueName = `+${level} ${item.name} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`.trim();
   } else {
     e.acBonus = (e.acBonus || 0) + level;
-    item.name = `+${level} ${item.name}`;
+    trueName = `+${level} ${item.name}`;
   }
+  item.trueName = trueName;
   item.value = Math.round(item.value * (1 + level));
+  item.identified = false;
+  item.flavor = item.flavor || 'Humming with unseen temper.';
+  return item;
+}
+
+/* A curse is an enchantment lying about its sign. It wears the same blue gleam
+ * and the same unread rune as a blessing, and its bonuses run the other way —
+ * you find out by wearing it, by trying to take it off, or by reading it
+ * first. That last option is what the Scroll of Identify is FOR. */
+export function applyCurse(item, level) {
+  item.magicLevel = level;
+  item.color = 'brightblue';
+  const e = item.effects || (item.effects = {});
+  /* Clamped past zero: a -2 curse on Studded Leather (+3 base) would still be
+   * a net gain, and a trap that pays out is a discount. Whatever it started
+   * as, a cursed thing is worse than wearing nothing at all. */
+  if (item.kind === 'weapon' && e.damage) {
+    e.toHit = Math.min((e.toHit || 0) - level, -1);
+    e.damage = { ...e.damage, bonus: (e.damage.bonus || 0) - level };
+  } else {
+    e.acBonus = Math.min((e.acBonus || 0) - level, -1);
+  }
+  item.trueName = `-${level} ${item.name} (accursed)`;
+  item.cursed = true;
+  item.value = Math.max(1, Math.round(item.value * 0.5));
   item.identified = false;
   item.flavor = item.flavor || 'Humming with unseen temper.';
   return item;

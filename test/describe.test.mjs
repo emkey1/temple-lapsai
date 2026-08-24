@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { ALL_ITEMS, getItemTemplate } from '../public/js/base.js';
 import { itemDescription, itemEffectLines, dieText } from '../public/js/describe.js';
-import { deepItem, applyMagic } from '../public/js/dice.js';
+import { deepItem, applyMagic, applyCurse } from '../public/js/dice.js';
 
 test('every item in the game says what it does', () => {
   for (const it of ALL_ITEMS) {
@@ -17,11 +17,21 @@ test('every item in the game says what it does', () => {
   }
 });
 
-test('an enchanted item shows the enchantment, not just the plus in its name', () => {
+test('an enchantment hides until read, then shows in full', () => {
   const magic = applyMagic(deepItem(getItemTemplate('broadsword')), 2);
-  const d = itemDescription(magic);
-  assert.match(d, /\+2 to hit/);
-  assert.match(d, /1d8\+2 damage/);
+  /* Unread: it claims to be a plain broadsword with a rune on it. */
+  const before = itemDescription(magic);
+  assert.doesNotMatch(before, /\+2/, 'the enchantment leaked through the rules text');
+  assert.match(before, /rune you cannot read/);
+  assert.match(before, /1d8 damage/, 'the base claim went missing');
+  assert.equal(magic.name, 'Broadsword', 'the plus leaked into the name');
+
+  /* Read: the true name and the true numbers. */
+  magic.identified = true;
+  magic.name = magic.trueName;
+  const after = itemDescription(magic);
+  assert.match(after, /\+2 to hit/);
+  assert.match(after, /1d8\+2 damage/);
 });
 
 test('the Lucky Coin finally explains itself', () => {
@@ -29,10 +39,19 @@ test('the Lucky Coin finally explains itself', () => {
   assert.match(d, /\d+%/, 'the coin still does not say what it buys you');
 });
 
-test('a curse is not something you have to work out for yourself', () => {
-  const cursed = deepItem(getItemTemplate('dagger'));
-  cursed.cursed = true;
-  assert.match(itemDescription(cursed), /cursed/i);
+test('a curse hides with the enchantment, and shows once known', () => {
+  /* An unread curse wears the same rune as a blessing — the description must
+   * not give it away, and neither may the effects, which run the other way. */
+  const trap = applyCurse(deepItem(getItemTemplate('broadsword')), 2);
+  const before = itemDescription(trap);
+  assert.doesNotMatch(before, /curse|accursed|-2/i, 'the curse announced itself');
+  assert.match(before, /rune you cannot read/);
+
+  trap.identified = true;
+  trap.name = trap.trueName;
+  const after = itemDescription(trap);
+  assert.match(after, /cursed — it will not come off/i);
+  assert.match(after, /-2 to hit/, 'the true numbers stayed hidden after reading');
 });
 
 /* The thing that rots: someone adds an effect to an item, the engine grows a

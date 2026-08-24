@@ -300,6 +300,29 @@ Witch-Spark used to hand a point of power back too; measured, a Mage with both e
 the first boss fight against a Fighter's 77%, so the spark is the action and Ebb & Flow is the whole
 of the economy.
 
+### Curses, and reading
+
+An enchantment **hides until read**. A find is "Broadsword" with a blue gleam and *a rune you
+cannot read* — the gear card shows what it appears to be, and a Scroll of Identify (which existed in
+the data and had never once dropped — it was in no loot pool) tells you what it is.
+
+A **curse is an enchantment lying about its sign**: the same gleam, the same rune, and the bonuses
+run the other way — clamped past zero, so cursed armour is always worse than wearing nothing. You
+find out by wearing it, by failing to take it off (which names it), or by reading it first. Lifting
+a curse — a Draught of Unbinding, or an altar — also names it, and a swap can no longer smuggle a
+cursed item off your body: `equip` refused nothing while `unequip` refused everything, a door with
+no wall around it.
+
+Old saves keep their old-style cursed items exactly as they were: souring a prize already won is
+not a migration.
+
+### Both hands are both hands
+
+A two-handed weapon and a shield cannot be held at once. Equipping either slings the other to your
+pack — with a log line, since gear quietly vanishing reads as a bug — and refuses cleanly when the
+pack is full or a curse holds the conflicting hand. Old saves carrying both come back holding one.
+The Library can write two-handed weapons; two-handed *shields* are dropped by the validator.
+
 ### Recovery, and the rested line
 
 Sitting down mends what sitting down can reach. A share of every blow leaves a **wound** — a hatched

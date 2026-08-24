@@ -10,7 +10,7 @@
  * main.js and free of the DOM so a test can hold it to that.
  */
 
-import { healFractionForItem, healFractionForAbility, healthShare, RECOVERY } from './base.js';
+import { healFractionForItem, healFractionForAbility, healthShare, RECOVERY, getItemTemplate } from './base.js';
 
 export function dieText(d) {
   if (d === null || d === undefined) return '';
@@ -86,11 +86,22 @@ export function itemEffectLines(it, ctx) {
   if (fx.flame) out.push('burns the nearest foe for ' + dieText(fx.flame));
   if (fx.sanctuary) out.push('the dark forgets you for ' + fx.sanctuary + ' turns');
   if (fx.property) out.push(String(fx.property));
+  if (it && it.twoHanded) out.push('needs both hands — no shield alongside it');
   return out;
 }
 
 export function itemDescription(it, ctx) {
   if (!it) return '';
+  /* Unread. The rules text is built from the item's true effects, and an
+   * unidentified enchantment — or the curse hiding behind one — must not leak
+   * through it. Show what the thing APPEARS to be: its base template's lines,
+   * which is exactly the claim its plain name is making. */
+  if (it.identified === false) {
+    const base = getItemTemplate(it.id);
+    const lines = base ? itemEffectLines(base, ctx) : [];
+    lines.push('a rune you cannot read — a Scroll of Identify will tell');
+    return lines.join(' · ');
+  }
   const lines = itemEffectLines(it, ctx);
   /* Treasure does nothing but be worth something, which is worth saying. */
   if (!lines.length && it.kind === 'special') lines.push('worth ' + (it.value || 0) + ' gp to the right buyer');

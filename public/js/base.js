@@ -341,7 +341,8 @@ export const baseWeapons = [
   makeItem('hand-axe', 'Hand Axe', 'weapon', 'a', 'gray', 12, 2, { toHit: 0, damage: { dice: 1, sides: 6, bonus: 0 } }),
   makeItem('war-hammer', 'War Hammer', 'weapon', 'W', 'silver', 20, 3, { toHit: 0, damage: { dice: 1, sides: 8, bonus: 1 } }),
   makeItem('battle-axe', 'Battle Axe', 'weapon', 'A', 'gray', 26, 4, { toHit: 0, damage: { dice: 1, sides: 10, bonus: 0 } }),
-  makeItem('two-handed-sword', 'Two-Handed Sword', 'weapon', 'T', 'brightblue', 40, 5, { toHit: 0, damage: { dice: 2, sides: 6, bonus: 0 } }),
+  /* Both hands are both hands: the flag means no shield alongside it. */
+  { ...makeItem('two-handed-sword', 'Two-Handed Sword', 'weapon', 'T', 'brightblue', 40, 5, { toHit: 0, damage: { dice: 2, sides: 6, bonus: 0 } }), twoHanded: true },
   makeItem('wand-of-fire', 'Wand of Fire', 'wand', '~', 'yellow', 60, 3, { spell: 'firebolt', charges: 12 }, 'Flickering like a live coal.'),
   makeItem('wand-of-healing', 'Wand of Healing', 'wand', '~', 'brightgreen', 70, 3, { spell: 'heal', heal: '1d6+3', charges: 8 }, 'Warm as a hearth.'),
   makeItem('wand-of-frost', 'Wand of Frost', 'wand', '~', 'cyan', 80, 4, { spell: 'frost', charges: 10 }, 'Hoar-frost crawls along the haft.'),
