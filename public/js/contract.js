@@ -57,6 +57,17 @@ export const MONSTER_TINTS = ['rust', 'blood', 'red', 'brightred', 'ember', 'sea
  * palette can now imitate. */
 export const PLAYER_GLYPH = '@';
 
+/* One colour per party slot, worn by the token on the map, the member strip
+ * over the sheets, and the name in the top bar — so "which of us is that" is
+ * answered the same way everywhere. Slot-keyed rather than stored on the
+ * member: stable across saves with nothing to migrate, and distinct from the
+ * red family (monsters) and from each other. */
+export const PARTY_TINTS = ['#f0f0e0', '#8ac8f0', '#aef08a', '#e8d85a'];
+
+export function partyTint(slot) {
+  return PARTY_TINTS[slot % PARTY_TINTS.length];
+}
+
 /* Upper tier of each band, by index into MONSTER_TINTS. */
 const TINT_CEILINGS = [1, 3, 5, 7, 10];
 

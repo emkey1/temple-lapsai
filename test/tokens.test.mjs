@@ -275,3 +275,68 @@ test('rest sits the whole company down, and rises when the last is rested', () =
   g.rest(400);
   assert.equal(b.hp, g.restedCap(b), 'rest stood up with a companion half-mended');
 });
+
+/* ---- handing things over ---- */
+
+test('marching, anything can be handed to anyone living', () => {
+  const { g, p } = rig('tk-give');
+  clearing(g);
+  const b = recruit(g);
+  b.x = p.x - 6; b.y = p.y;              /* far, but nothing is awake */
+  const potion = { name: 'Potion', kind: 'potion', slot: 'consumable', uid: 'give-1', tier: 1, effects: { heal: '2d4+2' } };
+  p.inventory.push(potion);
+  g.bindToBelt(potion, p);
+  assert.ok(g.giveItem(potion, b, p));
+  assert.ok(b.inventory.includes(potion));
+  assert.ok(!p.inventory.includes(potion));
+  assert.ok(!p.belt.some((e) => g.beltUid(e) === 'give-1'), 'the belt still points at a handed-over item');
+});
+
+test('mid-fight it takes a hand in reach', () => {
+  const { g, p } = rig('tk-give-fight');
+  clearing(g);
+  p.hp = p.maxhp = 500;
+  const b = recruit(g);
+  b.hp = b.maxhp = 500;
+  b.x = p.x - 5; b.y = p.y;
+  beastAt(g, p.x + 2, p.y);              /* awake and near: combat */
+  const potion = { name: 'Potion', kind: 'potion', slot: 'consumable', uid: 'give-2', effects: { heal: '2d4+2' } };
+  p.inventory.push(potion);
+  assert.equal(g.giveItem(potion, b, p), false, 'a hand-over crossed the room mid-fight');
+  assert.ok(p.inventory.includes(potion));
+
+  b.x = p.x - 1;                          /* step into reach */
+  assert.ok(g.giveItem(potion, b, p));
+});
+
+test('a full pack and a fallen taker both refuse', () => {
+  const { g, p } = rig('tk-give-refuse');
+  clearing(g);
+  const b = recruit(g);
+  const potion = { name: 'Potion', kind: 'potion', slot: 'consumable', uid: 'give-3', effects: {} };
+  p.inventory.push(potion);
+  while (b.inventory.length < 32) b.inventory.push({ name: 'Rock', kind: 'misc', slot: 'misc', uid: 'r' + b.inventory.length, effects: {} });
+  assert.equal(g.giveItem(potion, b, p), false);
+  assert.ok(p.inventory.includes(potion), 'the item vanished into a full pack');
+
+  b.inventory.length = 0;
+  b.hp = 0;
+  assert.equal(g.giveItem(potion, b, p), false, 'a corpse accepted luggage');
+});
+
+test('a companion can be dressed from their own pack', () => {
+  /* equip/unequip take a member now — arranging a companion's straps is a
+   * free action done from their sheet, whoever holds the reins. */
+  const { g, p } = rig('tk-dress');
+  clearing(g);
+  const b = recruit(g);
+  const mail = { name: 'Chainmail', kind: 'armor', slot: 'body', uid: 'dress-1', tier: 3, effects: { acBonus: 4 }, identified: true };
+  b.inventory.push(mail);
+  g.equip(mail, b);
+  assert.equal(b.equipment.body, mail);
+  assert.ok(!b.inventory.includes(mail));
+  assert.equal(p.equipment.body, null, 'the armour landed on the wrong body');
+  g.unequip('body', b);
+  assert.equal(b.equipment.body, null);
+  assert.ok(b.inventory.includes(mail));
+});

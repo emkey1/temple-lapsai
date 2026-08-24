@@ -260,6 +260,15 @@ a companion trades places, the whole party takes the stairs together, calm is ca
 one Scroll of Sanctuary hides one member and not the rest, and camp beds the fallen back onto
 their feet.
 
+**Each member wears a colour** — on their map token, on the company strip above the sheets, and on
+their name in the top bar, so "which of us is that" is answered the same way everywhere. Click a
+chip on the strip to pin whose stat sheet and gear you are looking at; the dot marks whoever holds
+the reins. Arranging a companion's straps — wear, take off, belt, give — is a free action from
+their sheet at any time; *drinking* costs a turn and so belongs to whoever's turn it is.
+
+**Items are handed over from the pack**: GIVE on any pack row, then the recipient. Free while the
+party is marching; mid-fight the giver and taker must stand beside each other.
+
 **Out of combat the party moves as one**: a single keypress steps the leader and the company keeps
 pace behind them — stragglers hurry, two steps to the leader's one, so a column that fell behind
 closes up. The reins stay with the leader between fights; the moment something is awake and near,

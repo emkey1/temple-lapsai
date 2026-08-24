@@ -127,6 +127,21 @@ body {
   background: var(--panel);
   min-height: 0;
 }
+/* The company, one chip per member in their own colour. The filled chip is
+   whoever the sheets are showing; the dot marks whoever holds the reins. */
+#party-strip { display: flex; gap: 4px; padding: 4px 4px 0; }
+#party-strip:empty { display: none; }
+#party-strip button {
+  flex: 1;
+  padding: 3px 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: var(--panel2);
+  border: 1px solid var(--ink-faint);
+}
+#party-strip button.viewed { border-color: currentColor; background: #050705; }
+#party-strip button.fallen { opacity: .45; }
+
 #sheets-tabs { display: flex; border-bottom: 2px solid var(--ink-dim); }
 #sheets-tabs .tab {
   flex: 1;

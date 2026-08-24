@@ -7,7 +7,7 @@ import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDung
 import { T, W, H } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
-import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH } from './contract.js';
+import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
@@ -119,6 +119,7 @@ const els = {
   helpKeys: $('help-keys'),
   btnHelp: $('btn-help'),
   btnHelpClose: $('btn-help-close'),
+  partyStrip: $('party-strip'),
   ledger: $('ledger'),
   ledgerList: $('ledger-list'),
   btnLedger: $('btn-ledger'),
@@ -165,6 +166,17 @@ const CONTROLS = [
 /* ---------------- state ---------------- */
 let game = null;
 let currentTab = 'stats';
+/* Which member the sheets show. null follows whoever holds the reins; a
+ * number is the player having pinned someone — arranging a companion's straps
+ * mid-round is exactly what the strip is for. */
+let viewedIdx = null;
+let givingUid = null;   /* the pack item mid-hand-over, if any */
+
+function viewedMember(g) {
+  const members = g.state.party.members;
+  if (viewedIdx !== null && members[viewedIdx] && members[viewedIdx].hp > 0) return members[viewedIdx];
+  return g.state.player;
+}
 let selClass = 'fighter';
 let rolled = null;
 let initializing = false;
@@ -725,12 +737,12 @@ function renderGame(g) {
   if (game && p) {
     /* Every member on the board; the one at the reins is bright and boxed,
      * companions a step dimmer, the fallen a dark ember where they dropped. */
-    for (const m of g.state.party.members) {
-      if (!m || m === p) continue;
-      if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) continue;
-      drawGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? '#a8b0a0' : '#7a3a30', false);
-    }
-    drawGlyph(p.x, p.y, PLAYER_GLYPH, '#f0f0e0', false, true);
+    g.state.party.members.forEach((m, i) => {
+      if (!m || m === p) return;
+      if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
+      drawGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? partyTint(i) : '#7a3a30', m.hp > 0);
+    });
+    drawGlyph(p.x, p.y, PLAYER_GLYPH, partyTint(g.state.party.members.indexOf(p)), false, true);
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
     ctx.fillRect((p.x - camX) * s, (p.y - camY) * s, s, s);
   }
@@ -773,7 +785,9 @@ function renderHud(g) {
     els.hpWound.style.width = (100 * lost / Math.max(1, p.maxhp)) + '%';
     els.hpWound.style.display = lost > 0 ? '' : 'none';
   }
-  els.topstatus.textContent = p.name + ' · Lv ' + p.level + ' · ' + p.hp + '/' + p.maxhp + ' hp' +
+  const slot = g.state.party.members.indexOf(p);
+  els.topstatus.innerHTML = '<b style="color:' + partyTint(slot) + '">' + esc(p.name) + '</b> · Lv ' + p.level +
+    ' · ' + p.hp + '/' + p.maxhp + ' hp' +
     (p.wounds > 0 ? ' (' + p.wounds + ' wounded)' : '') +
     ' · ' + p.power + '/' + p.maxpower + ' pwr · ' + p.gold + ' gp';
 }
@@ -789,11 +803,28 @@ function buffLines(p) {
   return out;
 }
 
+/* The company strip: click a chip to pin whose sheets you are looking at.
+ * Rendered empty for a party of one — a strip of yourself is clutter. */
+function renderPartyStrip(g) {
+  const members = g.state.party.members.filter(Boolean);
+  if (members.length <= 1) { els.partyStrip.innerHTML = ''; return; }
+  const shown = viewedMember(g);
+  els.partyStrip.innerHTML = g.state.party.members.map((m, i) => {
+    if (!m) return '';
+    const tint = partyTint(i);
+    const reins = m === g.state.player ? ' ●' : '';
+    return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
+      (m === shown ? 'viewed' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
+      esc(m.name) + reins + '</button>';
+  }).join('');
+}
+
 function renderStats(g) {
-  const p = g.state.player;
+  renderPartyStrip(g);
+  const p = viewedMember(g);
   if (!p) { els.statBlock.innerHTML = ''; els.abilitiesBlock.innerHTML = ''; return; }
   const c = CLASSES[p.cls] || CLASSES.fighter;
-  const der = g.derived();
+  const der = g.derived(p);
   const eff = der.effValues || p.stats;
   const toNext = Math.max(0, XP_FOR_LEVEL(p.level) - p.xp);
   const KEY = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
@@ -825,8 +856,9 @@ function renderStats(g) {
   if (buffs.length) {
     els.statBlock.innerHTML += '<h3 class="pane">EFFECTS</h3>' + buffs.map((b) => '<div class="ability-card">' + b + '</div>').join('');
   }
-  els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS (keys 1-' + g.allAbilities().length + ')</h3>';
-  g.allAbilities().forEach((a, i) => {
+  const own = p === g.state.player;
+  els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS' + (own ? ' (keys 1-' + g.allAbilities(p).length + ')' : ' <span class="tiny">' + esc(p.name) + '\u2019s — usable on their turn</span>') + '</h3>';
+  g.allAbilities(p).forEach((a, i) => {
     const cd = p.cooldowns[a.id] || 0;
     const can = p.level >= a.level && (a.kind === 'passive' || p.power >= (a.powerCost || 0)) && cd === 0;
     const el = document.createElement('div');
@@ -846,8 +878,8 @@ function renderStats(g) {
       '<div class="desc">' + esc(a.description || '') +
       (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') +
       (renews ? ' <span class="tiny">(' + esc(renews) + ')</span>' : '') + '</div>';
-    if (!can && a.kind !== 'passive') el.style.opacity = 0.55;
-    el.onclick = () => { if (game && !game.dying) { game.activateAbility(a.id); canvasFocus(); } };
+    if ((!can || !own) && a.kind !== 'passive') el.style.opacity = 0.55;
+    el.onclick = () => { if (game && !game.dying && own) { game.activateAbility(a.id); canvasFocus(); } };
     els.abilitiesBlock.appendChild(el);
   });
 }
@@ -901,8 +933,11 @@ function flavorTitle(it) {
 }
 
 function renderGear(g) {
-  const p = g.state.player;
+  renderPartyStrip(g);
+  const p = viewedMember(g);
   if (!p) return;
+  const own = p === g.state.player;
+  const others = g.state.party.members.filter((m) => m && m !== p && m.hp > 0);
   const SLOTS = [['weapon', 'WEAPON'], ['body', 'BODY'], ['shield', 'SHIELD'], ['ring', 'RING'], ['amulet', 'AMULET']];
   let html = '';
   for (const [slot, label] of SLOTS) {
@@ -930,12 +965,22 @@ function renderGear(g) {
     const free = grp.indices.find((i) => !onBelt(inv[i]));
     const cursedShow = it.cursed && it.identified !== false;
     const magShow = !cursedShow && (it.identified === false || it.magicLevel > 0);
+    /* Mid-hand-over this row shows the recipients instead of its verbs. */
+    const giveIdx = free === undefined ? grp.indices[0] : free;
+    const handing = givingUid && inv[giveIdx] && inv[giveIdx].uid === givingUid;
+    const verbs = handing
+      ? others.map((m) => '<button data-give-to="' + g.state.party.members.indexOf(m) + '" data-give="' + giveIdx + '" style="color:' + partyTint(g.state.party.members.indexOf(m)) + '">&rarr; ' + esc(m.name) + '</button>').join('') +
+        '<button data-give-cancel="1">&times;</button>'
+      : (it.slot === 'consumable' || it.kind === 'wand'
+          ? '<button data-inv="' + grp.indices[0] + '"' + (own ? '' : ' disabled title="on their turn"') + '>' + itemVerb(it) + '</button>'
+          : '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>') +
+        (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
+        (others.length ? '<button data-give-start="' + giveIdx + '">GIVE</button>' : '') +
+        '<button data-drop="' + giveIdx + '">DROP</button>';
     return '<div class="eq-row"><span class="ico">' + itemIcon(it) + '</span>' +
       '<span class="i-name' + (cursedShow ? ' cursed' : magShow ? ' mag' : '') + '"' + flavorTitle(it) + '>' + esc(it.name) +
       (grp.indices.length > 1 ? ' <b class="qty">&times;' + grp.indices.length + '</b>' : '') + '</span>' +
-      '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>' +
-      (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
-      '<button data-drop="' + (free === undefined ? grp.indices[0] : free) + '">DROP</button></div>' +
+      verbs + '</div>' +
       descRow(it, p);
   }).join('');
   els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + '/' + PACK_LIMIT + ')</h3>' +
@@ -944,11 +989,11 @@ function renderGear(g) {
   let belt = '';
   const b = p.belt || [null, null, null, null];
   for (let i = 0; i < b.length; i++) {
-    const it = g.beltItem(i);
+    const it = g.beltItem(i, p);
     belt += '<div class="eq-row"><span class="slot">⇧' + (i + 1) + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
       '<span class="i-name">' + (it ? esc(it.name) : '—') + '</span>' +
-      (it ? '<button data-use-belt="' + i + '">USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
+      (it ? '<button data-use-belt="' + i + '"' + (own ? '' : ' disabled title="on their turn"') + '>USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
   }
   els.beltBlock.innerHTML = '<h3 class="pane">BELT <span class="tiny">shift + 1-4</span></h3>' + belt;
 }
@@ -1592,6 +1637,14 @@ async function boot() {
   els.btnLedgerNew.onclick = () => beginCreate();
   els.btnLedgerClose.onclick = () => doRoster();
   els.ledgerList.addEventListener('click', ledgerClick);
+  els.partyStrip.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-view]');
+    if (!b || !game) return;
+    const i = Number(b.dataset.view);
+    viewedIdx = game.state.party.members[i] === game.state.player ? null : i;
+    givingUid = null;
+    renderStats(game); renderGear(game);
+  });
   els.btnHelp.onclick = () => showHelp();
   els.btnHelpClose.onclick = () => closeHelp();
   els.dlgSend.onclick = () => dlgSend();
@@ -1629,19 +1682,33 @@ async function boot() {
 function equipmentClick(e) {
   const b = e.target.closest('[data-act]');
   if (!b || !game) return;
-  if (b.dataset.act === 'unequip') { game.unequip(b.dataset.slot); renderGear(game); renderStats(game); saveGame(); canvasFocus(); }
+  if (b.dataset.act === 'unequip') { game.unequip(b.dataset.slot, viewedMember(game)); renderGear(game); renderStats(game); saveGame(); canvasFocus(); }
 }
 
 function inventoryClick(e) {
   const b = e.target.closest('button');
-  if (!b || !game) return;
-  const p = game.state.player;
-  if (b.dataset.drop !== undefined) {
-    game.drop(p.inventory[Number(b.dataset.drop)]);
+  if (!b || !game || b.disabled) return;
+  const p = viewedMember(game);
+  if (b.dataset.giveStart !== undefined) {
+    const it = p.inventory[Number(b.dataset.giveStart)];
+    givingUid = it && it.uid;
+  } else if (b.dataset.giveCancel !== undefined) {
+    givingUid = null;
+  } else if (b.dataset.giveTo !== undefined) {
+    const to = game.state.party.members[Number(b.dataset.giveTo)];
+    game.giveItem(p.inventory[Number(b.dataset.give)], to, p);
+    givingUid = null;
+  } else if (b.dataset.drop !== undefined) {
+    game.drop(p.inventory[Number(b.dataset.drop)], p);
   } else if (b.dataset.bind !== undefined) {
-    game.bindToBelt(p.inventory[Number(b.dataset.bind)]);
+    game.bindToBelt(p.inventory[Number(b.dataset.bind)], p);
   } else if (b.dataset.inv !== undefined) {
-    game.useItem(p.inventory[Number(b.dataset.inv)]);
+    const it = p.inventory[Number(b.dataset.inv)];
+    /* Wearing is arranging straps — free, anyone's. Drinking spends the turn
+     * of whoever drinks, so only the member at the reins may. */
+    if (it && (it.slot === 'consumable' || it.kind === 'wand') && p !== game.state.player) return;
+    if (it && WEARABLE.includes(it.slot)) game.equip(it, p);
+    else game.useItem(it);
   }
   renderGear(game); renderStats(game); saveGame(); canvasFocus();
 }
@@ -1653,20 +1720,21 @@ function inventDrop(e) {
   const row = e.target.closest('.eq-row');
   const b = row && row.querySelector('button[data-inv]');
   if (!b) return;
-  game.drop(game.state.player.inventory[Number(b.dataset.inv)]);
+  game.drop(viewedMember(game).inventory[Number(b.dataset.inv)], viewedMember(game));
   renderGear(game); renderStats(game); saveGame();
 }
 
 function beltClick(e) {
   const use = e.target.closest('[data-use-belt]');
-  if (use && game) {
+  if (use && game && !use.disabled) {
+    if (viewedMember(game) !== game.state.player) return;
     game.useBeltItem(Number(use.dataset.useBelt));
     renderGear(game); renderStats(game); saveGame(); canvasFocus();
     return;
   }
   const b = e.target.closest('[data-belt]');
   if (!b || !game) return;
-  game.setBelt(Number(b.dataset.belt), null);
+  game.setBelt(Number(b.dataset.belt), null, viewedMember(game));
   renderGear(game); saveGame(); canvasFocus();
 }
 

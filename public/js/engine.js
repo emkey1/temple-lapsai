@@ -2550,8 +2550,8 @@ export class Game {
     return !!(t && t.twoHanded);
   }
 
-  equip(item) {
-    const p = this.state.player;
+  equip(item, who) {
+    const p = who || this.state.player;
     const slot = item.slot;
     if (!WEARABLE_SLOTS.includes(slot)) { this.useItem(item); return; }
     const cur = p.equipment[slot];
@@ -2581,15 +2581,15 @@ export class Game {
     p.equipment[slot] = item;
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
-    this.unbindItem(item);   /* worn is not carried: it leaves the belt */
+    this.unbindItem(item, p);   /* worn is not carried: it leaves the belt */
     if (cur) { p.inventory.push(cur); this.log('You swap the ' + cur.name + ' for the ' + item.name + '.'); }
     else { this.log('You ready the ' + item.name + '.'); }
     p.maxpower = this.computeMaxPower();
     p.power = Math.min(p.maxpower, p.power);
   }
 
-  unequip(slot) {
-    const p = this.state.player;
+  unequip(slot, who) {
+    const p = who || this.state.player;
     const cur = p.equipment[slot];
     if (!cur) return;
     if (this.curseHolds(cur, 'set it down')) return;
@@ -2601,12 +2601,12 @@ export class Game {
     this.log('You set down the ' + cur.name + '.');
   }
 
-  drop(item) {
-    const p = this.state.player;
+  drop(item, who) {
+    const p = who || this.state.player;
     const idx = p.inventory.indexOf(item);
     if (idx < 0) return;
     p.inventory.splice(idx, 1);
-    this.unbindItem(item);
+    this.unbindItem(item, p);
     if (this.currentFloor && this.currentFloor.items) {
       this.currentFloor.items.push({ i: item, x: p.x, y: p.y, auto: false });
       this.rememberDrop(item, p.x, p.y);
@@ -2622,35 +2622,35 @@ export class Game {
     return typeof entry === 'string' ? entry : (entry.uid || null);
   }
 
-  beltItem(index) {
-    const p = this.state.player;
+  beltItem(index, who) {
+    const p = who || this.state.player;
     const uid = this.beltUid(p.belt[index]);
     if (!uid) return null;
     return p.inventory.find((it) => it && it.uid === uid) || null;
   }
 
-  unbindItem(item) {
-    const p = this.state.player;
+  unbindItem(item, who) {
+    const p = who || this.state.player;
     if (!p || !item || !item.uid) return;
     for (let i = 0; i < p.belt.length; i++) {
       if (this.beltUid(p.belt[i]) === item.uid) p.belt[i] = null;
     }
   }
 
-  setBelt(index, item) {
-    const p = this.state.player;
+  setBelt(index, item, who) {
+    const p = who || this.state.player;
     if (index < 0 || index >= p.belt.length) return;
     if (!item) { p.belt[index] = null; return; }
     if (p.inventory.indexOf(item) < 0) return;
     if (!item.uid) item.uid = rngIntId();
-    this.unbindItem(item);   /* one loop per item: binding again moves it */
+    this.unbindItem(item, p);   /* one loop per item: binding again moves it */
     p.belt[index] = item.uid;
     this.log('Bound to the belt: ' + item.name + '.');
   }
 
   /* The first free loop, so binding is one click rather than a puzzle. */
-  bindToBelt(item) {
-    const p = this.state.player;
+  bindToBelt(item, who) {
+    const p = who || this.state.player;
     if (!item) return false;
     if (!item.uid) item.uid = rngIntId();
     if (p.belt.some((e) => this.beltUid(e) === item.uid)) {
@@ -2659,7 +2659,7 @@ export class Game {
     }
     const free = p.belt.findIndex((x) => !x);
     if (free < 0) { this.log('Your belt is full. Unbind something first.'); return false; }
-    this.setBelt(free, item);
+    this.setBelt(free, item, p);
     return true;
   }
 
@@ -2684,6 +2684,31 @@ export class Game {
     if (!it || it.identified !== false) return false;
     it.identified = true;
     if (it.trueName) { it.name = it.trueName; delete it.trueName; }
+    return true;
+  }
+
+  /* HANDING SOMETHING OVER. Free while the party is marching — they walk in
+   * each other's pockets — but mid-fight it takes a hand in reach: the giver
+   * and the taker must stand beside each other. Arranging straps is a free
+   * action either way; DRINKING what you were handed still costs the turn of
+   * whoever drinks it. */
+  giveItem(item, to, from) {
+    const giver = from || this.state.player;
+    if (!giver || !to || to === giver) return false;
+    const idx = giver.inventory.indexOf(item);
+    if (idx < 0) { this.log('You are not carrying that.'); return false; }
+    if (to.hp <= 0) { this.log(to.name + ' is in no state to carry anything.'); return false; }
+    if (!this.outOfCombat() && dist8(giver, to) > 1) {
+      this.log(to.name + ' is not in reach — not in the middle of this.');
+      return false;
+    }
+    if (to.inventory.length >= PACK_LIMIT) { this.log(to.name + '\'s pack is full.'); return false; }
+    giver.inventory.splice(idx, 1);
+    this.unbindItem(item, giver);
+    to.inventory.push(item);
+    this.log(this.nameOf(giver) === 'you'
+      ? 'You hand the ' + item.name + ' to ' + to.name + '.'
+      : giver.name + ' hands the ' + item.name + ' to ' + this.nameOf(to) + '.');
     return true;
   }
 
