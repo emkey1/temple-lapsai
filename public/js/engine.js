@@ -949,16 +949,19 @@ export class Game {
     /* "As rested as this place allows" is literally true now: resting ends at
      * the rested line, not at the top of the bar. It is still free, still
      * unlimited and still one keypress — it is just shorter. */
-    const cap = this.restedCap(p);
-    if (p.hp >= cap && p.power >= der.maxpower) {
+    /* The whole company sits down together, and sits until the LAST of them
+     * has rested all they can — a member is not left half-mended because the
+     * one at the reins happened to fill first. */
+    const rested = (m) => m.hp >= this.restedCap(m) && m.power >= this.derived(m).maxpower;
+    const allRested = () => this.livingMembers().every(rested);
+    if (allRested()) {
       this.log('You are as rested as this place allows.');
       if (p.wounds > 0) this.log('The worst of it will not close on its own: ' + p.wounds + ' hit points beyond your reach.');
       return false;
     }
     let turns = 0;
     while (turns < maxTurns && !this.dying) {
-      const full = p.hp >= this.restedCap(p) && p.power >= this.derived().maxpower;
-      if (full) break;
+      if (allRested()) break;
       if (!this.outOfCombat()) { this.log('Something stirs — you are on your feet again.'); break; }
       this.endPlayerTurn();
       turns++;
@@ -1441,7 +1444,48 @@ export class Game {
     const p = this.state.player;
     if (!p || this.dying) return;
     this.actorTurn(p).acted = true;
+    /* OUTSIDE OF COMBAT THE PARTY MOVES AS ONE. Whatever the member at the
+     * reins just did — a step, a search, a swig — the rest of the company
+     * keeps pace behind them and their actions are spent with it, so one
+     * keypress is one round for everybody. The moment something is awake and
+     * near, this stops holding, and the round breaks into initiative turns. */
+    if (this.outOfCombat()) this.followTheLeader(p);
     this.advanceQueue();
+  }
+
+  followTheLeader(leader) {
+    const followers = this.livingMembers().filter((m) => m !== leader && !this.actorTurn(m).acted);
+    if (!followers.length) return;
+    const floor = this.currentFloor;
+    const field = this.distanceFieldFrom([leader]);
+    /* Nearest first, so a single-file column moves front-to-back instead of
+     * the second in line blocking on the first for a round. */
+    followers.sort((a, b) => (field[a.y][a.x] ?? 99) - (field[b.y][b.x] ?? 99));
+    for (const m of followers) {
+      this.actorTurn(m).acted = true;
+      /* A straggler hurries: two steps to the leader's one, so a column that
+       * fell behind — a fight, a doorway, the stairs — closes up again instead
+       * of trailing at a fixed distance for ever. */
+      for (let hurry = 0; hurry < 2; hurry++) {
+        const here = field[m.y][m.x];
+        if (here <= 1 || here < 0) break;   /* at the leader's shoulder, or cut off */
+        let best = null, bestD = here;
+        for (const [dx, dy] of DIRS8) {
+          const nx = m.x + dx, ny = m.y + dy;
+          if (!this.inBounds(nx, ny)) continue;
+          if (dx && dy && !this.canCorner(m.x, m.y, nx, ny)) continue;
+          const d = field[ny][nx];
+          if (d < 0 || d >= bestD) continue;
+          if (this.memberAt(nx, ny)) continue;
+          if ((floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === nx && mo.y === ny)) continue;
+          bestD = d; best = [nx, ny];
+        }
+        /* Followers step quietly: no wading surcharge and no pickups — the
+         * splash and the loot belong to whoever holds the reins. */
+        if (!best) break;
+        m.x = best[0]; m.y = best[1];
+      }
+    }
   }
 
   /* One pass through the round in INITIATIVE ORDER — members and monsters
@@ -1465,8 +1509,16 @@ export class Game {
       }
     }
     /* Ties go to the party — the benefit of the doubt goes to whoever is
-     * paying for the torches — and then to standing order, so sort is stable. */
-    order.sort((a, b) => (b.ref.ini || 0) - (a.ref.ini || 0) || (b.member ? 1 : 0) - (a.member ? 1 : 0));
+     * paying for the torches — and then to standing order, so sort is stable.
+     *
+     * Out of combat there is no initiative, only a marching order: the leader
+     * steers and the company follows, so the reins never land on a companion
+     * between fights. */
+    if (this.outOfCombat()) {
+      order.sort((a, b) => (a.member ? 0 : 1) - (b.member ? 0 : 1));
+    } else {
+      order.sort((a, b) => (b.ref.ini || 0) - (a.ref.ini || 0) || (b.member ? 1 : 0) - (a.member ? 1 : 0));
+    }
     this._round = { order, idx: 0 };
   }
 
@@ -1594,9 +1646,17 @@ export class Game {
     this.advanceQueue();
   }
 
+  /* Time passes for the WHOLE company. This ran on the active member only,
+   * which was invisible with one of them and a real bug with several: a
+   * companion never regenerated a point, never cooled an ability down, and
+   * wore a buff for ever. */
   tickStatus() {
-    const p = this.state.player;
-    const der = this.derived();
+    const calm = this.outOfCombat();
+    for (const m of this.livingMembers()) this.tickMemberStatus(m, calm);
+  }
+
+  tickMemberStatus(p, calm) {
+    const der = this.derived(p);
     /* Every other TICK, not every other value of this.turn. Wading advances
      * the turn counter twice for one action, so a player wearing a Ring of
      * Regeneration and crossing water only ever landed on even turns and the
@@ -1611,7 +1671,7 @@ export class Game {
       p.counters.regenTick = (p.counters.regenTick || 0) + 1;
       if (p.counters.regenTick % 2 === 0) p.hp = Math.max(p.hp, Math.min(cap, p.hp + der.regen));
     }
-    if (this.outOfCombat()) {
+    if (calm) {
       p.hp = Math.max(p.hp, Math.min(cap, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION))));
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.ceil(der.maxpower * PWR_REGEN_FRACTION)));
       /* A half point never carries from one fight into the next. */
@@ -1626,7 +1686,7 @@ export class Game {
     /* Every key in p.buffs is a countdown in turns. Anything that is a
      * magnitude rather than a duration belongs in p.buffLevels, or it decays. */
     for (const k in p.buffs) if (p.buffs[k] > 0) p.buffs[k]--;
-    if (p.buffs.turn !== undefined && p.buffs.turn <= 0) this.buffsTurnRefresh();
+    if (p.buffs.turn !== undefined && p.buffs.turn <= 0) this.buffsTurnRefresh(p);
     if (p.buffs.sanctuary !== undefined && p.buffs.sanctuary <= 0) {
       delete p.buffs.sanctuary;
       this.log('The dark remembers your name again.');
@@ -1642,8 +1702,8 @@ export class Game {
     }
   }
 
-  buffsTurnRefresh() {
-    const p = this.state.player;
+  buffsTurnRefresh(who) {
+    const p = who || this.state.player;
     delete p.buffs.turn;
     for (const m of (this.currentFloor && this.currentFloor.monsters || [])) if (m.fleeing) { m.fleeing = false; }
   }
@@ -1654,18 +1714,20 @@ export class Game {
    * monster towards whoever is NEAREST — which is what "the party is several
    * bodies" means to the thing hunting them. */
   playerDistanceField() {
+    const seeds = this.targetableMembers();
+    if (!seeds.length && this.state.player) seeds.push(this.state.player);
+    return this.distanceFieldFrom(seeds);
+  }
+
+  distanceFieldFrom(seeds) {
     const floor = this.currentFloor;
     const dist = Array.from({ length: H }, () => Array(W).fill(-1));
     if (!floor) return dist;
     const queue = [];
-    for (const m of this.targetableMembers()) {
+    for (const m of seeds) {
       if (dist[m.y][m.x] !== -1) continue;
       dist[m.y][m.x] = 0;
       queue.push([m.x, m.y]);
-    }
-    if (!queue.length) {
-      const p = this.state.player;
-      if (p) { dist[p.y][p.x] = 0; queue.push([p.x, p.y]); }
     }
     for (let i = 0; i < queue.length; i++) {
       const [x, y] = queue[i];

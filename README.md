@@ -260,6 +260,11 @@ a companion trades places, the whole party takes the stairs together, calm is ca
 one Scroll of Sanctuary hides one member and not the rest, and camp beds the fallen back onto
 their feet.
 
+**Out of combat the party moves as one**: a single keypress steps the leader and the company keeps
+pace behind them — stragglers hurry, two steps to the leader's one, so a column that fell behind
+closes up. The reins stay with the leader between fights; the moment something is awake and near,
+the round breaks into initiative turns.
+
 Turns are rounds: each member spends an action (the bright boxed `@` is whoever holds the reins;
 companions are a step dimmer), and the monsters wait for the last of them. In a party of one, every
 number in the game is measurably unchanged.

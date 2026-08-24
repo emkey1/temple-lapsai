@@ -201,3 +201,77 @@ test('calm asks after the whole party, not just the front of it', () => {
   beastAt(g, p.x + 8, p.y);
   assert.equal(g.outOfCombat(), false, 'the fighter rested while the thief was being eaten');
 });
+
+/* ---- the party moves as one, outside of combat ----
+ *
+ * First playtest reaction to the tactical party: "all characters should move
+ * as one outside of combat." One keypress is one round for everybody while
+ * nothing is awake and near; the moment something is, the round breaks into
+ * initiative turns.
+ */
+
+test('out of combat, one keypress moves the whole company', () => {
+  const { g, p } = rig('tk-follow');
+  clearing(g);
+  const b = recruit(g);
+  b.x = p.x - 2; b.y = p.y;              /* trailing behind */
+  const turn = g.turn;
+  g.handleKey('d', {});                  /* leader steps east */
+  assert.equal(g.turn, turn + 1, 'the round did not turn on one keypress');
+  assert.equal(g.state.party.active, 0, 'control did not stay with the leader');
+  assert.ok(Math.abs(b.x - p.x) + Math.abs(b.y - p.y) <= 3, 'the follower was left behind');
+});
+
+test('the column closes up over a walk', () => {
+  const { g, p } = rig('tk-column');
+  clearing(g);
+  const b = recruit(g);
+  b.x = p.x - 5; b.y = p.y;
+  for (let i = 0; i < 6; i++) g.handleKey('d', {});
+  assert.ok(Math.max(Math.abs(b.x - p.x), Math.abs(b.y - p.y)) <= 2,
+    `after six steps the follower is still ${Math.abs(b.x - p.x)},${Math.abs(b.y - p.y)} away`);
+});
+
+test('combat breaks the column into initiative turns', () => {
+  const { g, p } = rig('tk-break');
+  clearing(g);
+  p.hp = p.maxhp = 500;
+  p.ini = 30;
+  const b = recruit(g);
+  b.hp = b.maxhp = 500;
+  b.ini = 20;
+  b.x = p.x - 1; b.y = p.y;
+  beastAt(g, p.x + 2, p.y).ini = 10;     /* awake, within calm radius */
+  g._round = null; g.advanceQueue();
+  const turn = g.turn;
+  g.handleKey(' ', {});                  /* the leader's action alone */
+  assert.equal(g.turn, turn, 'the whole round resolved on one keypress mid-combat');
+  assert.equal(g.state.player.name, 'Second', 'control did not pass to the second member');
+});
+
+test('time passes for companions too', () => {
+  /* tickStatus ran on the active member only — invisible with one member, a
+   * real bug with several: a companion never regenerated, never cooled an
+   * ability down, and wore a buff for ever. */
+  const { g, p } = rig('tk-tick');
+  clearing(g);
+  const b = recruit(g);
+  b.hp = 1;
+  b.cooldowns = { backstab: 3 };
+  b.buffs = { might: 2 };
+  p.hp = p.maxhp;
+  for (let i = 0; i < 6; i++) g.handleKey(' ', {});
+  assert.ok(b.hp > 1, 'the companion never regenerated a point');
+  assert.ok(b.cooldowns.backstab < 3, 'the companion\'s cooldown never counted down');
+  assert.ok(!(b.buffs.might > 0), 'the companion wore a buff for ever');
+});
+
+test('rest sits the whole company down, and rises when the last is rested', () => {
+  const { g, p } = rig('tk-rest');
+  clearing(g);
+  const b = recruit(g);
+  p.hp = p.maxhp;
+  b.hp = 1;
+  g.rest(400);
+  assert.equal(b.hp, g.restedCap(b), 'rest stood up with a companion half-mended');
+});
