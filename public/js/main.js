@@ -13,6 +13,7 @@ import {
   CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef,
   creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl, loadImage,
 } from './sprites.js';
+import { findPath } from './path.js';
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
@@ -730,6 +731,230 @@ function drawMember(m, tint, acting) {
   if (!drew) drawGlyph(m.x, m.y, PLAYER_GLYPH, dead ? '#7a3a30' : tint, !acting && !dead, acting);
 }
 
+/* ---------------- the mouse ----------------
+ *
+ * Click a tile the party has seen and they walk there; click a monster and
+ * they walk to it and strike; click a townsfolk and they walk over and talk;
+ * click your own feet and you loot them. Hovering previews the route as a
+ * line of dots and names what the cursor rests on. The keyboard loses
+ * nothing — any keypress cancels the walk and takes over.
+ *
+ * Out of combat a click walks the whole route, one round per step, on a
+ * short leash: the walk stops the moment combat starts, anyone loses blood,
+ * a card comes up, or the floor changes underfoot. In combat a click is one
+ * action — one step, or one swing — because walking across a fight on
+ * autopilot is how autopilots die. */
+
+let hoverTile = null;   /* {x, y} under the cursor, in floor coordinates */
+let hoverPath = null;   /* the previewed route to it, or null */
+let walkPath = null;    /* the route being walked, step queue */
+let walkTimer = null;
+
+function cancelWalk() {
+  walkPath = null;
+  if (walkTimer) { clearTimeout(walkTimer); walkTimer = null; }
+}
+
+function tileFromEvent(e) {
+  if (!game || !game.currentFloor) return null;
+  /* Mouse coordinates arrive in screen pixels, and the page is drawn under
+   * `html { zoom }` — so measure the canvas as the mouse sees it and scale
+   * back to bitmap pixels. Robust against any zoom or stretching. */
+  const rect = els.canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const ox = (e.clientX - rect.left) * (els.canvas.width / rect.width);
+  const oy = (e.clientY - rect.top) * (els.canvas.height / rect.height);
+  const x = camX + Math.floor(ox / ts);
+  const y = camY + Math.floor(oy / ts);
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return null;
+  if (x < 0 || y < 0 || x >= W || y >= H) return null;
+  return { x, y };
+}
+
+/* What stands where the click landed — only what the player could name too:
+ * visible monsters (or revealed ones), visible townsfolk, remembered tiles. */
+function monsterAtTile(g, x, y) {
+  return (g.currentFloor.monsters || []).find((m) =>
+    m.hp > 0 && m.x === x && m.y === y &&
+    ((inView(x, y) && !m.submerged) || m.revealed));
+}
+function npcAtTile(g, x, y) {
+  return (g.currentFloor.npcs || []).find((n) => n.x === x && n.y === y && inView(x, y));
+}
+
+/* Everything that blocks a route: living monsters the player knows about and
+ * townsfolk. Party members are left out — walking into one trades places. */
+function routeBlockers(g) {
+  const blocked = new Set();
+  for (const m of g.currentFloor.monsters || []) {
+    if (m.hp > 0 && !m.submerged) blocked.add(m.x + ',' + m.y);
+  }
+  for (const n of g.currentFloor.npcs || []) blocked.add(n.x + ',' + n.y);
+  return blocked;
+}
+
+function routeTo(g, x, y) {
+  const p = g.state.player;
+  return findPath({
+    tiles: g.currentFloor.tiles,
+    seen: g.seen,
+    from: { x: p.x, y: p.y },
+    to: { x, y },
+    blocked: routeBlockers(g),
+  });
+}
+
+/* One step of the route: the same keypress the keyboard would have made,
+ * with the same bookkeeping after it. */
+function takeStep(step) {
+  const g = game, p = g.state.player;
+  const dx = step.x - p.x, dy = step.y - p.y;
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) return false;
+  const acted = g.handleKey(null, { dx, dy });
+  if (currentTab === 'gear') renderGear(g);
+  saveGame();
+  return acted;
+}
+
+function walkTick() {
+  walkTimer = null;
+  const g = game;
+  if (!walkPath || !walkPath.length || !g || g.dying) { cancelWalk(); return; }
+  if (!els.overlay.classList.contains('hidden')) { cancelWalk(); return; }
+  const p = g.state.player;
+  const floorBefore = p.floorIdx + ':' + p.dungeonId;
+  const bloodBefore = g.livingMembers().reduce((s, m) => s + m.hp, 0);
+  const step = walkPath.shift();
+  if (!takeStep(step)) { cancelWalk(); return; }
+  const stillCalm = g.outOfCombat();
+  const bloodAfter = g.livingMembers().reduce((s, m) => s + m.hp, 0);
+  if (!walkPath.length || !stillCalm || bloodAfter < bloodBefore ||
+      floorBefore !== p.floorIdx + ':' + p.dungeonId ||
+      !els.overlay.classList.contains('hidden')) {
+    cancelWalk();
+    return;
+  }
+  walkTimer = setTimeout(walkTick, 110);
+}
+
+function onCanvasClick(e) {
+  const g = game;
+  canvasFocus();
+  if (!g || g.dying || !g.currentFloor) return;
+  if (!els.overlay.classList.contains('hidden') || dialogueOpen) return;
+  cancelWalk();
+  const t = tileFromEvent(e);
+  if (!t) return;
+  const p = g.state.player;
+  if (t.x === p.x && t.y === p.y) {
+    g.handleKey('g', {});   /* your own feet: loot them, or hear what is here */
+    saveGame();
+    return;
+  }
+  if (!(g.seen && g.seen[t.y] && g.seen[t.y][t.x])) return;   /* the dark is not clickable */
+  const path = routeTo(g, t.x, t.y);
+  if (!path || !path.length) { g.log('No way there that you have seen.'); return; }
+  if (g.outOfCombat()) {
+    walkPath = path;
+    walkTick();
+  } else {
+    takeStep(path[0]);   /* a fight is clicked one action at a time */
+  }
+}
+
+function onCanvasMove(e) {
+  const t = tileFromEvent(e);
+  const changed = !t !== !hoverTile || (t && hoverTile && (t.x !== hoverTile.x || t.y !== hoverTile.y));
+  if (!changed) return;
+  hoverTile = t;
+  hoverPath = null;
+  if (game && t && game.seen && game.seen[t.y] && game.seen[t.y][t.x] && !game.dying) {
+    const p = game.state.player;
+    if (t.x !== p.x || t.y !== p.y) hoverPath = routeTo(game, t.x, t.y);
+    els.canvas.style.cursor = (hoverPath && hoverPath.length) || (t.x === p.x && t.y === p.y) ? 'pointer' : 'default';
+  } else {
+    els.canvas.style.cursor = 'default';
+  }
+  lastTiles = '';
+}
+
+function onCanvasLeave() {
+  hoverTile = null;
+  hoverPath = null;
+  els.canvas.style.cursor = 'default';
+  lastTiles = '';
+}
+
+/* What the cursor rests on, named. Only what the party could name too. */
+function hoverLabel(g, x, y) {
+  const m = monsterAtTile(g, x, y);
+  if (m) {
+    const hurt = m.hp >= m.t.hpMax ? '' : m.hp > m.t.hpMax / 2 ? ', wounded' : ', badly hurt';
+    return (m.boss ? '☠ ' : '') + m.t.name + hurt;
+  }
+  const n = npcAtTile(g, x, y);
+  if (n) return (n.tpl && n.tpl.name) || 'Someone';
+  if (inView(x, y)) {
+    const here = (g.currentFloor.items || []).filter((it) => it.x === x && it.y === y);
+    if (here.length) return here.map((it) => (it.i && it.i.name) || 'something').join(', ');
+  }
+  const t = g.currentFloor.tiles[y][x];
+  if (t === T.DOWN) return 'Stairs down';
+  if (t === T.UP) return 'Stairs up';
+  if (t === T.ALTAR) return 'An altar';
+  if (t === T.WATER) return 'Black water';
+  if (t === T.DOOR_C) return 'A closed door';
+  return '';
+}
+
+function drawMouseOverlay(g) {
+  const ctx = els.ctx, s = ts;
+  if (hoverPath && hoverPath.length && !walkPath) {
+    ctx.fillStyle = 'rgba(230, 220, 160, 0.5)';
+    for (let i = 0; i < hoverPath.length - 1; i++) {
+      const st = hoverPath[i];
+      ctx.beginPath();
+      ctx.arc((st.x - camX) * s + s / 2, (st.y - camY) * s + s / 2, Math.max(1.5, s * 0.09), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (walkPath && walkPath.length) {
+    ctx.fillStyle = 'rgba(230, 220, 160, 0.35)';
+    for (const st of walkPath) {
+      ctx.beginPath();
+      ctx.arc((st.x - camX) * s + s / 2, (st.y - camY) * s + s / 2, Math.max(1.5, s * 0.09), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (!hoverTile) return;
+  const { x, y } = hoverTile;
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
+  if (!(g.seen && g.seen[y] && g.seen[y][x])) return;
+  const px = (x - camX) * s, py = (y - camY) * s;
+  const hostile = monsterAtTile(g, x, y);
+  ctx.strokeStyle = hostile ? 'rgba(224, 96, 80, 0.9)' : 'rgba(230, 220, 160, 0.8)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+  const label = hoverLabel(g, x, y);
+  if (label) {
+    ctx.font = Math.max(10, Math.round(s * 0.55)) + 'px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const wLabel = ctx.measureText(label).width + 8;
+    const lh = Math.max(14, Math.round(s * 0.8));
+    let lx = px + s + 3, ly = py - lh / 2 - 1;
+    if (lx + wLabel > viewW * s) lx = px - wLabel - 3;
+    if (ly < 0) ly = py + s + 1;
+    ctx.fillStyle = 'rgba(5, 7, 5, 0.85)';
+    ctx.fillRect(lx, ly, wLabel, lh);
+    ctx.strokeStyle = 'rgba(230, 220, 160, 0.4)';
+    ctx.strokeRect(lx + 0.5, ly + 0.5, wLabel - 1, lh - 1);
+    ctx.fillStyle = hostile ? '#e0aa60' : '#cfe0c0';
+    ctx.fillText(label, lx + 4, ly + lh / 2 + 1);
+    ctx.textAlign = 'center';   /* the renderer's standing alignment */
+  }
+}
+
 /* ---------------- canvas renderer ---------------- */
 let ts = 20;
 let viewW = W, viewH = H;   /* size of the visible window, in tiles */
@@ -785,7 +1010,9 @@ function renderGame(g) {
    * as alive as a 200ms repaint interval can make them. */
   const ab = Math.floor(performance.now() / 200);
   const key = p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
-    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa + ':' + ab;
+    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa + ':' + ab +
+    ':' + (hoverTile ? hoverTile.x + ',' + hoverTile.y : '-') +
+    ':' + (walkPath ? walkPath.length : 0);
   if (key === lastTiles && els.canvas.width) return;
   lastTiles = key;
 
@@ -901,6 +1128,7 @@ function renderGame(g) {
     });
     drawMember(p, partyTint(g.state.party.members.indexOf(p)), true);
   }
+  drawMouseOverlay(g);
 }
 
 function shade(hex, f) {
@@ -1242,6 +1470,8 @@ function renderLibrary(g) {
 function canvasFocus() { els.canvas.focus(); }
 
 function onKey(e) {
+  /* The keyboard outranks the autopilot: any key stops the walk. */
+  if (walkPath) cancelWalk();
   if (e.key === 'Tab') {
     e.preventDefault();
     if (game) setTab(nextTab());
@@ -1824,6 +2054,9 @@ async function boot() {
   els.beltBlock.addEventListener('click', beltClick);
 
   window.addEventListener('resize', () => { fitCanvas(); if (game) renderGame(game); });
+  els.canvas.addEventListener('click', onCanvasClick);
+  els.canvas.addEventListener('mousemove', onCanvasMove);
+  els.canvas.addEventListener('mouseleave', onCanvasLeave);
   document.addEventListener('keydown', onKey);
   const anim = setInterval(() => { if (game && !document.hidden) renderGame(game); }, 200);
   document.addEventListener('keydown', (e) => { if (e.key === 'F5' || (e.key === 's' && (e.metaKey || e.ctrlKey))) saveGame(); });
