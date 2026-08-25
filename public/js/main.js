@@ -10,10 +10,12 @@ import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
-  CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef,
-  creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl, loadImage,
+  CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef, parseTilesetDef,
+  creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl,
+  tilesetUrl, tilesetDefUrl, loadImage,
 } from './sprites.js';
 import { findPath } from './path.js';
+import { ISO, isoToScreen, screenToIso, diamondPath, paintOrder, makeViewTest } from './iso.js';
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
@@ -141,6 +143,8 @@ const CONTROLS = [
     ['Space  ·  X', 'Wait where you are and let the turn pass.'],
     ['R', 'Rest. Sit until your wounds close and your power comes back, or until something wakes.'],
     ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
+    ['Mouse', 'Click somewhere seen and the company walks there; click a monster to close and strike; hover to see the route and name what waits. In a fight, one click is one action. Any key takes the reins back.'],
+    ['V', 'Turn the view: the isometric scene, or the flat tactical map.'],
   ]],
   ['Reading the dark', [
     ['Anything red', 'Alive, and interested in you. The duller the red the milder the thing — rust and dark red are vermin, bright red and orange are trouble, and something the colour of a hot coal will kill you.'],
@@ -626,6 +630,45 @@ function getSheet(kind, name, sex) {
   return null;
 }
 
+/* The floor atlases, cached the same way as the creature sheets. */
+function getTileset(name) {
+  const key = 'tileset:' + name;
+  if (sheetCache.has(key)) {
+    const v = sheetCache.get(key);
+    return v === 'pending' ? null : v;
+  }
+  sheetCache.set(key, 'pending');
+  Promise.all([
+    loadImage(tilesetUrl(name)),
+    fetch(tilesetDefUrl(name)).then((r) => (r.ok ? r.text() : null)).catch(() => null),
+  ]).then(([img, text]) => {
+    sheetCache.set(key, img && text ? { img, def: parseTilesetDef(text) } : null);
+    lastTiles = '';
+  });
+  return null;
+}
+
+/* Which atlas dresses which theme: the masonry sets for built places, the
+ * rough stone for grown ones. */
+const THEME_TILESET = {
+  temple: 'tileset_dungeon', tomb: 'tileset_dungeon', halls: 'tileset_dungeon',
+  abyss: 'tileset_dungeon', arcane: 'tileset_dungeon',
+  sewers: 'tileset_cave', cavern: 'tileset_cave', crystal: 'tileset_cave',
+  fire: 'tileset_cave', ice: 'tileset_cave', jungle: 'tileset_cave',
+};
+
+/* Flare's floors: ids 16-19 are the plain stones, the higher ids the worn
+ * and decorated ones. The hash is position, so a floor keeps its face. */
+function floorPieceId(def, x, y) {
+  const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+  let id = 16 + (h % 4);
+  if (h % 19 === 0) {
+    const decor = 36 + ((h >> 4) % 11);
+    if (def.tiles[decor]) id = decor;
+  }
+  return def.tiles[id] ? id : 16;
+}
+
 /* Flare's compass: eight directions counted clockwise from west. If the art
  * ever disagrees with this table, this is the one line to argue with. */
 function flareDir(dx, dy) {
@@ -667,21 +710,18 @@ function stanceHeight(def) {
  * with each other; creatures are scaled from their own stance height along
  * a compressed curve, so a rat is small without being invisible and a wyrm
  * is enormous without being the whole room. */
-function drawFrame(x, y, entry, animName, dir, opts = {}) {
-  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return false;
+function drawFrameAt(ax, ay, unit, entry, animName, dir, opts = {}) {
   const f = pickFrame(entry.def, animName, dir, opts.hold);
   if (!f) return false;
-  const s = ts, ctx = els.ctx;
+  const ctx = els.ctx;
   let scale;
   if (opts.fit) {
     if (!entry.baseH) entry.baseH = stanceHeight(entry.def);
-    const targetH = s * Math.min(1.9, Math.max(0.7, 0.5 + 0.55 * entry.baseH / 40));
+    const targetH = unit * Math.min(1.9, Math.max(0.7, 0.5 + 0.55 * entry.baseH / 40));
     scale = (targetH / entry.baseH) * (opts.scale || 1);
   } else {
-    scale = (s / 28) * (opts.scale || 1);
+    scale = (unit / 28) * (opts.scale || 1);
   }
-  const ax = (x - camX) * s + s / 2;
-  const ay = (y - camY) * s + s * 0.85;
   if (opts.dim) ctx.globalAlpha = 0.55;
   ctx.drawImage(entry.img, f.x, f.y, f.w, f.h,
     ax - f.ox * scale, ay - f.oy * scale, f.w * scale, f.h * scale);
@@ -689,11 +729,16 @@ function drawFrame(x, y, entry, animName, dir, opts = {}) {
   return true;
 }
 
-function drawRing(x, y, color, opts = {}) {
-  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
-  const s = ts, ctx = els.ctx;
+function drawFrame(x, y, entry, animName, dir, opts = {}) {
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return false;
+  const s = ts;
+  return drawFrameAt((x - camX) * s + s / 2, (y - camY) * s + s * 0.85, s, entry, animName, dir, opts);
+}
+
+function drawRingAt(ax, ay, rx, ry, color, opts = {}) {
+  const ctx = els.ctx;
   ctx.beginPath();
-  ctx.ellipse((x - camX) * s + s / 2, (y - camY) * s + s * 0.82, s * 0.38, s * 0.17, 0, 0, Math.PI * 2);
+  ctx.ellipse(ax, ay, rx, ry, 0, 0, Math.PI * 2);
   if (opts.fill) { ctx.fillStyle = opts.fill; ctx.fill(); }
   ctx.strokeStyle = color;
   ctx.lineWidth = opts.bold ? 2 : 1;
@@ -701,6 +746,12 @@ function drawRing(x, y, color, opts = {}) {
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.lineWidth = 1;
+}
+
+function drawRing(x, y, color, opts = {}) {
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
+  const s = ts;
+  drawRingAt((x - camX) * s + s / 2, (y - camY) * s + s * 0.82, s * 0.38, s * 0.17, color, opts);
 }
 
 /* Nothing on a member says man or woman, so the name decides, stably. */
@@ -712,11 +763,12 @@ function heroSex(m) {
 
 /* A member as a paper doll: bare body, then head, then everything worn over
  * it, in the order the lists in sprites.js were written. The fallen lie on
- * the last frame of their dying. */
-function drawMember(m, tint, acting) {
+ * the last frame of their dying. Returns false if not one layer was ready,
+ * so the caller can fall back to the glyph its renderer knows how to draw. */
+function drawMemberAt(ax, ay, unit, rx, ry, m, tint, acting) {
   const sex = heroSex(m);
   const dead = m.hp <= 0;
-  drawRing(m.x, m.y, dead ? '#7a3a30' : tint, {
+  drawRingAt(ax, ay, rx, ry, dead ? '#7a3a30' : tint, {
     bold: acting,
     fill: acting ? 'rgba(255,255,255,0.10)' : undefined,
     dim: !acting && !dead,
@@ -726,9 +778,16 @@ function drawMember(m, tint, acting) {
   let drew = false;
   for (const layer of layers) {
     const entry = getSheet('hero', layer, sex);
-    if (entry && drawFrame(m.x, m.y, entry, dead ? 'die' : 'stance', 6, { dim: dead, hold: dead })) drew = true;
+    if (entry && drawFrameAt(ax, ay, unit, entry, dead ? 'die' : 'stance', 6, { dim: dead, hold: dead })) drew = true;
   }
-  if (!drew) drawGlyph(m.x, m.y, PLAYER_GLYPH, dead ? '#7a3a30' : tint, !acting && !dead, acting);
+  return drew;
+}
+
+function drawMember(m, tint, acting) {
+  const s = ts;
+  const ax = (m.x - camX) * s + s / 2, ay = (m.y - camY) * s + s * 0.85;
+  const drew = drawMemberAt(ax, ay - s * 0.03, s, s * 0.38, s * 0.17, m, tint, acting);
+  if (!drew) drawGlyph(m.x, m.y, PLAYER_GLYPH, m.hp <= 0 ? '#7a3a30' : tint, !acting && m.hp > 0, acting);
 }
 
 /* ---------------- the mouse ----------------
@@ -764,9 +823,14 @@ function tileFromEvent(e) {
   if (!rect.width || !rect.height) return null;
   const ox = (e.clientX - rect.left) * (els.canvas.width / rect.width);
   const oy = (e.clientY - rect.top) * (els.canvas.height / rect.height);
-  const x = camX + Math.floor(ox / ts);
-  const y = camY + Math.floor(oy / ts);
-  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return null;
+  let x, y;
+  if (viewMode === 'iso') {
+    ({ x, y } = screenToIso(ox + isoCamX, oy + isoCamY));
+  } else {
+    x = camX + Math.floor(ox / ts);
+    y = camY + Math.floor(oy / ts);
+    if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return null;
+  }
   if (x < 0 || y < 0 || x >= W || y >= H) return null;
   return { x, y };
 }
@@ -998,23 +1062,30 @@ function inView(x, y) {
 }
 
 function renderGame(g) {
-  const ctx = els.ctx;
   const floor = g.currentFloor;
   if (!floor) return;
   const p = g.state.player;
-  const s = ts;
-  const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
   const sa = Math.floor(performance.now() / 700) % 2;
-  updateCamera(p);
   /* The animation bucket: stances breathe at five frames a second, which is
    * as alive as a 200ms repaint interval can make them. */
   const ab = Math.floor(performance.now() / 200);
-  const key = p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
-    ':' + camX + ',' + camY + ':' + g.turn + ':' + sa + ':' + ab +
+  const key = viewMode + ':' + p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
+    ':' + g.turn + ':' + sa + ':' + ab +
     ':' + (hoverTile ? hoverTile.x + ',' + hoverTile.y : '-') +
     ':' + (walkPath ? walkPath.length : 0);
   if (key === lastTiles && els.canvas.width) return;
   lastTiles = key;
+  if (viewMode === 'iso') renderIsoScene(g, sa);
+  else renderClassic(g, sa);
+}
+
+function renderClassic(g, sa) {
+  const ctx = els.ctx;
+  const floor = g.currentFloor;
+  const p = g.state.player;
+  const s = ts;
+  const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
+  updateCamera(p);
 
   ctx.fillStyle = '#050705';
   ctx.fillRect(0, 0, viewW * s, viewH * s);
@@ -1129,6 +1200,279 @@ function renderGame(g) {
     drawMember(p, partyTint(g.state.party.members.indexOf(p)), true);
   }
   drawMouseOverlay(g);
+}
+
+/* ---------------- the isometric scene ----------------
+ *
+ * The same floor, stood up at Flare's angle: painterly ground pieces from
+ * the tileset atlases, walls as shaded prisms until the wall art is
+ * curated, and every body drawn by the same paper-doll and creature code
+ * as the classic view, at pixel anchors the projection hands out. The
+ * classic top-down grid stays one V away — it is the tactical map now,
+ * not the whole game. */
+
+let viewMode = 'iso';
+try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
+let isoCamX = 0, isoCamY = 0;
+const ISO_UNIT = 40;   /* what "one tile tall" means for a body in the scene */
+
+function traceDiamond(ctx, sx, sy) {
+  const pts = diamondPath(sx, sy);
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+
+function fillDiamond(ctx, sx, sy, style, alpha) {
+  traceDiamond(ctx, sx, sy);
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.fillStyle = style;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/* A wall as a prism: two faces down to the ground diamond's south corners
+ * and a lid. The styles arrive ready-shaded, so dimming is the caller's. */
+function drawPrism(ctx, sx, sy, h, topStyle, westStyle, eastStyle) {
+  const hw = ISO.TW / 2, hh = ISO.TH / 2;
+  ctx.fillStyle = eastStyle;
+  ctx.beginPath();
+  ctx.moveTo(sx + hw, sy);
+  ctx.lineTo(sx, sy + hh);
+  ctx.lineTo(sx, sy + hh - h);
+  ctx.lineTo(sx + hw, sy - h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = westStyle;
+  ctx.beginPath();
+  ctx.moveTo(sx - hw, sy);
+  ctx.lineTo(sx, sy + hh);
+  ctx.lineTo(sx, sy + hh - h);
+  ctx.lineTo(sx - hw, sy - h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = topStyle;
+  traceDiamond(ctx, sx, sy - h);
+  ctx.fill();
+}
+
+function drawIsoGlyph(x, y, ch, color, lift) {
+  const { sx, sy } = isoToScreen(x, y);
+  els.ctx.fillStyle = color;
+  els.ctx.fillText(ch, sx - isoCamX, sy - isoCamY + (lift || 0));
+}
+
+function drawIsoGround(g, t, tset, theme, sa) {
+  const ctx = els.ctx;
+  const floor = g.currentFloor;
+  const tile = floor.tiles[t.y][t.x];
+  if (tile === T.WALL || tile === T.SECRET) return;   /* prisms, not ground */
+  const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+  const { sx, sy } = isoToScreen(t.x, t.y);
+  const ax = sx - isoCamX, ay = sy - isoCamY;
+  let painted = false;
+  if (tset && tile !== T.WATER) {
+    const r = tset.def.tiles[floorPieceId(tset.def, t.x, t.y)];
+    if (r) {
+      ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
+      painted = true;
+    }
+  }
+  if (!painted && tile !== T.WATER) {
+    fillDiamond(ctx, ax, ay, theme.floor);
+  }
+  if (tile === T.WATER) {
+    fillDiamond(ctx, ax, ay, sa ? '#14202e' : '#18263a');
+    if (vis) { ctx.fillStyle = '#3f6faa'; ctx.fillText('~', ax, ay); }
+  } else if (painted) {
+    /* the theme's cast, so eleven dungeons do not share one grey floor */
+    fillDiamond(ctx, ax, ay, theme.floor, 0.18);
+  }
+  if (!vis) fillDiamond(ctx, ax, ay, '#000000', 0.55);
+  if (tile === T.DOWN || tile === T.UP) {
+    ctx.fillStyle = vis ? theme.accent : shade(theme.accent, 0.6);
+    ctx.fillText(tile === T.DOWN ? '>' : '<', ax, ay);
+  } else if (tile === T.ALTAR) {
+    ctx.fillStyle = '#e0c05a';
+    ctx.fillText('Ω', ax, ay);
+  } else if (tile === T.DEN) {
+    ctx.fillStyle = theme.wallHi;
+    ctx.fillText('O', ax, ay);
+  } else if (tile === T.DOOR_O) {
+    traceDiamond(ctx, ax, ay);
+    ctx.strokeStyle = theme.door;
+    ctx.stroke();
+  }
+}
+
+function drawIsoWall(g, t, tile, theme, sa) {
+  const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+  const { sx, sy } = isoToScreen(t.x, t.y);
+  const ax = sx - isoCamX, ay = sy - isoCamY;
+  const ctx = els.ctx;
+  const door = tile === T.DOOR_C;
+  const h = door ? Math.round(ISO.WALL_H * 0.72) : ISO.WALL_H;
+  const base = door ? theme.door : theme.wall;
+  const lid = door ? theme.door : theme.wallHi;
+  const f = vis ? 1 : 0.45;
+  drawPrism(ctx, ax, ay, h, shade(lid, f), shade(base, 0.85 * f), shade(base, 0.6 * f));
+  if (tile === T.SECRET && vis && sa === 0) {
+    ctx.fillStyle = theme.accent;
+    ctx.fillText('+', ax, ay - h);
+  }
+}
+
+function drawIsoMonster(g, m, p) {
+  const dim = !inView(m.x, m.y) || m.submerged;
+  const tint = cls(monsterTint(m.t.tier, m.boss));
+  const { sx, sy } = isoToScreen(m.x, m.y);
+  const ax = sx - isoCamX, ay = sy - isoCamY + 4;
+  const sheet = CREATURE_SHEETS[m.t.id];
+  const entry = sheet ? getSheet('creature', sheet) : null;
+  if (entry) {
+    drawRingAt(ax, ay, ISO.TW * 0.30, ISO.TW * 0.15, tint, { dim, bold: !!m.boss });
+    if (drawFrameAt(ax, ay, ISO_UNIT, entry, 'stance', flareDir(p.x - m.x, p.y - m.y), { dim, fit: true, scale: m.boss ? 1.3 : 1 })) return;
+  }
+  drawIsoGlyph(m.x, m.y, m.t.glyph, dim ? shade(tint, 0.7) : tint, 0);
+}
+
+function renderIsoScene(g, sa) {
+  const ctx = els.ctx;
+  const floor = g.currentFloor;
+  const p = g.state.player;
+  const dungeon = g.dungeonById(p.dungeonId) || {};
+  const theme = getTheme(dungeon.theme);
+  const cw = els.canvas.width, ch = els.canvas.height;
+  const centre = isoToScreen(p.x, p.y);
+  isoCamX = centre.sx - cw / 2;
+  isoCamY = centre.sy - ch / 2;
+  const tset = getTileset(THEME_TILESET[dungeon.theme] || 'tileset_dungeon');
+
+  ctx.fillStyle = '#050705';
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const test = makeViewTest(isoCamX, isoCamY, isoCamX + cw, isoCamY + ch);
+  const seenTiles = [];
+  for (let y = 0; y < H; y++) {
+    const row = g.seen && g.seen[y];
+    if (!row) continue;
+    for (let x = 0; x < W; x++) {
+      if (row[x] && test(x, y)) seenTiles.push({ x, y });
+    }
+  }
+  seenTiles.sort(paintOrder);
+
+  for (const t of seenTiles) drawIsoGround(g, t, tset, theme, sa);
+
+  /* the route, drawn on the ground so the standing world occludes it */
+  const dots = (walkPath && walkPath.length) ? walkPath
+    : (hoverPath && hoverPath.length ? hoverPath.slice(0, -1) : null);
+  if (dots) {
+    ctx.fillStyle = 'rgba(230, 220, 160, 0.45)';
+    for (const st of dots) {
+      const d = isoToScreen(st.x, st.y);
+      ctx.beginPath();
+      ctx.arc(d.sx - isoCamX, d.sy - isoCamY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const hovered = hoverTile && g.seen && g.seen[hoverTile.y] && g.seen[hoverTile.y][hoverTile.x]
+    ? hoverTile : null;
+  const hostileHover = hovered && monsterAtTile(g, hovered.x, hovered.y);
+  if (hovered) {
+    const hc = isoToScreen(hovered.x, hovered.y);
+    traceDiamond(ctx, hc.sx - isoCamX, hc.sy - isoCamY);
+    ctx.strokeStyle = hostileHover ? 'rgba(224, 96, 80, 0.9)' : 'rgba(230, 220, 160, 0.8)';
+    ctx.stroke();
+  }
+
+  /* everything that stands, painted back to front */
+  const standers = [];
+  /* Walls that would hide a member of the company turn to glass instead —
+   * the ToEE cutaway. The cone: anything standing up to four rows in front
+   * of a body and within two files of it. */
+  const bodies = g.state.party.members.filter((m) =>
+    m && m.floorIdx === p.floorIdx && m.dungeonId === p.dungeonId);
+  const ghosts = (wx, wy) => bodies.some((b) => {
+    const ahead = (wx + wy) - (b.x + b.y);
+    return ahead > 0 && ahead <= 4 && Math.abs((wx - wy) - (b.x - b.y)) <= 2;
+  });
+  for (const t of seenTiles) {
+    const tile = floor.tiles[t.y][t.x];
+    if (tile !== T.WALL && tile !== T.SECRET && tile !== T.DOOR_C) continue;
+    /* Only the shell: a wall with no walkable neighbour in the light is the
+     * void, and the void is already the colour of the background. */
+    let faces = false;
+    for (let dy = -1; dy <= 1 && !faces; dy++) {
+      for (let dx = -1; dx <= 1 && !faces; dx++) {
+        const nx = t.x + dx, ny = t.y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const nt = floor.tiles[ny][nx];
+        if (nt !== T.WALL && nt !== T.SECRET && g.seen[ny] && g.seen[ny][nx]) faces = true;
+      }
+    }
+    if (faces) {
+      const ghost = ghosts(t.x, t.y);
+      standers.push({ x: t.x, y: t.y, draw: () => {
+        if (ghost) ctx.globalAlpha = 0.35;
+        drawIsoWall(g, t, tile, theme, sa);
+        ctx.globalAlpha = 1;
+      } });
+    }
+  }
+  for (const it of floor.items || []) {
+    if (!inView(it.x, it.y)) continue;
+    standers.push({ x: it.x, y: it.y, draw: () => drawIsoGlyph(it.x, it.y, (it.i && it.i.glyph) || '$', cls((it.i && it.i.color) || 'gold'), 0) });
+  }
+  for (const n of floor.npcs || []) {
+    if (!inView(n.x, n.y)) continue;
+    standers.push({ x: n.x, y: n.y, draw: () => drawIsoGlyph(n.x, n.y, NPC_GLYPH, cls((n.tpl && n.tpl.color) || 'amber'), -8) });
+  }
+  for (const m of floor.monsters || []) {
+    if (m.hp <= 0 || !m.t) continue;
+    if (m.submerged && !m.revealed) continue;
+    if (!inView(m.x, m.y) && !m.revealed) continue;
+    standers.push({ x: m.x, y: m.y, draw: () => drawIsoMonster(g, m, p) });
+  }
+  g.state.party.members.forEach((m, i) => {
+    if (!m) return;
+    if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
+    standers.push({ x: m.x, y: m.y, draw: () => {
+      const a = isoToScreen(m.x, m.y);
+      const drew = drawMemberAt(a.sx - isoCamX, a.sy - isoCamY + 4, ISO_UNIT, ISO.TW * 0.30, ISO.TW * 0.15, m, partyTint(i), m === p);
+      if (!drew) drawIsoGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? partyTint(i) : '#7a3a30', 0);
+    } });
+  });
+  standers.sort(paintOrder);
+  for (const sd of standers) sd.draw();
+
+  /* the name of what the cursor rests on, above everything */
+  if (hovered) {
+    const label = hoverLabel(g, hovered.x, hovered.y);
+    if (label) {
+      const hc = isoToScreen(hovered.x, hovered.y);
+      ctx.font = '13px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const wLabel = ctx.measureText(label).width + 8;
+      const lh = 18;
+      let lx = hc.sx - isoCamX + ISO.TW / 2 + 4;
+      let ly = hc.sy - isoCamY - ISO.TH - lh / 2;
+      if (lx + wLabel > cw) lx = hc.sx - isoCamX - ISO.TW / 2 - wLabel - 4;
+      if (ly < 0) ly = hc.sy - isoCamY + ISO.TH / 2 + 2;
+      ctx.fillStyle = 'rgba(5, 7, 5, 0.85)';
+      ctx.fillRect(lx, ly, wLabel, lh);
+      ctx.strokeStyle = 'rgba(230, 220, 160, 0.4)';
+      ctx.strokeRect(lx + 0.5, ly + 0.5, wLabel - 1, lh - 1);
+      ctx.fillStyle = hostileHover ? '#e0aa60' : '#cfe0c0';
+      ctx.fillText(label, lx + 4, ly + lh / 2 + 1);
+    }
+    ctx.textAlign = 'center';
+  }
 }
 
 function shade(hex, f) {
@@ -1514,6 +1858,14 @@ function onKey(e) {
       saveGame();
       e.preventDefault();
     }
+    return;
+  }
+  if (k === 'v') {
+    viewMode = viewMode === 'iso' ? 'classic' : 'iso';
+    try { localStorage.setItem('lapsai-view', viewMode); } catch { /* private mode */ }
+    lastTiles = '';
+    if (game) renderGame(game);
+    e.preventDefault();
     return;
   }
   if (k === '?' || k === 'h') { helpOpen ? closeHelp() : showHelp(); e.preventDefault(); return; }
