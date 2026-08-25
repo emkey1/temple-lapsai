@@ -172,3 +172,15 @@ test('a name keeps its face for ever', () => {
   assert.ok(memberPortrait('Brant', 'male').startsWith('assets/portraits/flare/'));
   assert.ok(npcPortrait('provisioner').startsWith('assets/portraits/pd/'));
 });
+
+/* ---- the furniture ---- */
+
+import { generateTownFloor } from '../public/js/mapgen.js';
+
+test('every prop on the green names a real Kenney piece on a walkable tile', () => {
+  const f = generateTownFloor([{ id: 'temple', name: 'T' }]);
+  assert.ok(f.props.length >= 6, 'the green went unfurnished');
+  for (const pr of f.props) {
+    assert.ok(exists('assets/props/kenney/' + pr.piece + '.png'), 'a missing piece: ' + pr.piece);
+  }
+});

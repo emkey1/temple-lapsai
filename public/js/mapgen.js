@@ -602,10 +602,28 @@ export function generateTownFloor(dungeons) {
     mouths.push({ x, y, dungeonId: d.id, name: d.name });
   });
 
+  /* Furniture on the green: Kenney's pieces (CC0), placed where a town
+   * would put them — stock by the shop, crates by the muster hall, a
+   * table outside the Lector's, columns flanking the first mouth. Props
+   * are decor, not obstacles: the ground stays walkable, the renderer
+   * draws them as standers, and nothing pathfinds around a barrel. */
+  const props = [
+    { x: 10, y: 15, piece: 'barrelsStacked_S' },
+    { x: 20, y: 15, piece: 'barrel_S' },
+    { x: 28, y: 27, piece: 'woodenCrates_S' },
+    { x: 17, y: 30, piece: 'woodenCrate_S' },
+    { x: 34, y: 14, piece: 'tableRoundChairs_S' },
+    { x: 36, y: 27, piece: 'woodenPile_S' },
+  ];
+  if (mouths.length) {
+    props.push({ x: mouths[0].x - 1, y: mouths[0].y - 1, piece: 'stoneColumn_S' });
+    props.push({ x: mouths[0].x + 1, y: mouths[0].y + 1, piece: 'stoneColumn_S' });
+  }
+
   return {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
     up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
-    isLast: false, den: null, mouths,
+    isLast: false, den: null, mouths, props,
     entry: { x: 36, y: 22 },
   };
 }

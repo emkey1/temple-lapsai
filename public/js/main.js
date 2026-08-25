@@ -724,6 +724,22 @@ function floorPieceId(def, x, y) {
   return def.tiles[id] ? id : 16;
 }
 
+/* Kenney's furniture: single images, no definitions — a piece is a
+ * picture with its feet at the bottom. Cached like everything else. */
+function getProp(piece) {
+  const key = 'prop:' + piece;
+  if (sheetCache.has(key)) {
+    const v = sheetCache.get(key);
+    return v === 'pending' ? null : v;
+  }
+  sheetCache.set(key, 'pending');
+  loadImage('assets/props/kenney/' + piece + '.png').then((img) => {
+    sheetCache.set(key, img || null);
+    lastTiles = '';
+  });
+  return null;
+}
+
 /* Flare's compass: eight directions counted clockwise from west. If the art
  * ever disagrees with this table, this is the one line to argue with. */
 function flareDir(dx, dy) {
@@ -1762,6 +1778,18 @@ function renderIsoScene(g, sa) {
           shade(theme.wall, 0.5 * f), shade(theme.wall, 0.42 * f), shade(theme.wall, 0.3 * f));
       } });
     }
+  }
+  for (const pr of floor.props || []) {
+    const img = getProp(pr.piece);
+    if (!img) continue;
+    standers.push({ x: pr.x, y: pr.y, draw: () => {
+      const a = isoToScreen(pr.x, pr.y);
+      /* Kenney's pieces were made for a 256px diamond; ours is 64. The
+       * picture's own ground sits at its bottom edge. */
+      const sc = (ISO.TW / 256) * 1.15;
+      ctx.drawImage(img, a.sx - isoCamX - (img.width * sc) / 2,
+        a.sy - isoCamY + ISO.TH / 2 - img.height * sc, img.width * sc, img.height * sc);
+    } });
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;
