@@ -1870,8 +1870,10 @@ function renderIsoScene(g, sa) {
      * column their odd mirrors, doors where the map says, windows and
      * plank variety by position hash. Drawn whole — the cutaway never
      * applies to a cottage, and the x-ray rings carry anyone behind one. */
+    /* T kneels the cottages with everything else: with the walls down a
+     * house is its footprint in stubs, same as any dungeon wall. */
     const hKey = t.y * W + t.x;
-    if (town && floor.houseWalls && floor.houseWalls.has(hKey)) {
+    if (town && wallMode !== 'down' && floor.houseWalls && floor.houseWalls.has(hKey)) {
       const med = getTileset('medieval_building_tiles');
       if (med) {
         const eastIn = floor.houseWalls.has(t.y * W + (t.x + 1));
