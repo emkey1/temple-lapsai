@@ -153,24 +153,27 @@ test('the portrait pools are stocked', () => {
 
 import { FLARE_PORTRAITS, PD_PORTRAITS, memberPortrait, npcPortrait } from '../public/js/portraits.js';
 
-test('every listed face exists on disk', () => {
+test('every listed face exists on disk, in its curated pool', () => {
   for (const sex of ['male', 'female']) {
     for (const f of FLARE_PORTRAITS[sex]) {
       assert.ok(exists('assets/portraits/flare/' + f), 'a missing Flare face: ' + f);
     }
   }
-  for (const f of PD_PORTRAITS) {
+  const all = [...PD_PORTRAITS.male, ...PD_PORTRAITS.female, ...PD_PORTRAITS.either];
+  for (const f of all) {
     assert.ok(exists('assets/portraits/pd/' + f), 'a missing painted face: ' + f);
   }
-  assert.ok(FLARE_PORTRAITS.male.length >= 15 && FLARE_PORTRAITS.female.length >= 10, 'the pools thinned');
+  assert.equal(new Set(all).size, all.length, 'a face serves two pools');
+  assert.ok(PD_PORTRAITS.male.length >= 20 && PD_PORTRAITS.female.length >= 40, 'the curated pools thinned');
 });
 
-test('a name keeps its face for ever', () => {
+test('a name keeps its face for ever, and a widow draws no beard', () => {
   assert.equal(memberPortrait('Sethra', 'female'), memberPortrait('Sethra', 'female'));
   assert.notEqual(memberPortrait('Sethra', 'female'), memberPortrait('Sethra', 'male'), 'sex pools should differ');
-  assert.equal(npcPortrait('lector'), npcPortrait('lector'));
+  assert.equal(npcPortrait('lector', 'male'), npcPortrait('lector', 'male'));
+  const marenFace = npcPortrait('maren', 'female').replace('assets/portraits/pd/', '');
+  assert.ok(!PD_PORTRAITS.male.includes(marenFace), 'the ferrier\u2019s widow has a beard again');
   assert.ok(memberPortrait('Brant', 'male').startsWith('assets/portraits/flare/'));
-  assert.ok(npcPortrait('provisioner').startsWith('assets/portraits/pd/'));
 });
 
 /* ---- the furniture ---- */

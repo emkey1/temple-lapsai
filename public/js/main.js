@@ -450,7 +450,7 @@ function showShop(g) {
     '<h3 class="pane">FOR SALE</h3><div class="scrolly" style="max-height:170px">' + stock + '</div>' +
     '<h3 class="pane">YOUR GOODS</h3><div class="scrolly" style="max-height:170px">' +
       (goods || '<div class="tiny">You carry nothing worth weighing.</div>') + '</div>',
-    'BACK TO THE STREET', npcPortrait('provisioner'));
+    'BACK TO THE STREET', npcPortrait('provisioner', 'female'));
   box.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-buy]');
     if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g); return; }
@@ -476,7 +476,7 @@ function showMuster(g) {
   const box = townCard('muster-card', 'THE MUSTER',
     'Sword-arms and scholars between engagements, seasoned to your own measure and priced for it.',
     purseLine(g) + '<div class="scrolly" style="max-height:280px">' + rows + '</div>',
-    'BACK TO THE STREET', npcPortrait('muster'));
+    'BACK TO THE STREET', npcPortrait('muster', 'female'));
   box.addEventListener('click', (e) => {
     const hire = e.target.closest('[data-hire]');
     if (!hire) return;
@@ -498,7 +498,7 @@ function showInn(g) {
     purseLine(g) +
     '<div class="row"><button id="btn-inn-room">A ROOM FOR THE NIGHT · ' + innCost(g) + ' gp</button></div>' +
     '<div class="tiny">Beds and board: the whole company wakes healed, rested, and mended — wounds and all.</div>',
-    'BACK TO THE STREET', npcPortrait('innkeep'));
+    'BACK TO THE STREET', npcPortrait('innkeep', 'male'));
   box.querySelector('#btn-inn-room').onclick = () => {
     if (takeRoom(g)) {
       saveGame();
@@ -525,7 +525,7 @@ function showSage(g) {
     purseLine(g) +
     '<div class="scrolly" style="max-height:280px">' +
       (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>',
-    'BACK TO THE STREET', npcPortrait('lector'));
+    'BACK TO THE STREET', npcPortrait('lector', 'male'));
   box.addEventListener('click', (e) => {
     const read = e.target.closest('[data-read]');
     if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); return; }
@@ -1856,7 +1856,12 @@ function renderIsoScene(g, sa) {
       }
     }
     if (faces) {
-      const stub = wallMode === 'down' || ghosts(t.x, t.y);
+      /* In town the cutaway does not apply: daylight makes every tile
+       * "seen", which stubbed every building into a flat ring — a hamlet
+       * of foundations. Houses stand at their full height; the x-ray
+       * rings carry anyone who walks behind one. The T key still kneels
+       * everything when asked. */
+      const stub = wallMode === 'down' || (!town && ghosts(t.x, t.y));
       standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, wtset, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
@@ -2500,7 +2505,7 @@ function openDialogue(npc) {
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);
   activeNpc = tpl;
   dialogueOpen = true;
-  els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name) + '" alt=""> ' +
+  els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name, tpl.sex) + '" alt=""> ' +
     esc(tpl.name) + ' — ' + esc(tpl.title || 'a denizen of the dark');
   els.dlgLog.innerHTML = '';
   const hist = dialogue.start(tpl);

@@ -593,19 +593,19 @@ export function generateTownFloor(dungeons) {
   const post = (spot, tpl) => npcs.push({ tpl, x: spot.x, y: spot.y });
 
   /* The keepers: counters with faces. */
-  post(house(10, 10, 7, 5, 3), { id: 'provisioner', name: 'The Provisioner', color: 'gold', service: 'shop',
+  post(house(10, 10, 7, 5, 3), { id: 'provisioner', name: 'The Provisioner', sex: 'female', color: 'gold', service: 'shop',
     desc: 'Buys what you haul up, sells what the dark is stingy with.' });
-  post(house(26, 10, 7, 5, 3), { id: 'lector', name: 'The Lector', color: 'cyan', service: 'sage',
+  post(house(26, 10, 7, 5, 3), { id: 'lector', name: 'The Lector', sex: 'male', color: 'cyan', service: 'sage',
     desc: 'Reads runes for coin, and prises curses loose for more.' });
-  post(house(38, 9, 10, 6, 4), { id: 'innkeep', name: 'The Drowned Lantern', color: 'amber', service: 'inn',
+  post(house(38, 9, 10, 6, 4), { id: 'innkeep', name: 'The Drowned Lantern', sex: 'male', color: 'amber', service: 'inn',
     desc: 'A tavern with three rooms and one price. The lantern over the door was pulled from the flooded floor.' });
-  post(house(10, 28, 8, 5, 4, 'n'), { id: 'muster', name: 'The Muster', color: 'brightgreen', service: 'muster',
+  post(house(10, 28, 8, 5, 4, 'n'), { id: 'muster', name: 'The Muster', sex: 'female', color: 'brightgreen', service: 'muster',
     desc: 'Sword-arms fresh off the road, seasoned for a price.' });
 
   /* The residents: doors worth knocking on, words that answer offline —
    * topics keyword-match, fallbacks catch the rest. */
   post(house(25, 30, 5, 4, 2, 'n'), {
-    id: 'maren', name: 'Maren', title: 'the ferrier\u2019s widow', color: 'white',
+    id: 'maren', name: 'Maren', sex: 'female', title: 'the ferrier\u2019s widow', color: 'white',
     intro: 'You have the look of the stairs about you. My Aldous had it too, before the temple kept him.',
     topics: [
       { keys: ['temple', 'stairs'], replies: ['The temple took my husband and gave back his boots. Mind the water on the lower floors \u2014 he never did.'] },
@@ -619,7 +619,7 @@ export function generateTownFloor(dungeons) {
     ],
   });
   post(house(33, 29, 5, 4, 2, 'n'), {
-    id: 'casp', name: 'Old Casp', title: 'a digger of long standing', color: 'amber',
+    id: 'casp', name: 'Old Casp', sex: 'male', title: 'a digger of long standing', color: 'amber',
     intro: 'I dug half the cellars in this town and one grave I regret. Ask, or move along.',
     topics: [
       { keys: ['grave'], replies: ['Not mine to open again. But the gravedigger\u2019s girl grew up strong \u2014 turned earth is good soil.'] },
@@ -633,7 +633,7 @@ export function generateTownFloor(dungeons) {
     ],
   });
   post(house(46, 26, 5, 4, 2), {
-    id: 'tilda', name: 'Tilda', title: 'keeper of the smallest cottage', color: 'brightgreen',
+    id: 'tilda', name: 'Tilda', sex: 'female', title: 'keeper of the smallest cottage', color: 'brightgreen',
     intro: 'The lamps burn all night here since the company came. I find I sleep better for it.',
     topics: [
       { keys: ['lantern', 'inn', 'tavern'], replies: ['The Drowned Lantern? Good beds, honest ale, and the innkeep waters nothing but the horses.'] },
