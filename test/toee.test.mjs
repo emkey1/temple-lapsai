@@ -487,3 +487,42 @@ test('the march does not narrate the column flowing through itself', () => {
   const chatter = g.logs.filter((l) => /trade places|slip past|gives ground/.test(l));
   assert.equal(chatter.length, 0, 'the march narrated itself: ' + chatter[0]);
 });
+
+/* ---- the standing cast ----
+ *
+ * "The non primary character can't use skills outside of combat." True, and
+ * indefensible: between fights the reins never leave the leader, so a
+ * companion cleric could not so much as say a prayer. Any living member now
+ * works their powers between fights — the company stands still, the round
+ * passes, and the reins go back where they were. Mid-fight the initiative
+ * order still decides. */
+test('a companion works a power between fights, and the company stands still', () => {
+  const g = newGame('t3-standing-cast', 'fighter');
+  arena(g);
+  const p = g.state.player;
+  const voice = companion(g, 'cleric', 'Voice');
+  voice.power = 20;
+  p.hp = Math.floor(p.maxhp / 2);
+  const spots = g.state.party.members.map((m) => [m.x, m.y]);
+  const reins = g.state.party.active;
+  assert.ok(g.castAs(voice, 'lay-hands'), 'the standing cast was refused in calm halls');
+  assert.ok(p.hp > Math.floor(p.maxhp / 2), 'the standing cast healed nobody');
+  assert.ok(voice.power < 20, 'the caster paid nothing');
+  assert.equal(g.state.party.active, reins, 'the cast stole the reins');
+  g.state.party.members.forEach((m, i) => {
+    assert.deepEqual([m.x, m.y], spots[i], m.name + ' moved during a standing cast');
+  });
+});
+
+test('mid-fight the standing cast defers to the round', () => {
+  const g = newGame('t3-standing-fight', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const voice = companion(g, 'cleric', 'Voice');
+  voice.power = 20;
+  p.hp = Math.floor(p.maxhp / 2);
+  f.monsters.push(beast(p.x + 2, p.y, {}));
+  begin(g);   /* the fighter holds the reins, mid-round */
+  assert.equal(g.castAs(voice, 'lay-hands'), false, 'a companion cast out of turn mid-fight');
+  assert.equal(voice.power, 20, 'the refused cast still charged power');
+});

@@ -2294,7 +2294,14 @@ function renderStats(g) {
     };
   }
   const own = p === g.state.player;
-  els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS' + (own ? ' (keys 1-' + g.allAbilities(p).length + ')' : ' <span class="tiny">' + esc(p.name) + '\u2019s — usable on their turn</span>') + '</h3>';
+  /* A companion's powers are reachable between fights — the standing cast:
+   * click (or the digits, while their sheet is up) and the company holds
+   * still while they work it. Mid-fight the initiative order decides. */
+  const calm = g.outOfCombat();
+  const usable = own || calm;
+  els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS' + (own
+    ? ' (keys 1-' + g.allAbilities(p).length + ')'
+    : ' <span class="tiny">' + esc(p.name) + '\u2019s — ' + (calm ? 'usable while the halls are calm' : 'usable on their turn') + '</span>') + '</h3>';
   g.allAbilities(p).forEach((a, i) => {
     const cd = p.cooldowns[a.id] || 0;
     const can = p.level >= a.level && (a.kind === 'passive' || p.power >= (a.powerCost || 0)) && cd === 0;
@@ -2315,8 +2322,15 @@ function renderStats(g) {
       '<div class="desc">' + esc(a.description || '') +
       (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') +
       (renews ? ' <span class="tiny">(' + esc(renews) + ')</span>' : '') + '</div>';
-    if ((!can || !own) && a.kind !== 'passive') el.style.opacity = 0.55;
-    el.onclick = () => { if (game && !game.dying && own) { game.activateAbility(a.id); canvasFocus(); } };
+    if ((!can || !usable) && a.kind !== 'passive') el.style.opacity = 0.55;
+    el.onclick = () => {
+      if (!game || game.dying || a.kind === 'passive') return;
+      if (own) game.activateAbility(a.id);
+      else game.castAs(p, a.id);   /* the standing cast — refused with a line mid-fight */
+      renderStats(game);
+      saveGame();
+      canvasFocus();
+    };
     els.abilitiesBlock.appendChild(el);
   });
 }
@@ -2565,14 +2579,28 @@ function onKey(e) {
   if (e.code === 'Numpad5' && !cardUp) { game.handleKey(' ', {}); e.preventDefault(); saveGame(); return; }
 
   if (k >= '1' && k <= '9') {
-    /* The digits fire the ACTIVE member's powers — but if the sheet is
-     * pinned on someone else, the numbers on screen are not the numbers
-     * that would fire. Refuse rather than blow the wrong ability: this is
-     * exactly how a backstab got spent by someone aiming a fireball. */
+    /* The digits fire the powers of whoever the SHEET shows — the numbers
+     * on screen are the numbers that fire. For the member at the reins that
+     * is the classic path; for a companion, between fights, it is the
+     * standing cast. Mid-fight a pinned companion sheet refuses rather than
+     * blowing the wrong ability: this is exactly how a backstab got spent
+     * by someone aiming a fireball. */
     const shown = viewedMember(game);
     if (shown && shown !== game.state.player) {
-      game.log('It is ' + game.state.player.name + '’s turn — the sheet is open on ' + shown.name + '. Click a chip to follow the round.');
-      e.preventDefault();
+      if (!game.outOfCombat()) {
+        game.log('It is ' + game.state.player.name + '’s turn — the sheet is open on ' + shown.name + '. Click a chip to follow the round.');
+        e.preventDefault();
+        return;
+      }
+      const abTheirs = game.allAbilities(shown);
+      const their = abTheirs[Number(k) - 1];
+      if (their && their.kind !== 'passive') {
+        game.castAs(shown, their.id);
+        renderStats(game);
+        if (currentTab === 'gear') renderGear(game);
+        saveGame();
+        e.preventDefault();
+      }
       return;
     }
     const idx = Number(k) - 1;

@@ -1853,8 +1853,19 @@ export class Game {
      * reins just did — a step, a search, a swig — the rest of the company
      * keeps pace behind them and their actions are spent with it, so one
      * keypress is one round for everybody. The moment something is awake and
-     * near, this stops holding, and the round breaks into initiative turns. */
-    if (this.outOfCombat()) this.followTheLeader(p);
+     * near, this stops holding, and the round breaks into initiative turns.
+     *
+     * A STANDING CAST is the exception: a companion working a power between
+     * fights spends the round for everybody, but nobody keeps pace with
+     * anybody — following the caster would drag the leader across the room
+     * toward whoever just said a prayer. */
+    if (this.outOfCombat()) {
+      if (this._standingCast) {
+        for (const m of this.livingMembers()) this.actorTurn(m).acted = true;
+      } else {
+        this.followTheLeader(p);
+      }
+    }
     this.advanceQueue();
   }
 
@@ -2669,6 +2680,32 @@ export class Game {
   /* Base abilities first, then anything the Library wrote. */
   abilityById(id) {
     return getAbility(id) || (this.registry.abilities || []).find((a) => a && a.id === id) || null;
+  }
+
+  /* A member who is NOT at the reins works a power. Between fights any
+   * living member may — the company stands still and the round passes.
+   * Mid-fight the initiative order decides, the same as always. */
+  castAs(member, id) {
+    if (!member || member.hp <= 0) return false;
+    if (member === this.state.player) { this.activateAbility(id); return true; }
+    const party = this.state.party;
+    const idx = party.members.indexOf(member);
+    if (idx < 0) return false;
+    if (!this.outOfCombat()) {
+      this.log('Not ' + member.name + '’s turn — in a fight the round decides.');
+      return false;
+    }
+    const prev = party.active;
+    party.active = idx;
+    this._standingCast = true;
+    try {
+      this.activateAbility(id);
+    } finally {
+      this._standingCast = false;
+      /* The reins go back where they were — a cast is not a coup. */
+      if (party.members[prev] && party.members[prev].hp > 0) party.active = prev;
+    }
+    return true;
   }
 
   activateAbility(id) {
