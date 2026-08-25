@@ -18,6 +18,7 @@ import {
   tilesetUrl, tilesetDefUrl, loadImage,
 } from './sprites.js';
 import { findPath } from './path.js';
+import { memberPortrait, npcPortrait } from './portraits.js';
 import { ISO, isoToScreen, screenToIso, diamondPath, paintOrder, makeViewTest } from './iso.js';
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
@@ -389,12 +390,13 @@ function showDeath(msg) {
  * the Lector reads and unbinds, and gold finally has somewhere to go besides
  * the resurrection ledger. The card is rebuilt on every open so the purse and
  * the shelves are always current. */
-function townCard(id, title, sub, bodyHtml, backLabel) {
+function townCard(id, title, sub, bodyHtml, backLabel, face) {
   for (const old of els.overlay.querySelectorAll('#' + id)) old.remove();
   const box = document.createElement('div');
   box.id = id;
   box.className = 'overlay-card';
-  box.innerHTML = '<h2>' + title + '</h2><p class="sub">' + sub + '</p>' + bodyHtml +
+  box.innerHTML = (face ? '<img class="portrait-md" src="' + face + '" alt="">' : '') +
+    '<h2>' + title + '</h2><p class="sub">' + sub + '</p>' + bodyHtml +
     '<div class="row"><button class="mini" data-town-back>' + backLabel + '</button></div>';
   els.overlay.appendChild(box);
   overlayShow(box);
@@ -448,7 +450,7 @@ function showShop(g) {
     '<h3 class="pane">FOR SALE</h3><div class="scrolly" style="max-height:170px">' + stock + '</div>' +
     '<h3 class="pane">YOUR GOODS</h3><div class="scrolly" style="max-height:170px">' +
       (goods || '<div class="tiny">You carry nothing worth weighing.</div>') + '</div>',
-    'BACK TO THE STREET');
+    'BACK TO THE STREET', npcPortrait('provisioner'));
   box.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-buy]');
     if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g); return; }
@@ -474,7 +476,7 @@ function showMuster(g) {
   const box = townCard('muster-card', 'THE MUSTER',
     'Sword-arms and scholars between engagements, seasoned to your own measure and priced for it.',
     purseLine(g) + '<div class="scrolly" style="max-height:280px">' + rows + '</div>',
-    'BACK TO THE STREET');
+    'BACK TO THE STREET', npcPortrait('muster'));
   box.addEventListener('click', (e) => {
     const hire = e.target.closest('[data-hire]');
     if (!hire) return;
@@ -505,7 +507,7 @@ function showSage(g) {
     purseLine(g) +
     '<div class="scrolly" style="max-height:280px">' +
       (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>',
-    'BACK TO THE STREET');
+    'BACK TO THE STREET', npcPortrait('lector'));
   box.addEventListener('click', (e) => {
     const read = e.target.closest('[data-read]');
     if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); return; }
@@ -1912,6 +1914,7 @@ function renderPartyStrip(g) {
     const reins = m === g.state.player ? ' ●' : '';
     return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
       (m === shown ? 'viewed' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
+      '<img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
       esc(m.name) + reins + '</button>';
   }).join('');
 }
@@ -1945,7 +1948,11 @@ function renderStats(g) {
   kv('Crit', Math.round(der.crit * 100) + '%');
   kv('Regen', der.regen || 0);
   kv('Kills', g.state.totalKills);
-  els.statBlock.innerHTML = '<table class="stats">' + rows + '</table>' +
+  els.statBlock.innerHTML =
+    '<div class="sheet-head"><img class="portrait-sm" src="' + memberPortrait(p.name, heroSex(p)) + '" alt="">' +
+    '<div><b>' + esc(p.name) + '</b><div class="tiny">' + c.name +
+    (bg ? ' · ' + esc(bg.name) : '') + ' · level ' + p.level + '</div></div></div>' +
+    '<table class="stats">' + rows + '</table>' +
     '<h3 class="pane">ATTRIBUTES</h3><table class="stats">' +
     ['str', 'dex', 'con', 'int', 'wis', 'cha'].map((k) =>
       '<tr><td class="k">' + KEY[k] + '</td><td class="v">' + eff[k] + ' <span style="color:var(--amb-dim)">' +
@@ -2337,7 +2344,8 @@ function openDialogue(npc) {
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);
   activeNpc = tpl;
   dialogueOpen = true;
-  els.dlgName.textContent = tpl.name + ' — ' + (tpl.title || 'a denizen of the dark');
+  els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name) + '" alt=""> ' +
+    esc(tpl.name) + ' — ' + esc(tpl.title || 'a denizen of the dark');
   els.dlgLog.innerHTML = '';
   const hist = dialogue.start(tpl);
   for (const m of hist) appendDlg(m);

@@ -174,6 +174,39 @@ body {
 }
 /* The company, one chip per member in their own colour. The filled chip is
    whoever the sheets are showing; the dot marks whoever holds the reins. */
+/* THE FACES. Painted portraits at four sizes: a thumb on the party strip,
+ * a head on the stat sheet and in dialogue, a bust on a keeper's counter. */
+.portrait-xs {
+  width: 16px; height: 16px;
+  object-fit: cover;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+.portrait-sm {
+  width: 52px; height: 52px;
+  object-fit: cover;
+  border: 1px solid var(--ink-dim);
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.portrait-md {
+  width: 72px; height: 72px;
+  object-fit: cover;
+  border: 1px solid var(--ink-dim);
+  border-radius: 2px;
+  float: right;
+  margin: 0 0 6px 10px;
+}
+.sheet-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 0 8px;
+}
+.sheet-head b { font-size: 15px; letter-spacing: 1px; }
+
 #party-strip { display: flex; gap: 4px; padding: 4px 4px 0; }
 #party-strip:empty { display: none; }
 #party-strip button {

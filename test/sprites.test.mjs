@@ -148,3 +148,27 @@ test('the portrait pools are stocked', () => {
   assert.ok(pd.length >= 60, 'the public-domain portrait pool has thinned: ' + pd.length);
   assert.ok(flare.length >= 30, 'the Flare portrait pool has thinned: ' + flare.length);
 });
+
+/* ---- the faces ---- */
+
+import { FLARE_PORTRAITS, PD_PORTRAITS, memberPortrait, npcPortrait } from '../public/js/portraits.js';
+
+test('every listed face exists on disk', () => {
+  for (const sex of ['male', 'female']) {
+    for (const f of FLARE_PORTRAITS[sex]) {
+      assert.ok(exists('assets/portraits/flare/' + f), 'a missing Flare face: ' + f);
+    }
+  }
+  for (const f of PD_PORTRAITS) {
+    assert.ok(exists('assets/portraits/pd/' + f), 'a missing painted face: ' + f);
+  }
+  assert.ok(FLARE_PORTRAITS.male.length >= 15 && FLARE_PORTRAITS.female.length >= 10, 'the pools thinned');
+});
+
+test('a name keeps its face for ever', () => {
+  assert.equal(memberPortrait('Sethra', 'female'), memberPortrait('Sethra', 'female'));
+  assert.notEqual(memberPortrait('Sethra', 'female'), memberPortrait('Sethra', 'male'), 'sex pools should differ');
+  assert.equal(npcPortrait('lector'), npcPortrait('lector'));
+  assert.ok(memberPortrait('Brant', 'male').startsWith('assets/portraits/flare/'));
+  assert.ok(npcPortrait('provisioner').startsWith('assets/portraits/pd/'));
+});
