@@ -147,6 +147,7 @@ const CONTROLS = [
     ['Mouse', 'Click somewhere seen and the company walks there; click a monster to close and strike; hover to see the route and name what waits. In a fight, one click is one action. Any key takes the reins back.'],
     ['V', 'Turn the view: the isometric scene, or the flat tactical map.'],
     ['+ − · wheel', 'Lean in or out of the scene.'],
+    ['T', 'Kneel the walls: every stone cut to a stub, until you raise them again. For when the masonry is in the way of the war.'],
     ['In combat', 'A turn is ground AND a blow: move up to your speed, strike when you choose — the strike, or SPACE, ends the turn. Leaving a monster\'s reach gives it a free blow, except one single careful step. Stand on opposite sides of a thing and you flank it: +2 to hit, for them as for you.'],
   ]],
   ['Reading the dark', [
@@ -1153,7 +1154,7 @@ function renderGame(g) {
   /* The animation bucket: stances breathe at five frames a second, which is
    * as alive as a 200ms repaint interval can make them. */
   const ab = Math.floor(performance.now() / 200);
-  const key = viewMode + ':' + isoZoom + ':' + p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
+  const key = viewMode + ':' + isoZoom + ':' + wallMode + ':' + p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
     ':' + g.turn + ':' + sa + ':' + ab +
     ':' + (hoverTile ? hoverTile.x + ',' + hoverTile.y : '-') +
     ':' + (walkPath ? walkPath.length : 0);
@@ -1300,6 +1301,13 @@ try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* priv
 let isoCamX = 0, isoCamY = 0;
 let isoZoom = 1;
 try { isoZoom = Math.min(1.4, Math.max(0.5, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
+
+/* Whether walls stand at their carved height ('up') or kneel to stubs
+ * everywhere ('down') — ToEE's wall button, asked for by name in the
+ * playtest. Occlusion still cuts the near walls in 'up'; 'down' is the
+ * pure battle map. */
+let wallMode = 'up';
+try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'; } catch { /* private mode */ }
 
 function setIsoZoom(z) {
   isoZoom = Math.min(1.4, Math.max(0.5, Math.round(z * 100) / 100));
@@ -1632,7 +1640,7 @@ function renderIsoScene(g, sa) {
       }
     }
     if (faces) {
-      const stub = ghosts(t.x, t.y);
+      const stub = wallMode === 'down' || ghosts(t.x, t.y);
       standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, tset, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
@@ -2118,6 +2126,17 @@ function onKey(e) {
   }
   if ((k === '+' || k === '=' || k === '-') && viewMode === 'iso' && !cardUp) {
     setIsoZoom(k === '-' ? isoZoom - 0.15 : isoZoom + 0.15);
+    e.preventDefault();
+    return;
+  }
+  if (k === 't' && viewMode === 'iso' && !cardUp) {
+    wallMode = wallMode === 'down' ? 'up' : 'down';
+    try { localStorage.setItem('lapsai-walls', wallMode); } catch { /* private mode */ }
+    if (game) {
+      game.log(wallMode === 'down' ? 'The walls kneel: every stone cut to a stub.' : 'The walls stand at their height again.');
+      lastTiles = '';
+      renderGame(game);
+    }
     e.preventDefault();
     return;
   }
