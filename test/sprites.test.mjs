@@ -184,6 +184,12 @@ test('every prop on the green names a real Kenney piece on a walkable tile', () 
   const f = generateTownFloor([{ id: 'temple', name: 'T' }]);
   assert.ok(f.props.length >= 6, 'the green went unfurnished');
   for (const pr of f.props) {
+    if (pr.atlas) continue;   /* atlas dressing is checked against the def below */
     assert.ok(exists('assets/props/kenney/' + pr.piece + '.png'), 'a missing piece: ' + pr.piece);
+  }
+  const gdef = parseTilesetDef(fs.readFileSync(onDisk(tilesetDefUrl('tileset_grassland')), 'utf8'));
+  for (const pr of f.props) {
+    if (!pr.atlas) continue;
+    assert.ok(gdef.tiles[pr.atlas], 'atlas dressing names a missing piece: ' + pr.atlas);
   }
 });

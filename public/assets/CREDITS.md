@@ -57,6 +57,20 @@ inventory and belt art.
 - **Licence:** [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
 - **Source:** https://github.com/flareteam/flare-game
 
+## tilesets/medieval_building_tiles.png — Clint Bellanger, CC-BY-SA 3.0
+
+Sixty isometric medieval building tiles — timber frame, wattle, red tile
+roofs — on the same 64×32 base as the rest of the Flare art, made for
+OSARE (Flare's predecessor). The roof texture is from the public-domain
+Blender Texture CD; the stone texture is "Old Brick Wall" by Sindwiller.
+The grid definition in `defs/medieval_building_tiles.txt` is generated,
+not the artist's.
+
+- **Artist:** Clint Bellanger (https://clintbellanger.net)
+- **Licence:** [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
+  (also offered under GPL 2.0/3.0)
+- **Source:** https://opengameart.org/content/medieval-building-tiles
+
 ## portraits/flare/ — Flare (fantasycore), CC-BY-SA 3.0
 
 Painted character portraits from Flare.

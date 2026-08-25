@@ -576,11 +576,17 @@ export function generateTownFloor(dungeons) {
 
   /* A building is a ring of wall with a doorway. `doorSide` is 's' or 'n';
    * the keeper's spot is just outside the door. */
+  /* A house is a SOLID block now, not a ring: the medieval building
+   * pieces are one-tile slices of timber wall and roof, so a block's
+   * south face draws walls, its east face draws sides, and everything
+   * behind them draws roof — one whole cottage. The doorway is a gap in
+   * the front face; the keeper stands outside it. */
+  const houseWalls = new Set();
   const house = (hx, hy, w, h, doorDx, doorSide = 's') => {
     for (let y = hy; y < hy + h; y++) {
       for (let x = hx; x < hx + w; x++) {
-        tiles[y][x] = (y === hy || y === hy + h - 1 || x === hx || x === hx + w - 1)
-          ? T.WALL : T.FLOOR;
+        tiles[y][x] = T.WALL;
+        houseWalls.add(y * W + x);
       }
     }
     const dx = hx + doorDx;
@@ -682,6 +688,26 @@ export function generateTownFloor(dungeons) {
     props.push({ x: mouths[0].x - 1, y: mouths[0].y - 1, piece: 'stoneColumn_S' });
     props.push({ x: mouths[0].x + 1, y: mouths[0].y + 1, piece: 'stoneColumn_S' });
   }
+  /* Village dressing from the grassland atlas itself (`atlas` pieces are
+   * drawn from the town's own tileset): a fence line by the pond, the
+   * smithy's anvil at the Provisioner's gable, a campfire in the muster
+   * yard, and a little churchyard of leaning stones behind the Lector's.
+   * All of it was looked at first. */
+  const fenceX = 104, fenceY = 107, fenceEnd = 108, campfire = 102, anvil = 103,
+    gravestone = 140, stump = 136, basket = 99, fern = 112;
+  for (let x = 14; x <= 19; x++) props.push({ x, y: 24, atlas: fenceX });
+  props.push({ x: 20, y: 24, atlas: fenceEnd });
+  props.push({ x: 8, y: 16, atlas: anvil });
+  props.push({ x: 14, y: 31, atlas: campfire });
+  props.push({ x: 33, y: 8, atlas: gravestone });
+  props.push({ x: 35, y: 7, atlas: gravestone });
+  props.push({ x: 36, y: 9, atlas: gravestone });
+  props.push({ x: 22, y: 8, atlas: stump });
+  props.push({ x: 50, y: 34, atlas: stump });
+  props.push({ x: 12, y: 21, atlas: basket });
+  props.push({ x: 42, y: 22, atlas: fern });
+  props.push({ x: 28, y: 36, atlas: fern });
+
   /* The worn path: from the shop fronts east through the green to the
    * mouths, flat dirt pieces the renderer lays on the grass. */
   const PATH = [];
@@ -698,7 +724,7 @@ export function generateTownFloor(dungeons) {
   return {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
     up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
-    isLast: false, den: null, mouths, props,
+    isLast: false, den: null, mouths, props, houseWalls,
     entry: { x: 36, y: 22 },
   };
 }

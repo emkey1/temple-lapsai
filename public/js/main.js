@@ -1602,6 +1602,13 @@ const WALL_VOCAB = {
    * corner shows BOTH textured faces, one piece over the other. */
   tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
   tileset_cave: { x: [67, 71], y: [66, 70], corner: [72], rise: 300 },
+  /* The town's treeline: the grassland set's natural rock bluffs, so the
+   * clearing's edge reads as valley rim rather than dwarven rampart. */
+  tileset_grassland: { x: [48, 56, 64], y: [52, 60, 68], corner: [64], rise: 245 },
+  /* The houses: Clint Bellanger's medieval building tiles — timber frame,
+   * wattle, red tile roofs — made for OSARE on this exact 64x32 grid,
+   * under the same CC-BY-SA as the rest of the Flare art. */
+  medieval_building_tiles: { x: [13, 29], y: [12, 28], corner: [1], filler: [50], rise: 176 },
 };
 
 /* Which piece a wall tile wears — or null, and null is the ToEE cutaway
@@ -1622,6 +1629,9 @@ function wallPieceId(vocab, g, t) {
   if (openS && openE) return vocab.corner;
   if (openS) return [vocab.x[h % vocab.x.length]];
   if (openE) return [vocab.y[h % vocab.y.length]];
+  /* A tile with no visible face: for building sets, the roof over the
+   * body of the house; for dungeon masonry, nothing (the stub answers). */
+  if (vocab.filler) return [vocab.filler[h % vocab.filler.length]];
   return null;
 }
 
@@ -1826,9 +1836,9 @@ function renderIsoScene(g, sa) {
    * screen rows a piece's height reaches back over. Explored ground stays
    * legible everywhere; the walls the camera looks at from the north keep
    * their full carved height, because they hide nothing. */
-  /* The hamlet builds in stone: town walls draw from the dungeon's carved
-   * masonry, since the grassland set has no buildings in it. */
-  const wtset = town ? getTileset('tileset_dungeon') : tset;
+  /* The hamlet builds in timber and tile: houses draw from the medieval
+   * building set; the treeline keeps the grassland's rock. */
+  const wtset = town ? getTileset('medieval_building_tiles') : tset;
   const rise = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   const shadow = new Set();
@@ -1860,9 +1870,11 @@ function renderIsoScene(g, sa) {
        * "seen", which stubbed every building into a flat ring — a hamlet
        * of foundations. Houses stand at their full height; the x-ray
        * rings carry anyone who walks behind one. The T key still kneels
-       * everything when asked. */
+       * everything when asked. Houses wear masonry; the treeline wears
+       * the grassland's own rock bluffs. */
       const stub = wallMode === 'down' || (!town && ghosts(t.x, t.y));
-      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, wtset, stub) });
+      const wallSet = town && !(floor.houseWalls && floor.houseWalls.has(t.y * W + t.x)) ? tset : wtset;
+      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, wallSet, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
        * A low dark prism, not a flat shadow — the mass tiles into a stone
@@ -1905,6 +1917,18 @@ function renderIsoScene(g, sa) {
 
   for (const pr of floor.props || []) {
     if (pr.flat) continue;   /* the paths were laid with the ground */
+    /* An `atlas` prop is a piece of the floor's own tileset — fences,
+     * anvils, gravestones — drawn with the offsets its definition gives. */
+    if (pr.atlas) {
+      const r = tset && tset.def.tiles[pr.atlas];
+      if (!r) continue;
+      standers.push({ x: pr.x, y: pr.y, draw: () => {
+        const a = isoToScreen(pr.x, pr.y);
+        ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
+          a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+      } });
+      continue;
+    }
     const img = getProp(pr.piece);
     if (!img) continue;
     standers.push({ x: pr.x, y: pr.y, draw: () => {
