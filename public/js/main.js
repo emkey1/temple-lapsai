@@ -145,6 +145,7 @@ const CONTROLS = [
     ['<  ·  >', 'Stairs. Step onto them to climb or descend — you cannot leave with something at your heels.'],
     ['Mouse', 'Click somewhere seen and the company walks there; click a monster to close and strike; hover to see the route and name what waits. In a fight, one click is one action. Any key takes the reins back.'],
     ['V', 'Turn the view: the isometric scene, or the flat tactical map.'],
+    ['+ − · wheel', 'Lean in or out of the scene.'],
   ]],
   ['Reading the dark', [
     ['Anything red', 'Alive, and interested in you. The duller the red the milder the thing — rust and dark red are vermin, bright red and orange are trouble, and something the colour of a hot coal will kill you.'],
@@ -828,7 +829,7 @@ function tileFromEvent(e) {
   const oy = (e.clientY - rect.top) * (els.canvas.height / rect.height);
   let x, y;
   if (viewMode === 'iso') {
-    ({ x, y } = screenToIso(ox + isoCamX, oy + isoCamY));
+    ({ x, y } = screenToIso(ox / isoZoom + isoCamX, oy / isoZoom + isoCamY));
   } else {
     x = camX + Math.floor(ox / ts);
     y = camY + Math.floor(oy / ts);
@@ -1072,7 +1073,7 @@ function renderGame(g) {
   /* The animation bucket: stances breathe at five frames a second, which is
    * as alive as a 200ms repaint interval can make them. */
   const ab = Math.floor(performance.now() / 200);
-  const key = viewMode + ':' + p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
+  const key = viewMode + ':' + isoZoom + ':' + p.dungeonId + ':' + p.floorIdx + ':' + p.x + ',' + p.y +
     ':' + g.turn + ':' + sa + ':' + ab +
     ':' + (hoverTile ? hoverTile.x + ',' + hoverTile.y : '-') +
     ':' + (walkPath ? walkPath.length : 0);
@@ -1217,6 +1218,15 @@ function renderClassic(g, sa) {
 let viewMode = 'iso';
 try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
 let isoCamX = 0, isoCamY = 0;
+let isoZoom = 1;
+try { isoZoom = Math.min(1.4, Math.max(0.5, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
+
+function setIsoZoom(z) {
+  isoZoom = Math.min(1.4, Math.max(0.5, Math.round(z * 100) / 100));
+  try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
+  lastTiles = '';
+  if (game) renderGame(game);
+}
 const ISO_UNIT = 46;   /* what "one tile tall" means for a body in the scene */
 
 function traceDiamond(ctx, sx, sy) {
@@ -1400,14 +1410,18 @@ function renderIsoScene(g, sa) {
   const p = g.state.player;
   const dungeon = g.dungeonById(p.dungeonId) || {};
   const theme = getTheme(dungeon.theme);
-  const cw = els.canvas.width, ch = els.canvas.height;
+  /* The scene is drawn in its own pixels and the zoom is a transform over
+   * the lot — the viewport just covers more or less of it. */
+  const cw = els.canvas.width / isoZoom, ch = els.canvas.height / isoZoom;
   const centre = isoToScreen(p.x, p.y);
   isoCamX = centre.sx - cw / 2;
   isoCamY = centre.sy - ch / 2;
   const tset = getTileset(THEME_TILESET[dungeon.theme] || 'tileset_dungeon');
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#050705';
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.fillRect(0, 0, els.canvas.width, els.canvas.height);
+  ctx.setTransform(isoZoom, 0, 0, isoZoom, 0, 0);
   ctx.font = 'bold 15px "Courier New", monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1491,12 +1505,10 @@ function renderIsoScene(g, sa) {
         standers.push({ x: t.x, y: t.y, draw: () => {
           const a = isoToScreen(t.x, t.y);
           const ga = ctx.globalAlpha;
-          ctx.globalAlpha = ga * (vis ? 1 : 0.30) * (ghosts(t.x, t.y) ? 0.35 : 1);
+          ctx.globalAlpha = ga * (vis ? 1 : 0.30) * (ghosts(t.x, t.y) ? 0.55 : 1);
           ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
             a.sx - isoCamX - r.ox * sc, a.sy - isoCamY - r.oy * sc, r.w * sc, r.h * sc);
           ctx.globalAlpha = ga;
-          ctx.fillStyle = theme.accent;
-          ctx.fillText(tile === T.DOWN ? '>' : '<', a.sx - isoCamX, a.sy - isoCamY - 26);
         } });
       }
       continue;
@@ -1571,6 +1583,27 @@ function renderIsoScene(g, sa) {
     }
     ctx.textAlign = 'center';
   }
+
+  /* Stairs are destinations: their mark rides above everything, so no
+   * masonry, however tall, can lose them. */
+  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const t of seenTiles) {
+    const tile = floor.tiles[t.y][t.x];
+    if (tile !== T.UP && tile !== T.DOWN) continue;
+    const a = isoToScreen(t.x, t.y);
+    const ax = a.sx - isoCamX, ay = a.sy - isoCamY;
+    ctx.beginPath();
+    ctx.arc(ax, ay - 24, 11, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(5, 7, 5, 0.75)';
+    ctx.fill();
+    ctx.strokeStyle = theme.accent;
+    ctx.stroke();
+    ctx.fillStyle = theme.accent;
+    ctx.fillText(tile === T.DOWN ? '>' : '<', ax, ay - 23);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 function shade(hex, f) {
@@ -1956,6 +1989,11 @@ function onKey(e) {
       saveGame();
       e.preventDefault();
     }
+    return;
+  }
+  if ((k === '+' || k === '=' || k === '-') && viewMode === 'iso' && !cardUp) {
+    setIsoZoom(k === '-' ? isoZoom - 0.15 : isoZoom + 0.15);
+    e.preventDefault();
     return;
   }
   if (k === 'v') {
@@ -2507,6 +2545,11 @@ async function boot() {
   els.canvas.addEventListener('click', onCanvasClick);
   els.canvas.addEventListener('mousemove', onCanvasMove);
   els.canvas.addEventListener('mouseleave', onCanvasLeave);
+  els.canvas.addEventListener('wheel', (e) => {
+    if (viewMode !== 'iso') return;
+    e.preventDefault();
+    setIsoZoom(isoZoom * (e.deltaY < 0 ? 1.1 : 0.9));
+  }, { passive: false });
   document.addEventListener('keydown', onKey);
   const anim = setInterval(() => { if (game && !document.hidden) renderGame(game); }, 200);
   document.addEventListener('keydown', (e) => { if (e.key === 'F5' || (e.key === 's' && (e.metaKey || e.ctrlKey))) saveGame(); });
