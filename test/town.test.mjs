@@ -567,3 +567,31 @@ test('a follower never stands inside the widow', () => {
   g.tryMove(0, -1);
   assert.equal(opened, 'maren', 'the widow did not answer her own door');
 });
+
+test('the rack and the rail: plain arms and armour are always in stock', () => {
+  const { g } = rig('t-rack');
+  const ids = shopStock(g).map((r) => r.id);
+  for (const want of ['dagger', 'short-sword', 'staff', 'leather-armor', 'padded-armor', 'small-shield']) {
+    assert.ok(ids.includes(want), 'the Provisioner is out of ' + want);
+  }
+  assert.ok(!ids.includes('chainmail'), 'veteran steel on the shelf before any boss fell');
+  g.state.player.bossesSlain.temple = true;
+  assert.ok(shopStock(g).map((r) => r.id).includes('chainmail'), 'standing grew and the rack did not');
+});
+
+test('nothing in the town stands inside anything else', () => {
+  /* Old Casp moved house for the temple's sightline; this pins that no
+   * keeper, resident, prop or building ever overlaps another. */
+  const f = generateTownFloor([{ id: 'temple', name: 'T' }, { id: 'upper', name: 'U' }]);
+  const spots = new Map();
+  const claim = (x, y, who) => {
+    const k = x + ',' + y;
+    assert.ok(!spots.has(k), who + ' stands inside ' + spots.get(k) + ' at ' + k);
+    spots.set(k, who);
+  };
+  for (const n of f.npcs) claim(n.x, n.y, n.tpl.id);
+  for (const pr of (f.props || [])) if (!pr.flat) claim(pr.x, pr.y, 'prop ' + (pr.piece || pr.atlas));
+  for (const n of f.npcs) {
+    assert.ok(f.tiles[n.y][n.x] === TT.FLOOR, n.tpl.id + ' stands on an unwalkable tile');
+  }
+});

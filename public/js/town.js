@@ -46,6 +46,14 @@ export function shopStock(game) {
   const ids = ['potion-heal', 'potion-power', 'scroll-identify', 'scroll-recall'];
   if (slain >= 1) ids.push('potion-major-heal', 'scroll-remove-curse');
   if (slain >= 2) ids.push('scroll-sanctuary', 'potion-remove-curse');
+  /* The rack and the rail: plain arms and armour, always in stock — a
+   * hireling arrives outfitted, but a blade breaks nothing loose in this
+   * economy and a naked mage should not need boss-luck to buy a robe.
+   * Better steel arrives as the expedition's standing grows. */
+  ids.push('dagger', 'short-sword', 'mace', 'staff', 'broadsword', 'hand-axe',
+    'padded-armor', 'leather-armor', 'studded-armor', 'small-shield');
+  if (slain >= 1) ids.push('war-hammer', 'chainmail');
+  if (slain >= 2) ids.push('battle-axe', 'scale-armor');
   return ids
     .map((id) => getItemTemplate(id))
     .filter(Boolean)
