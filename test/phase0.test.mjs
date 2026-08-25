@@ -313,6 +313,15 @@ test('using an ability is not forgotten on reload', () => {
   const g = newGame('ability-save', 'mage');
   g.loadFloor(0);
   const p = g.state.player;
+  /* The refused-draught law holds a working with nothing to work on, so
+   * stand something in front of the mage — this test is about persistence,
+   * not targeting. */
+  g.currentFloor.monsters.push({
+    t: { id: 'mark', name: 'Mark', glyph: 'm', color: 'red', hpMax: 30, ac: 10, toHit: 0, damage: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0, props: [], speed: 1, aggroRange: 1 },
+    x: p.x + 1, y: p.y, hp: 30, maxhp: 30, boss: false, aggro: false,
+    toHit: 0, dmg: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0,
+  });
+  g.computeVisibility();
   const before = p.power;
   /* One that actually costs something: the Mage's first damaging ability is
    * now Witch-Spark, which is at will and hands power back rather than

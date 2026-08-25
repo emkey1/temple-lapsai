@@ -2048,6 +2048,24 @@ function renderIsoScene(g, sa) {
       partyTint(i), { dim: true, bold: m === p });
   });
 
+  /* WHOSE TURN IT IS, on the board: in a fight a gold chevron hangs over
+   * the head of the member holding the reins — the strip and the initiative
+   * bar say it in the margins; this says it where your eyes already are. */
+  if (!g.outOfCombat() && p && p.hp > 0) {
+    const a = isoToScreen(p.x, p.y);
+    const ax = a.sx - isoCamX, ay = a.sy - isoCamY;
+    ctx.beginPath();
+    ctx.moveTo(ax - 7, ay - 44);
+    ctx.lineTo(ax + 7, ay - 44);
+    ctx.lineTo(ax, ay - 33);
+    ctx.closePath();
+    ctx.fillStyle = '#d8b04a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(5, 7, 5, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
   /* the name of what the cursor rests on, above everything */
   if (hovered) {
     const label = hoverLabel(g, hovered.x, hovered.y);
@@ -2166,7 +2184,7 @@ function renderPartyStrip(g) {
      * miniature, so the whole company's blood is one glance up. */
     const hp = Math.max(0, Math.min(100, 100 * m.hp / Math.max(1, m.maxhp)));
     return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
-      (m === shown ? 'viewed' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
+      (m === shown ? 'viewed' : '') + (m === g.state.player ? ' reins' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
       '<span class="pchip-row"><img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
       esc(m.name) + reins + '</span>' +
       '<span class="pbar"><i style="width:' + hp + '%"></i></span></button>';
@@ -2189,6 +2207,11 @@ function renderStats(g) {
   const bg = backgroundById(p.background);
   if (bg) kv('Background', esc(bg.name));
   kv('Level', p.level);
+  /* The marching order: who walks ahead of the reins between fights, and
+   * who behind. Class sets it — steel forward, robes back — one click
+   * swaps it, and it is saved with the member. */
+  kv('Marches', '<button class="mini" data-stance title="Out of combat: the van walks ahead of whoever holds the reins, the rear behind.">' +
+    (g.memberStance(p) === 'van' ? 'IN THE VAN' : 'IN THE REAR') + '</button>');
   kv('XP', p.xp + ' / next ' + toNext);
   kv('Gold', p.gold + ' gp');
   kv('HP', p.hp + ' / ' + p.maxhp);
@@ -2237,6 +2260,16 @@ function renderStats(g) {
       saveGame();
     };
   });
+  const stanceBtn = els.statBlock.querySelector('[data-stance]');
+  if (stanceBtn) {
+    stanceBtn.onclick = () => {
+      if (!game) return;
+      p.stance = game.memberStance(p) === 'van' ? 'rear' : 'van';
+      game.log(p.name + ' will march ' + (p.stance === 'van' ? 'in the van, ahead of the reins.' : 'in the rear, behind the steel.'));
+      renderStats(game);
+      saveGame();
+    };
+  }
   const own = p === g.state.player;
   els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS' + (own ? ' (keys 1-' + g.allAbilities(p).length + ')' : ' <span class="tiny">' + esc(p.name) + '\u2019s — usable on their turn</span>') + '</h3>';
   g.allAbilities(p).forEach((a, i) => {
@@ -2509,6 +2542,16 @@ function onKey(e) {
   if (e.code === 'Numpad5' && !cardUp) { game.handleKey(' ', {}); e.preventDefault(); saveGame(); return; }
 
   if (k >= '1' && k <= '9') {
+    /* The digits fire the ACTIVE member's powers — but if the sheet is
+     * pinned on someone else, the numbers on screen are not the numbers
+     * that would fire. Refuse rather than blow the wrong ability: this is
+     * exactly how a backstab got spent by someone aiming a fireball. */
+    const shown = viewedMember(game);
+    if (shown && shown !== game.state.player) {
+      game.log('It is ' + game.state.player.name + '’s turn — the sheet is open on ' + shown.name + '. Click a chip to follow the round.');
+      e.preventDefault();
+      return;
+    }
     const idx = Number(k) - 1;
     const ab = game.allAbilities();
     if (ab[idx] && ab[idx].kind !== 'passive') {

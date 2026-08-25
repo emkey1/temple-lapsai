@@ -32,6 +32,7 @@ export const CLASSES = {
     armor: ['leather-armor', 'studded-armor', 'chainmail'],
     shield: 'small-shield',
     speed: 3,   /* tiles of ground a combat turn buys, before the blow */
+    stance: 'van',   /* where they march out of combat: ahead of the reins */
   },
   thief: {
     id: 'thief',
@@ -51,6 +52,7 @@ export const CLASSES = {
     armor: ['leather-armor', 'studded-armor', 'studded-armor'],
     shield: null,   /* the other hand is for knives and locks */
     speed: 5,   /* the swift one: ground is the Thief's whole armour */
+    stance: 'van',
   },
   mage: {
     id: 'mage',
@@ -73,6 +75,7 @@ export const CLASSES = {
     armor: ['padded-armor', 'padded-armor', 'leather-armor'],
     shield: null,   /* both hands belong to the staff */
     speed: 4,   /* unburdened by armour, if by nothing else */
+    stance: 'rear',   /* robes march behind the steel */
   },
   cleric: {
     id: 'cleric',
@@ -93,6 +96,7 @@ export const CLASSES = {
     armor: ['leather-armor', 'studded-armor', 'chainmail'],
     shield: 'small-shield',
     speed: 3,   /* mail and conviction weigh about the same */
+    stance: 'rear',
   },
 };
 

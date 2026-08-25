@@ -1,7 +1,11 @@
 # Temple Lapsai — Turn-Based Homage
 
-A zero-dependency, retro top-down turn-based dungeon crawler inspired by the 1982 classic, with
-optional LLM-driven world expansion. Client and server are plain ES modules — no build step, no
+A zero-dependency, turn-based party dungeon crawler. It began as a top-down homage to the 1982
+classic and has grown toward the games that came after: an **isometric scene** in the Flare art
+style (the classic top-down grid is one `V` away, as the tactical map), a **company of four** with
+ToEE-style combat — ground and a blow, attacks of opportunity, flanking, initiative on the screen —
+**Arcanum-ish characters** with backgrounds and skills, and a walkable hamlet over the stairs.
+Optional LLM-driven world expansion. Client and server are plain ES modules — no build step, no
 npm install required.
 
 ## Requirements
@@ -185,7 +189,11 @@ data/expansions.json  Persisted generated content (server-side)
 | `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
 | `Space` / `X` | End your turn (wait) |
 | `R` | Rest until healed, or until something wakes |
-| `1`–`9` | Activate the matching ability |
+| `1`–`9` | Activate the matching ability (they fire for whoever holds the reins — the sheet must be theirs) |
+| `Shift+1`–`4` | Drink or read what is in that belt loop |
+| `V` | Switch between the isometric scene and the classic top-down map |
+| `T` | Kneel the walls to stubs, and raise them again |
+| `+` / `-` | Zoom the isometric scene (the mouse wheel works too) |
 | `Tab` | Cycle panels (stats / gear / codex / library) |
 | `I` / `E` | Gear & inventory panel |
 | `C` | Codex panel |
@@ -274,6 +282,18 @@ pace behind them — stragglers hurry, two steps to the leader's one, so a colum
 closes up. The reins stay with the leader between fights; the moment something is awake and near,
 the round breaks into initiative turns.
 
+**And it marches in formation.** The **van** walks *ahead* of whoever holds the reins, the **rear**
+behind — so a mage steering the company is not also its shield when something steps out of a
+doorway. Class sets the default (fighters and thieves forward, mages and clerics back) and the
+`Marches` row on the stat sheet swaps any member with one click, saved with the character. The
+positions you hold when a fight breaks are the positions you fight from, which is the whole point.
+
+**Whose turn it is, three ways**: the initiative bar arrows and brightens the current actor's chip,
+their nameplate on the company strip burns amber, and in a fight a gold chevron hangs over their
+head on the board. Every nameplate carries a sliver of health bar, so the company's blood is one
+glance up. A power that finds nothing to work on is **held, not spent** — no power, no cooldown, no
+turn — so a backstab aimed on the wrong member's turn costs a log line, not the ability.
+
 Turns are rounds: each member spends an action (the bright boxed `@` is whoever holds the reins;
 companions are a step dimmer), and the monsters wait for the last of them. In a party of one, every
 number in the game is measurably unchanged.
@@ -347,8 +367,10 @@ of the economy.
 ### The Whetstone
 
 Camp grew a town around it, and gold finally has somewhere to go besides the resurrection ledger —
-which was the oldest open playtest note: *"what is the purpose of gold?"* Step onto the surface
-stairs and you are on the street.
+which was the oldest open playtest note: *"what is the purpose of gold?"* Climb out of any first
+floor and you stand on the green: a timber hamlet you walk like any floor — houses with their
+keepers at the door, residents with something to say, a pond, a churchyard, and the dungeon mouths
+in the east field. Walking up to a keeper is how you ask for their trade.
 
 **The Provisioner** sells what the dungeon is stingy with (the shelf grows with each boss slain) and
 buys what you haul up — the Gemstone's card has said *"worth 40 gp to the right buyer"* since the
@@ -363,7 +385,21 @@ feet.
 
 **The Lector** reads a rune for 20 gold and prises a curse loose for 80 — so identification and
 unbinding no longer depend on a lucky scroll drop. Reading a curse warns you; unbinding one names it
-in the act.
+in the act. The ledger covers the **whole company's** packs and backs — as do the identify scroll
+and the curse-lifting, because knowledge welded to the active member is the heal-yourself bug in
+different clothes.
+
+**The Drowned Lantern** beds the company for one price: everyone wakes healed, rested, cooled down
+and mended — wounds included, the number nothing free can fully reach.
+
+At the Provisioner's counter, stacks stay stacked — eight draughts are one row with a count, sell
+one or the lot — and the scale takes **any member's pack** (the fallen included; their gear travels).
+The coin lands in the purse doing the talking.
+
+**Getting home stopped being a hike.** The **Scroll of Recall** folds the company back to the
+Whetstone from anywhere below — it refuses mid-fight, and a refusal costs neither scroll nor turn.
+And the **dungeon mouths remember your deepest floor**: monsters do not respawn, so the swept upper
+halls are pure toll, and the stairs now take you straight back to where the work stopped.
 
 The economy lives in [town.js](public/js/town.js), DOM-free like the ledger, with every price in one
 table.

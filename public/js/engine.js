@@ -1174,7 +1174,11 @@ export class Game {
       ally.x = p.x; ally.y = p.y;
       ally.faceDx = -dx; ally.faceDy = -dy;
       p.x = nx; p.y = ny;
-      this.log('You trade places with ' + ally.name + '.');
+      /* Mid-fight the swap is a spent turn and deserves its line. On the
+       * march it is just the column flowing around itself — the van holds
+       * the point by being walked through — and six identical lines of
+       * "you trade places" were the whole log. */
+      if (!this.outOfCombat()) this.log('You trade places with ' + ally.name + '.');
       if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
       return 'swap';
     }
@@ -1805,28 +1809,58 @@ export class Game {
     this.advanceQueue();
   }
 
+  /* Where a member marches when the company moves as one: the VAN walks
+   * ahead of whoever holds the reins, the REAR walks behind. Class sets the
+   * default — steel ahead, robes behind — and the stat sheet overrides it,
+   * so a mage at the reins is not also the party's shield when something
+   * steps out of a doorway. */
+  memberStance(m) {
+    if (m && (m.stance === 'van' || m.stance === 'rear')) return m.stance;
+    const c = CLASSES[(m || {}).cls];
+    return (c && c.stance) || 'van';
+  }
+
   followTheLeader(leader) {
     const followers = this.livingMembers().filter((m) => m !== leader && !this.actorTurn(m).acted);
     if (!followers.length) return;
     const floor = this.currentFloor;
     const field = this.distanceFieldFrom([leader]);
+    /* THE MARCHING ORDER. Each stance seeds its own field: one march-step
+     * ahead of the leader for the van, one behind for the rear — falling
+     * back to the leader's own square where the hall refuses the spot, which
+     * is also what happens while the leader has not yet moved anywhere. */
+    const fdx = leader.faceDx || 0, fdy = leader.faceDy || 0;
+    const spot = (dx, dy) => {
+      const x = leader.x + dx, y = leader.y + dy;
+      const t = floor.tiles[y] && floor.tiles[y][x];
+      return t !== undefined && isTravelable(t) ? { x, y } : leader;
+    };
+    const fields = {
+      van: this.distanceFieldFrom([spot(fdx, fdy)]),
+      rear: this.distanceFieldFrom([spot(-fdx, -fdy)]),
+    };
     /* Nearest first, so a single-file column moves front-to-back instead of
      * the second in line blocking on the first for a round. */
     followers.sort((a, b) => (field[a.y][a.x] ?? 99) - (field[b.y][b.x] ?? 99));
     for (const m of followers) {
       this.actorTurn(m).acted = true;
+      const mine = fields[this.memberStance(m)] || field;
       /* A straggler hurries: two steps to the leader's one, so a column that
        * fell behind — a fight, a doorway, the stairs — closes up again instead
        * of trailing at a fixed distance for ever. */
       for (let hurry = 0; hurry < 2; hurry++) {
-        const here = field[m.y][m.x];
-        if (here <= 1 || here < 0) break;   /* at the leader's shoulder, or cut off */
+        const here = mine[m.y][m.x];
+        /* ON the station, or cut off. Not "adjacent to" — a van that settles
+         * for the leader's shoulder is not a van. When the spot is taken the
+         * step search finds nothing closer and breaks by itself, which is
+         * the old shoulder behaviour exactly where it belongs. */
+        if (here <= 0) break;
         let best = null, bestD = here;
         for (const [dx, dy] of DIRS8) {
           const nx = m.x + dx, ny = m.y + dy;
           if (!this.inBounds(nx, ny)) continue;
           if (dx && dy && !this.canCorner(m.x, m.y, nx, ny)) continue;
-          const d = field[ny][nx];
+          const d = mine[ny][nx];
           if (d < 0 || d >= bestD) continue;
           if (this.memberAt(nx, ny)) continue;
           if ((floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === nx && mo.y === ny)) continue;
@@ -2600,6 +2634,11 @@ export class Game {
     if (p.power < cost) { this.log('You lack the power to shape it.'); return; }
     const cd = p.cooldowns[a.id] || 0;
     if (cd > 0) { this.log(a.name + ' stirs — ' + cd + ' more turn' + (cd === 1 ? '' : 's') + '.'); return; }
+    /* THE REFUSED-DRAUGHT LAW, for powers: a working with nothing to work on
+     * costs neither power, cooldown nor turn. Blowing the backstab because
+     * the round was on the wrong member was a tax on misreading a marker. */
+    const held = this.abilityRefusal(a);
+    if (held) { this.log(held); return; }
     p.power -= cost;
     p.cooldowns[a.id] = (a.cooldown || 0);
     this.log('— ' + a.name + ' —');
@@ -2615,6 +2654,29 @@ export class Game {
     }
     if (this.dying) return;
     this.endPlayerTurn(undefined, p);
+  }
+
+  /* Would this working find anything at all? Mirrors each kind's own target
+   * search; a string is the refusal, spoken before anything is spent. */
+  abilityRefusal(a) {
+    const p = this.state.player;
+    const floor = this.currentFloor;
+    const monsters = (floor.monsters || []).filter((m) => m.hp > 0);
+    if (a.kind === 'damage') {
+      const range = a.range || (a.aura ? 1 : 1000);
+      const targeted = monsters.some((m) => this.vis[m.y] && this.vis[m.y][m.x] && dist8(m, p) <= range);
+      const splashed = a.aura && monsters.some((m) => dist1(m, p) <= a.aura);
+      if (!targeted && !splashed) return a.name + ' finds no target in the light — you hold the working.';
+    } else if (a.kind === 'turn') {
+      const answers = monsters.some((m) => m.t.props &&
+        (m.t.props.indexOf('undead') >= 0 || m.t.props.indexOf('cursed') >= 0) &&
+        dist1(m, p) <= (a.range || 6));
+      if (!answers) return 'Nothing unholy is near enough to answer — you hold the working.';
+    } else if (a.kind === 'heal') {
+      const mark = this.healTarget(a);
+      if (mark.hp >= mark.maxhp) return (mark === p ? 'You are' : mark.name + ' is') + ' whole — you hold the working.';
+    }
+    return null;
   }
 
   abilityDamage(a, der) {
@@ -2890,7 +2952,7 @@ export class Game {
     else if (fx.identify) { this.identifyAll(); }
     else if (fx.teleport) { this.teleportRandom(); }
     else if (fx.map) { this.revealSecrets(); this.mapRevealed = true; this.log('Ghost-lines crawl across the floor map.'); }
-    else if (fx.flame) { this.scrollFlame(fx.flame); }
+    else if (fx.flame) { if (this.scrollFlame(fx.flame) === false) return false; }
     else if (fx.sanctuary) { p.buffs.sanctuary = fx.sanctuary; this.log('For a while, the dark forgets your name.'); }
     else if (fx.recall) { if (!this.scrollRecall()) return false; }
     else { this.log('It does nothing you can perceive.'); }
@@ -2924,7 +2986,8 @@ export class Game {
       const d = dist1(m, p);
       if (d < best) { best = d; target = m; }
     }
-    if (!target) { this.log('The flame finds nothing to burn.'); return; }
+    /* Nothing to burn, nothing spent: the refused-draught law. */
+    if (!target) { this.log('The flame finds nothing to burn — the scroll stays rolled.'); return false; }
     const dmg = evaluateDice(dice, this.rngOfTurn());
     this.log('The scroll ignites: the ' + target.t.name + ' burns for ' + dmg + '!');
     target.hp -= dmg;

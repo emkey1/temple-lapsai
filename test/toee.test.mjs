@@ -356,3 +356,71 @@ test('a blade in reach is in reach on the diagonal too', () => {
     assert.ok(mo.hp < mo.maxhp, id + ' found no target on the diagonal');
   }
 });
+
+/* ---- the marching order ----
+ *
+ * "If the main character is a mage, he tends to end up in the front when
+ * combat starts." Out of combat the company holds a formation now: the VAN
+ * marches ahead of whoever holds the reins, the REAR behind. Class sets
+ * the default — steel forward, robes back — and the sheet overrides it. */
+test('the van marches ahead of the reins, the rear behind', () => {
+  const g = newGame('t3-march', 'mage');
+  arena(g);
+  const p = g.state.player;
+  const van = companion(g, 'fighter', 'Shield');
+  const rear = companion(g, 'cleric', 'Voice');
+  van.x = p.x - 1; van.y = p.y;
+  rear.x = p.x - 2; rear.y = p.y;
+  for (let i = 0; i < 8; i++) g.handleKey('d');
+  assert.ok(van.x >= p.x, `the fighter marches at x=${van.x}, behind the mage at x=${p.x}`);
+  assert.ok(rear.x <= p.x, `the cleric marches at x=${rear.x}, ahead of the mage at x=${p.x}`);
+  assert.ok(van.x > rear.x, 'the van does not lead the rear');
+});
+
+test('the sheet overrides the class stance', () => {
+  const g = newGame('t3-march-override', 'mage');
+  arena(g);
+  const p = g.state.player;
+  const guard = companion(g, 'fighter', 'Wary');
+  guard.x = p.x - 1; guard.y = p.y;
+  guard.stance = 'rear';   /* the sheet's toggle writes exactly this */
+  for (let i = 0; i < 8; i++) g.handleKey('d');
+  assert.ok(guard.x <= p.x, 'a fighter ordered to the rear marched to the van anyway');
+});
+
+/* ---- the refused-draught law, for powers ----
+ *
+ * "Using a skill when it can't work should not put it on cooldown." A
+ * working with nothing to work on now costs neither power, cooldown nor
+ * the turn — blowing the backstab because the round was on the wrong
+ * member was a tax on misreading a marker. */
+test('a working with nothing to work on costs nothing', () => {
+  const g = newGame('t3-held-working', 'thief');
+  arena(g);   /* not a monster in sight */
+  const p = g.state.player;
+  p.level = 3; p.power = 10;
+  const turnBefore = g.turn;
+  g.activateAbility('backstab');
+  assert.equal(p.power, 10, 'power was spent on an empty room');
+  assert.ok(!(p.cooldowns.backstab > 0), 'the cooldown started on an empty room');
+  assert.equal(g.turn, turnBefore, 'the turn was spent on an empty room');
+});
+
+test('a healing touch on a whole company is held, not spent', () => {
+  const g = newGame('t3-held-heal', 'cleric');
+  arena(g);
+  const p = g.state.player;
+  p.level = 3; p.power = 10;
+  g.activateAbility('lay-hands');
+  assert.equal(p.power, 10, 'power spent healing nobody');
+});
+
+test('the working still fires when there is something to work on', () => {
+  const g = newGame('t3-held-fires', 'thief');
+  const f = arena(g);
+  const p = g.state.player;
+  p.level = 3; p.power = 10;
+  f.monsters.push(beast(p.x + 1, p.y + 1, { ac: 30 }));   /* on the diagonal, even */
+  g.activateAbility('backstab');
+  assert.ok(p.power < 10, 'the refusal law refused a working with a target');
+});

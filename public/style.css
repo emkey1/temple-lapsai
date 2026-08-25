@@ -116,8 +116,10 @@ body {
 #initiative-bar .ini-chip.now {
   opacity: 1;
   background: #0a0d0a;
-  box-shadow: 0 0 6px rgba(230, 220, 160, .25);
+  border-color: var(--amb);
+  box-shadow: 0 0 8px rgba(216, 176, 74, .45);
 }
+#initiative-bar .ini-chip.now::before { content: '\25B6 '; color: var(--amb); }
 #initiative-bar .ini-turn {
   font: 11px "Courier New", monospace;
   color: var(--accent, #e0c05a);
@@ -218,6 +220,11 @@ body {
   border: 1px solid var(--ink-faint);
 }
 #party-strip button.viewed { border-color: currentColor; background: #050705; }
+/* Whoever holds the reins burns amber — the plate you read for "whose turn". */
+#party-strip button.reins {
+  border-color: var(--amb);
+  box-shadow: 0 0 6px rgba(216, 176, 74, .5), inset 0 0 4px rgba(216, 176, 74, .25);
+}
 #party-strip button.fallen { opacity: .45; }
 #party-strip .pchip-row { display: flex; align-items: center; gap: 4px; justify-content: center; }
 #party-strip .pbar {
