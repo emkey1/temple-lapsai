@@ -1386,6 +1386,30 @@ function renderClassic(g, sa) {
 let viewMode = 'iso';
 try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
 let isoCamX = 0, isoCamY = 0;
+
+/* The unexplored is UNKNOWN, not void: pure black beside carved stone
+ * read as holes in the world (the playtest's walls-up complaint, at
+ * root). A faint woven hatch makes the same darkness read as map-edge —
+ * territory the torch has not reached — while staying dark enough that
+ * everything lit sits above it. Built once, tiled by the canvas. */
+let unknownPattern = null;
+function getUnknownPattern(ctx) {
+  if (unknownPattern) return unknownPattern;
+  const pc = document.createElement('canvas');
+  pc.width = 24; pc.height = 24;
+  const c = pc.getContext('2d');
+  c.fillStyle = '#070907';
+  c.fillRect(0, 0, 24, 24);
+  c.strokeStyle = 'rgba(120, 130, 100, 0.05)';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(-6, 30); c.lineTo(30, -6);
+  c.moveTo(6, 30); c.lineTo(30, 6);
+  c.moveTo(-6, 18); c.lineTo(18, -6);
+  c.stroke();
+  unknownPattern = ctx.createPattern(pc, 'repeat');
+  return unknownPattern;
+}
 let isoZoom = 1;
 try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
 
@@ -1553,8 +1577,13 @@ function drawIsoGround(g, t, tset, theme, sa) {
  * over; the caves stand in crags, which is why their cutaway cone reaches
  * deeper. */
 const WALL_VOCAB = {
-  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128 },
-  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300 },
+  /* 81/80 are the TEXTURED low walls; 83/82/91/95, the statistically more
+   * common picks, turned out on inspection to be Flare's shadow-bodied
+   * variants — carved crown, pure black face, the source of every "black
+   * slab where a wall should be" report since the masonry landed. A
+   * corner shows BOTH textured faces, one piece over the other. */
+  tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
+  tileset_cave: { x: [67, 71], y: [66, 70], corner: [72], rise: 300 },
 };
 
 /* Which piece a wall tile wears — or null, and null is the ToEE cutaway
@@ -1573,8 +1602,8 @@ function wallPieceId(vocab, g, t) {
   const openE = openAt(t.x + 1, t.y);
   const h = ((t.x * 40503) ^ (t.y * 44417)) >>> 0;
   if (openS && openE) return vocab.corner;
-  if (openS) return vocab.x[h % vocab.x.length];
-  if (openE) return vocab.y[h % vocab.y.length];
+  if (openS) return [vocab.x[h % vocab.x.length]];
+  if (openE) return [vocab.y[h % vocab.y.length]];
   return null;
 }
 
@@ -1607,16 +1636,21 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
   if (!door && tset) {
     const vocab = WALL_VOCAB[tset.name];
     if (vocab) {
-      const id = wallPieceId(vocab, g, t);
-      if (id !== null) {
-        const r = tset.def.tiles[id];
-        if (r) {
-          const ga = ctx.globalAlpha;
-          /* Unlit stone dims but stays legible: walls are the shape of the
-           * map, and the floor's own darkness already says "not lit". */
-          ctx.globalAlpha = ga * (vis ? 1 : 0.5);
+      const ids = wallPieceId(vocab, g, t);
+      if (ids !== null) {
+        let drew = false;
+        const ga = ctx.globalAlpha;
+        /* Unlit stone dims but stays legible: walls are the shape of the
+         * map, and the floor's own darkness already says "not lit". */
+        ctx.globalAlpha = ga * (vis ? 1 : 0.5);
+        for (const id of ids) {
+          const r = tset.def.tiles[id];
+          if (!r) continue;
           ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
-          ctx.globalAlpha = ga;
+          drew = true;
+        }
+        ctx.globalAlpha = ga;
+        if (drew) {
           if (tile === T.SECRET && vis && sa === 0) {
             ctx.fillStyle = theme.accent;
             ctx.fillText('+', ax, ay - ISO.WALL_H);
@@ -1674,7 +1708,7 @@ function renderIsoScene(g, sa) {
   const tset = getTileset(town ? 'tileset_grassland' : (THEME_TILESET[dungeon.theme] || 'tileset_dungeon'));
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#050705';
+  ctx.fillStyle = getUnknownPattern(ctx);
   ctx.fillRect(0, 0, els.canvas.width, els.canvas.height);
   ctx.setTransform(view, 0, 0, view, 0, 0);
   ctx.font = 'bold 15px "Courier New", monospace';
@@ -1700,6 +1734,29 @@ function renderIsoScene(g, sa) {
   for (const t of seenTiles) {
     const tt = floor.tiles[t.y][t.x];
     if (tt === T.UP || tt === T.DOWN) drawIsoStairs(g, t, theme, tt === T.DOWN);
+  }
+
+  /* THE DEAD OF THE TEMPLE. Flare's bone pieces — looked at before being
+   * wired in, a lesson the chains taught — scattered on about one floor
+   * tile in twenty-five, position-hashed so the same corpse lies in the
+   * same doorway for ever. Dungeon masonry only; the caves keep their own
+   * counsel until their set is curated. */
+  if (tset && tset.name === 'tileset_dungeon' && !town) {
+    const BONES = [176, 177, 180, 181, 182, 183];
+    for (const t of seenTiles) {
+      if (floor.tiles[t.y][t.x] !== T.FLOOR) continue;
+      const h = ((t.x * 92821) ^ (t.y * 68917)) >>> 0;
+      if (h % 25 !== 0) continue;
+      const r = tset.def.tiles[BONES[(h >> 5) % BONES.length]];
+      if (!r) continue;
+      const a = isoToScreen(t.x, t.y);
+      const vis = g.vis[t.y] && g.vis[t.y][t.x];
+      const ga = ctx.globalAlpha;
+      ctx.globalAlpha = ga * (vis ? 0.95 : 0.5);
+      ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
+        a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+      ctx.globalAlpha = ga;
+    }
   }
 
   /* the route, drawn on the ground so the standing world occludes it */
@@ -1779,6 +1836,33 @@ function renderIsoScene(g, sa) {
       } });
     }
   }
+  /* THE SEALED UNKNOWN. An unexplored tile right behind a seen wall used
+   * to render as background — a black gap between the wall's crown and
+   * the ground that read as a hole in the world. Cap it as rock: the
+   * claim "the wall has thickness here" is always plausible, reveals
+   * nothing real about the layout, and closes the voids that made
+   * walls-up illegible. */
+  const sealed = new Set();
+  for (const t of seenTiles) {
+    const tt = floor.tiles[t.y][t.x];
+    if (tt !== T.WALL && tt !== T.SECRET) continue;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = t.x + dx, ny = t.y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if (g.seen[ny] && g.seen[ny][nx]) continue;
+        const k = ny * W + nx;
+        if (sealed.has(k)) continue;
+        sealed.add(k);
+        standers.push({ x: nx, y: ny, draw: () => {
+          const a = isoToScreen(nx, ny);
+          drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
+            shade(theme.wall, 0.42), shade(theme.wall, 0.34), shade(theme.wall, 0.26));
+        } });
+      }
+    }
+  }
+
   for (const pr of floor.props || []) {
     const img = getProp(pr.piece);
     if (!img) continue;
