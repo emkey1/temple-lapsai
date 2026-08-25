@@ -519,11 +519,26 @@ export class Game {
   }
 
   /* ---- founding ---- */
+  /* THE BASIC LOADOUT. Nobody walks into the dark in their shirt: weapon,
+   * armour off the class's ladder — green, seasoned, veteran, by level —
+   * and a shield where the calling carries one. Founded adventurers and
+   * hirelings dress at the same counter; a hireling without it was, in the
+   * playtest's words, essentially useless. */
+  outfitMember(b, level) {
+    const c = CLASSES[b.cls] || CLASSES.fighter;
+    const weapon = this.resolveWeapon(c.weapon);
+    if (weapon) b.equipment.weapon = deepItem(weapon);
+    const rung = level >= 7 ? 2 : level >= 4 ? 1 : 0;
+    const armor = c.armor && getItemTemplate(c.armor[Math.min(rung, c.armor.length - 1)]);
+    if (armor) b.equipment.body = deepItem(armor);
+    const shield = c.shield && getItemTemplate(c.shield);
+    if (shield) b.equipment.shield = deepItem(shield);
+    return b;
+  }
+
   foundAdventurer(name, clsId, stats) {
     this.state.player = makePlayer(name, clsId, stats);
-    const c = CLASSES[clsId] || CLASSES.fighter;
-    const weapon = this.resolveWeapon(c.weapon);
-    if (weapon) this.state.player.equipment.weapon = deepItem(weapon);
+    this.outfitMember(this.state.player, 1);
     this.state.player.maxpower = this.computeMaxPower();
     this.state.player.power = this.state.player.maxpower;
     this.state.player.maxhp = this.maxHp();

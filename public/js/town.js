@@ -153,10 +153,12 @@ export function hireMember(game, clsId) {
   const used = new Set(party.members.map((m) => m && m.name));
   const name = MUSTER_NAMES.find((n) => !used.has(n)) || 'Hireling';
   const b = makePlayer(name, clsId, initialStats(clsId));
-  const weapon = game.resolveWeapon(c.weapon);
-  if (weapon) b.equipment.weapon = deepItem(weapon);
-  /* Seasoned to the leader's level, using the same growth everyone else gets. */
+  /* Seasoned to the leader's level, using the same growth everyone else
+   * gets — and dressed for it: weapon, armour off the class ladder, and a
+   * shield where the calling carries one. A hire without the basic loadout
+   * was a corpse with a salary twice over. */
   for (let i = 1; i < leader.level; i++) game.levelUp(b);
+  game.outfitMember(b, leader.level);
   b.maxpower = game.computeMaxPower(b);
   b.power = b.maxpower;
   b.hp = b.maxhp;

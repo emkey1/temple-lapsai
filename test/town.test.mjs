@@ -342,3 +342,33 @@ function newTownGame(seed) {
   const g = newGame(seed);
   return g;
 }
+
+/* ---- the basic loadout: nobody walks into the dark in their shirt ---- */
+
+test('a hireling arrives dressed: weapon, armour, and shield where apropos', () => {
+  const g = newGame('kit-hire');
+  g.state.player.gold = 10000;
+  for (const [cls, wantsShield] of [['fighter', true], ['thief', false], ['mage', false], ['cleric', true]]) {
+    while (g.state.party.members.length > 1) g.state.party.members.pop();
+    const b = hireMember(g, cls);
+    assert.ok(b.equipment.weapon, cls + ' hired without a weapon');
+    assert.ok(b.equipment.body, cls + ' hired without armour');
+    assert.equal(!!b.equipment.shield, wantsShield, cls + ' and the shield disagree');
+  }
+});
+
+test('a seasoned hire arrives in seasoned steel', () => {
+  const g = newGame('kit-tiers');
+  g.state.player.gold = 100000;
+  for (let i = 1; i < 8; i++) g.levelUp(g.state.player);
+  const b = hireMember(g, 'fighter');
+  assert.equal(b.equipment.body.id, 'chainmail', 'a level-8 hire in beginner leather');
+});
+
+test('a founded adventurer starts in the same basic loadout', () => {
+  const g = newGame('kit-found', 'cleric');
+  const p = g.state.player;
+  assert.ok(p.equipment.weapon, 'founded without a weapon');
+  assert.equal(p.equipment.body.id, 'leather-armor', 'founded without armour');
+  assert.ok(p.equipment.shield, 'a cleric founded without a shield');
+});

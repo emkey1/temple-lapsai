@@ -26,6 +26,11 @@ export const CLASSES = {
     goldMul: 1.0,
     statAdj: { str: 1, dex: 0, con: 1, int: 0, wis: 0, cha: 0 },
     weapon: 'Broadsword',
+    /* The basic loadout: what anyone of this calling walks in wearing.
+     * Three rungs — green, seasoned, veteran — chosen by level, so a
+     * high-priced hire arrives dressed for the floor they are owed. */
+    armor: ['leather-armor', 'studded-armor', 'chainmail'],
+    shield: 'small-shield',
     speed: 3,   /* tiles of ground a combat turn buys, before the blow */
   },
   thief: {
@@ -43,6 +48,8 @@ export const CLASSES = {
     goldMul: 1.5,
     statAdj: { str: 0, dex: 2, con: 0, int: 1, wis: 0, cha: 0 },
     weapon: 'Short Sword',
+    armor: ['leather-armor', 'studded-armor', 'studded-armor'],
+    shield: null,   /* the other hand is for knives and locks */
     speed: 5,   /* the swift one: ground is the Thief's whole armour */
   },
   mage: {
@@ -63,6 +70,8 @@ export const CLASSES = {
      * lowest hit points and the worst armour in the game. */
     statAdj: { str: 0, dex: 0, con: 0, int: 2, wis: 1, cha: 0 },
     weapon: 'Staff',
+    armor: ['padded-armor', 'padded-armor', 'leather-armor'],
+    shield: null,   /* both hands belong to the staff */
     speed: 4,   /* unburdened by armour, if by nothing else */
   },
   cleric: {
@@ -81,6 +90,8 @@ export const CLASSES = {
     powerPerChr: 1,
     statAdj: { str: 0, dex: 0, con: 1, int: 0, wis: 2, cha: 1 },
     weapon: 'Mace',
+    armor: ['leather-armor', 'studded-armor', 'chainmail'],
+    shield: 'small-shield',
     speed: 3,   /* mail and conviction weigh about the same */
   },
 };

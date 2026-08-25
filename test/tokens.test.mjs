@@ -335,7 +335,9 @@ test('a companion can be dressed from their own pack', () => {
   g.equip(mail, b);
   assert.equal(b.equipment.body, mail);
   assert.ok(!b.inventory.includes(mail));
-  assert.equal(p.equipment.body, null, 'the armour landed on the wrong body');
+  /* The leader keeps their own basic loadout; what must NOT happen is the
+   * companion's chainmail landing on them. */
+  assert.notEqual(p.equipment.body, mail, 'the armour landed on the wrong body');
   g.unequip('body', b);
   assert.equal(b.equipment.body, null);
   assert.ok(b.inventory.includes(mail));
