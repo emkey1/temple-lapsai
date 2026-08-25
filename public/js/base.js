@@ -96,6 +96,55 @@ export const CLASSES = {
   },
 };
 
+/* T4, THE ARCANUM TURN: who you were before the stairs.
+ *
+ * A background is a past with a price — every one of them trades something
+ * away, the way Arcanum's did, because a past that is all upside is just a
+ * bonus with a paragraph attached. statAdj bakes into the rolled stats at
+ * founding; perks ride derived() for the character's whole life; a free
+ * skill rank is the trade a childhood teaches. */
+export const BACKGROUNDS = [
+  { id: 'unremarked', name: 'Unremarked', statAdj: {}, perks: {},
+    blurb: 'No story worth a coin. The dark will write one for you.' },
+  { id: 'temple-orphan', name: 'Temple Orphan', statAdj: { wis: 1, cha: -1 }, perks: { undeadResist: 1 },
+    blurb: 'Raised in the ruin’s long shadow. The unhallowed feel oddly familiar, and people do not.' },
+  { id: 'gravediggers-child', name: 'Gravedigger’s Child', statAdj: { con: 1, int: -1 }, perks: { regen: 0.5 },
+    blurb: 'You grew up strong on turned earth, and never much needed to know why.' },
+  { id: 'tinkers-apprentice', name: 'Tinker’s Apprentice', statAdj: { int: 1, str: -1 }, perks: { skill: 'lore' },
+    blurb: 'Years at the bench, reading what others wind up and shake.' },
+  { id: 'poachers-get', name: 'Poacher’s Get', statAdj: { dex: 1, cha: -1 }, perks: { skill: 'fieldcraft' },
+    blurb: 'The woods fed you, and taught you where things hide.' },
+  { id: 'debt-ridden', name: 'Debt-Ridden', statAdj: { wis: -1 }, perks: { goldMul: 0.25 },
+    blurb: 'You owe someone everything, and it has made you very good at finding coin.' },
+  { id: 'low-war-veteran', name: 'Veteran of the Low War', statAdj: { str: 1, int: -1 }, perks: { skill: 'mending' },
+    blurb: 'You carried friends off a field nobody names. You know what closes and what does not.' },
+  { id: 'lamplighter', name: 'Lamplighter', statAdj: { wis: 1, str: -1 }, perks: { sight: 2 },
+    blurb: 'Years of small flames against big darks. Your eyes go further than most.' },
+  { id: 'merchants-runaway', name: 'Merchant’s Runaway', statAdj: { cha: 1, con: -1 }, perks: { skill: 'haggle' },
+    blurb: 'You fled the counting-house, but the counting came with you.' },
+];
+
+export function backgroundById(id) {
+  return BACKGROUNDS.find((b) => b.id === id) || null;
+}
+
+/* The non-combat skills, each wired to a system that already exists —
+ * a rank that changes no number on any screen is a lie with a name. */
+export const SKILLS = [
+  { id: 'haggle', name: 'Haggle', max: 4,
+    desc: 'The town’s prices bend: cheaper to buy, dearer to sell, per rank.' },
+  { id: 'lore', name: 'Lore', max: 4,
+    desc: 'A chance per rank to read an unidentified find the moment you take it.' },
+  { id: 'fieldcraft', name: 'Fieldcraft', max: 4,
+    desc: 'Hidden doors give themselves up sooner under your hands.' },
+  { id: 'mending', name: 'Mending', max: 4,
+    desc: 'Resting closes wounds nothing else reaches — the whole company’s, at the best mender’s rank.' },
+];
+
+export function skillById(id) {
+  return SKILLS.find((s) => s.id === id) || null;
+}
+
 export const ABILITIES = [
   /* Fighter */
   { cls: 'fighter', level: 1, id: 'cleave', name: 'Cleave', kind: 'passive', description: 'Your blade carries: slaying a foe grants one bonus attack this turn.' },

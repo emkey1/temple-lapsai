@@ -12,7 +12,7 @@
  * these functions decide.
  */
 
-import { getItemTemplate, CLASSES } from './base.js';
+import { getItemTemplate, CLASSES, BACKGROUNDS } from './base.js';
 import { deepItem } from './dice.js';
 import { PACK_LIMIT, makePlayer, initialStats } from './engine.js';
 
@@ -29,6 +29,17 @@ export const PARTY_LIMIT = 4;
 
 /* What is on the shelf. It grows with the expedition's standing: the deeper
  * the world knows you have been, the better the Provisioner's suppliers. */
+/* Haggle bends every counter in town: buying cheaper, selling dearer, the
+ * Lector's fees trimmed — six percent a rank, from whoever in the company
+ * haggles best, because the best mouth does the talking. */
+export function haggleRank(game) {
+  const members = game.livingMembers ? game.livingMembers() : [game.state.player];
+  return Math.max(...members.map((m) => (m && m.skills && m.skills.haggle) || 0), 0);
+}
+
+function buyCut(game) { return 1 - 0.06 * haggleRank(game); }
+function sellLift(game) { return 1 + 0.08 * haggleRank(game); }
+
 export function shopStock(game) {
   const p = game.state.player;
   const slain = p ? Object.keys(p.bossesSlain || {}).filter((k) => p.bossesSlain[k]).length : 0;
@@ -38,7 +49,7 @@ export function shopStock(game) {
   return ids
     .map((id) => getItemTemplate(id))
     .filter(Boolean)
-    .map((t) => ({ id: t.id, name: t.name, price: Math.max(1, (t.value || 1) * PRICES.buyMarkup) }));
+    .map((t) => ({ id: t.id, name: t.name, price: Math.max(1, Math.round((t.value || 1) * PRICES.buyMarkup * buyCut(game))) }));
 }
 
 export function buyItem(game, id) {
@@ -66,15 +77,15 @@ export function apparentValue(it) {
   return it.value || 1;
 }
 
-export function sellPrice(it) {
-  return Math.max(1, Math.floor(apparentValue(it) * PRICES.sellShare));
+export function sellPrice(it, game) {
+  return Math.max(1, Math.floor(apparentValue(it) * PRICES.sellShare * (game ? sellLift(game) : 1)));
 }
 
 export function sellItem(game, it) {
   const p = game.state.player;
   const idx = p.inventory.indexOf(it);
   if (idx < 0) { game.log('You are not carrying that.'); return false; }
-  const paid = sellPrice(it);
+  const paid = sellPrice(it, game);
   p.inventory.splice(idx, 1);
   game.unbindItem(it);
   p.gold = (p.gold || 0) + paid;
@@ -95,11 +106,20 @@ export function knownCurses(game) {
     .filter((it) => it && it.cursed && it.identified !== false);
 }
 
+export function identifyCost(game) {
+  return Math.max(1, Math.round(PRICES.identify * buyCut(game)));
+}
+
+export function unbindCost(game) {
+  return Math.max(1, Math.round(PRICES.unbind * buyCut(game)));
+}
+
 export function identifyItem(game, it) {
   const p = game.state.player;
+  const fee = identifyCost(game);
   if (!it || it.identified !== false) { game.log('There is nothing unread about it.'); return false; }
-  if ((p.gold || 0) < PRICES.identify) { game.log('The Lector reads for ' + PRICES.identify + ' gold, and your purse says no.'); return false; }
-  p.gold -= PRICES.identify;
+  if ((p.gold || 0) < fee) { game.log('The Lector reads for ' + fee + ' gold, and your purse says no.'); return false; }
+  p.gold -= fee;
   game.revealItem(it);
   game.log('The Lector runs a thumb along the rune: ' + it.name + '.' + (it.cursed ? ' Best not to wear that.' : ''));
   return true;
@@ -107,9 +127,10 @@ export function identifyItem(game, it) {
 
 export function unbindCurse(game, it) {
   const p = game.state.player;
+  const fee = unbindCost(game);
   if (!it || !it.cursed) { game.log('Nothing has hold of that.'); return false; }
-  if ((p.gold || 0) < PRICES.unbind) { game.log('Unbinding costs ' + PRICES.unbind + ' gold, and your purse says no.'); return false; }
-  p.gold -= PRICES.unbind;
+  if ((p.gold || 0) < fee) { game.log('Unbinding costs ' + fee + ' gold, and your purse says no.'); return false; }
+  p.gold -= fee;
   game.revealItem(it);
   it.cursed = false;
   game.log('The Lector speaks the loosening words over the ' + it.name + '. It is only a thing again.');
@@ -153,6 +174,12 @@ export function hireMember(game, clsId) {
   const used = new Set(party.members.map((m) => m && m.name));
   const name = MUSTER_NAMES.find((n) => !used.has(n)) || 'Hireling';
   const b = makePlayer(name, clsId, initialStats(clsId));
+  /* A hireling walks in with a past of their own — picked by their name,
+   * so the same name always carries the same story — and arrives with
+   * their learning unspent, for whoever pays to direct. */
+  let h = 0;
+  for (const ch of name + clsId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  game.applyBackground(b, BACKGROUNDS[h % BACKGROUNDS.length].id);
   /* Seasoned to the leader's level, using the same growth everyone else
    * gets — and dressed for it: weapon, armour off the class ladder, and a
    * shield where the calling carries one. A hire without the basic loadout

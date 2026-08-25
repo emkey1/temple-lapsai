@@ -3,7 +3,10 @@
  */
 
 import { Game, rollStats, initialStats, PACK_LIMIT } from './engine.js';
-import { CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon } from './base.js';
+import {
+  CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon,
+  BACKGROUNDS, backgroundById, SKILLS, skillById,
+} from './base.js';
 import { T, W, H } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
@@ -19,7 +22,7 @@ import { ISO, isoToScreen, screenToIso, diamondPath, paintOrder, makeViewTest } 
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
-  musterRoster, hireMember,
+  identifyCost, unbindCost, musterRoster, hireMember,
 } from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
 import {
@@ -191,6 +194,7 @@ function viewedMember(g) {
   return g.state.player;
 }
 let selClass = 'fighter';
+let selBackground = 'unremarked';
 let rolled = null;
 let initializing = false;
 
@@ -437,7 +441,7 @@ function showShop(g) {
     '<button data-buy="' + esc(r.id) + '"' + ((p.gold || 0) < r.price ? ' disabled' : '') + '>BUY · ' + r.price + ' gp</button></div>').join('');
   const goods = (p.inventory || []).map((it, i) =>
     '<div class="eq-row"><span class="i-name' + (it.cursed && it.identified !== false ? ' cursed' : '') + '">' + esc(it.name) + '</span>' +
-    '<button data-sell="' + i + '">SELL · ' + sellPrice(it) + ' gp</button></div>').join('');
+    '<button data-sell="' + i + '">SELL · ' + sellPrice(it, g) + ' gp</button></div>').join('');
   const box = townCard('shop-card', 'THE PROVISIONER',
     'Shelves of what the dungeon is stingy with, and a scale that weighs what you hauled up.',
     purseLine(g) +
@@ -492,10 +496,10 @@ function showSage(g) {
   const rows =
     unread.map((it, i) =>
       '<div class="eq-row"><span class="i-name mag">' + esc(it.name) + '</span>' +
-      '<button data-read="' + i + '">READ · ' + PRICES.identify + ' gp</button></div>').join('') +
+      '<button data-read="' + i + '">READ · ' + identifyCost(g) + ' gp</button></div>').join('') +
     cursed.map((it, i) =>
       '<div class="eq-row"><span class="i-name cursed">' + esc(it.name) + '</span>' +
-      '<button data-unbind="' + i + '">UNBIND · ' + PRICES.unbind + ' gp</button></div>').join('');
+      '<button data-unbind="' + i + '">UNBIND · ' + unbindCost(g) + ' gp</button></div>').join('');
   const box = townCard('sage-card', 'THE LECTOR',
     'A reader of runes who has outlived four of the things people brought in to be read.',
     purseLine(g) +
@@ -538,6 +542,35 @@ function paintClassPicker() {
   }
 }
 
+/* Who you were before the stairs: every past trades something away, and
+ * the card says exactly what. */
+function bgLine(bg) {
+  const adj = Object.entries(bg.statAdj || {})
+    .map(([k, v]) => k.toUpperCase() + ' ' + (v > 0 ? '+' : '') + v).join(', ');
+  const perk = bg.perks.skill ? '+1 ' + (skillById(bg.perks.skill) || {}).name
+    : bg.perks.sight ? 'sees further'
+    : bg.perks.goldMul ? 'finds more coin'
+    : bg.perks.regen ? 'mends quicker'
+    : bg.perks.undeadResist ? 'the unhallowed bite shallower'
+    : '';
+  return [adj, perk].filter(Boolean).join(' · ');
+}
+
+function paintBgPicker() {
+  const box = document.getElementById('bg-picker');
+  if (!box) return;
+  box.innerHTML = '';
+  for (const bg of BACKGROUNDS) {
+    const el = document.createElement('div');
+    el.className = 'class-opt' + (bg.id === selBackground ? ' sel' : '');
+    const line = bgLine(bg);
+    el.innerHTML = '<b>' + bg.name + '</b>' + (line ? ' <span class="tiny">' + line + '</span>' : '') +
+      '<div class="d">' + bg.blurb + '</div>';
+    el.onclick = () => { selBackground = bg.id; paintBgPicker(); };
+    box.appendChild(el);
+  }
+}
+
 function paintAttrs() {
   const c = CLASSES[selClass] || CLASSES.fighter;
   const eff = rolled ? appliedStats(rolled, selClass) : initialStats(selClass);
@@ -564,6 +597,7 @@ function beginCreate() {
   charId = null;
   rolled = rollStats();
   paintClassPicker();
+  paintBgPicker();
   paintAttrs();
   els.charName.value = '';
   overlayShow(els.charcreate);
@@ -576,7 +610,7 @@ function doEnter() {
   const eff = appliedStats(rolled, selClass);
   overlayHideAll();
   const g = makeGame();
-  g.foundAdventurer(name, selClass, eff);
+  g.foundAdventurer(name, selClass, eff, selBackground);
   logLine('The shadows part for ' + name + ', a ' + CLASSES[selClass].name + ' of the expedition.', 'good');
   startGame(g);
   saveGame();
@@ -1895,6 +1929,8 @@ function renderStats(g) {
   const kv = (k, v) => rows += '<tr><td class="k">' + k + '</td><td class="v">' + v + '</td></tr>';
   kv('Name', esc(p.name));
   kv('Class', c.name + ' (' + c.glyph + ')');
+  const bg = backgroundById(p.background);
+  if (bg) kv('Background', esc(bg.name));
   kv('Level', p.level);
   kv('XP', p.xp + ' / next ' + toNext);
   kv('Gold', p.gold + ' gp');
@@ -1915,10 +1951,31 @@ function renderStats(g) {
       '<tr><td class="k">' + KEY[k] + '</td><td class="v">' + eff[k] + ' <span style="color:var(--amb-dim)">' +
       (abilityMod(eff[k]) >= 0 ? '+' : '') + abilityMod(eff[k]) + '</span></td></tr>').join('') +
     '</table>';
+  /* THE SKILLS: what a level teaches outside of fighting. The [+] spends
+   * the viewed member's own unspent learning — theirs, not the leader's. */
+  const pts = p.skillPoints || 0;
+  els.statBlock.innerHTML += '<h3 class="pane">SKILLS' +
+    (pts > 0 ? ' <span class="tiny">' + pts + ' unspent</span>' : '') + '</h3>' +
+    '<table class="stats">' + SKILLS.map((s) => {
+      const rank = (p.skills && p.skills[s.id]) || 0;
+      const pips = '&#9679;'.repeat(rank) + '<span style="color:var(--ink-faint)">' + '&#9675;'.repeat(s.max - rank) + '</span>';
+      const plus = pts > 0 && rank < s.max ? ' <button class="mini" data-skill="' + s.id + '">+</button>' : '';
+      return '<tr title="' + esc(s.desc) + '"><td class="k">' + esc(s.name) + '</td><td class="v">' + pips + plus + '</td></tr>';
+    }).join('') + '</table>';
   const buffs = buffLines(p);
   if (buffs.length) {
     els.statBlock.innerHTML += '<h3 class="pane">EFFECTS</h3>' + buffs.map((b) => '<div class="ability-card">' + b + '</div>').join('');
   }
+  /* Handlers attach after the LAST innerHTML write — every += above this
+   * line rebuilds the DOM and silently orphans anything bound earlier. */
+  els.statBlock.querySelectorAll('[data-skill]').forEach((b) => {
+    b.onclick = () => {
+      if (!game) return;
+      game.spendSkillPoint(p, b.dataset.skill);
+      renderStats(game);
+      saveGame();
+    };
+  });
   const own = p === g.state.player;
   els.abilitiesBlock.innerHTML = '<h3 class="pane">POWERS' + (own ? ' (keys 1-' + g.allAbilities(p).length + ')' : ' <span class="tiny">' + esc(p.name) + '\u2019s — usable on their turn</span>') + '</h3>';
   g.allAbilities(p).forEach((a, i) => {

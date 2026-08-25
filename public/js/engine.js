@@ -8,6 +8,7 @@ import {
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
   scaleDice, randomTreasureValue, getDungeon,
   healFractionForItem, healFractionForAbility, RECOVERY,
+  BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
 import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
@@ -174,6 +175,9 @@ export function makePlayer(name, clsId, stats) {
     equipment: { weapon: null, body: null, shield: null, ring: null, amulet: null },
     cooldowns: {},
     wounds: 0,
+    background: null,
+    skills: {},
+    skillPoints: 0,
     buffs: {},
     buffLevels: {},   /* magnitudes, kept out of p.buffs, which is all countdowns */
     bossesSlain: {},
@@ -407,16 +411,26 @@ export class Game {
     if (c.powerPerInt) maxp += abilityMod(eff.int);
     if (c.powerPerChr) maxp += abilityMod(eff.cha);
     if (p.level > 1) maxp += (p.level - 1) * 2;
+    /* The past rides along: a background's perks are worn for life, the
+     * way Arcanum wore them. */
+    const bg = backgroundById(p.background);
+    const perks = (bg && bg.perks) || {};
     return {
       effValues: eff,
-      toHit, ac, dmg, crit, regen,
-      resist, undeadResist, luck,
+      toHit,
+      ac,
+      dmg,
+      crit,
+      regen: regen + (perks.regen || 0),
+      resist: resist + (perks.resist || 0),
+      undeadResist: undeadResist + (perks.undeadResist || 0),
+      luck: luck + (perks.luck || 0),
       powerRegen: Math.min(MAX_COMBAT_PWR_REGEN, powerRegen),
       focusPower: Math.min(MAX_FOCUS_POWER, focusPower),
       sanctuary: (p.buffs && p.buffs.sanctuary > 0) || false,
       seeSecrets: !!seeSecrets,
       maxpower: Math.max(1, maxp),
-      sight: 9,
+      sight: 9 + (perks.sight || 0),
     };
   }
 
@@ -536,8 +550,48 @@ export class Game {
     return b;
   }
 
-  foundAdventurer(name, clsId, stats) {
+  /* A past is applied at the door: the stat trade bakes into the rolled
+   * stats, a taught skill arrives as a free rank, and the perks ride
+   * derived() for as long as the character lives. */
+  applyBackground(b, backgroundId) {
+    const bg = backgroundById(backgroundId);
+    if (!bg) return b;
+    b.background = bg.id;
+    for (const k of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+      if (bg.statAdj[k]) b.stats[k] = Math.max(3, Math.min(18, b.stats[k] + bg.statAdj[k]));
+    }
+    if (bg.perks.skill) b.skills[bg.perks.skill] = 1;
+    /* A constitution traded at the door must reach the health it feeds. */
+    if (bg.statAdj.con) {
+      const c = CLASSES[b.cls] || CLASSES.fighter;
+      b.maxhp = c.hpBase + Math.max(1, Math.max(1, c.hpDie + abilityMod(b.stats.con)));
+      b.hp = b.maxhp;
+    }
+    return b;
+  }
+
+  skillRank(member, id) {
+    const m = member || this.state.player;
+    return (m && m.skills && m.skills[id]) || 0;
+  }
+
+  spendSkillPoint(member, id) {
+    const m = member || this.state.player;
+    const s = skillById(id);
+    if (!m || !s) return false;
+    if ((m.skillPoints || 0) < 1) { this.log('No unspent learning.'); return false; }
+    const rank = this.skillRank(m, id);
+    if (rank >= s.max) { this.log(s.name + ' has no further to go.'); return false; }
+    m.skills[id] = rank + 1;
+    m.skillPoints--;
+    this.log((m === this.state.player ? 'You sharpen ' : m.name + ' sharpens ') + s.name + ' to rank ' + (rank + 1) + '.');
+    if (this.ui.refreshStats) this.ui.refreshStats(this);
+    return true;
+  }
+
+  foundAdventurer(name, clsId, stats, backgroundId) {
     this.state.player = makePlayer(name, clsId, stats);
+    this.applyBackground(this.state.player, backgroundId);
     this.outfitMember(this.state.player, 1);
     this.state.player.maxpower = this.computeMaxPower();
     this.state.player.power = this.state.player.maxpower;
@@ -552,7 +606,8 @@ export class Game {
   goldMul() {
     const p = this.state.player;
     const c = (p && CLASSES[p.cls]) || CLASSES.fighter;
-    return c.goldMul || 1;
+    const bg = p && backgroundById(p.background);
+    return (c.goldMul || 1) + ((bg && bg.perks.goldMul) || 0);
   }
 
   maxHp() {
@@ -1064,6 +1119,15 @@ export class Game {
       turns++;
     }
     if (turns) this.log('You sit against the stone for a while. (' + turns + ' turns)');
+    /* Mending: the best mender in the company closes wounds nothing else
+     * reaches, for everyone, once per sit-down. This is the skill's whole
+     * promise — wounds were the one number resting could not touch. */
+    const mender = Math.max(...this.livingMembers().map((m) => this.skillRank(m, 'mending')), 0);
+    if (mender > 0) {
+      let closed = 0;
+      for (const m of this.livingMembers()) closed += this.mendWounds(mender, m);
+      if (closed) this.log('Practiced hands close what sitting cannot: ' + closed + ' wound' + (closed === 1 ? '' : 's') + ' mended.');
+    }
     if (p.wounds > 0) {
       this.log('You have rested all you can. What is left of this needs mending, not sitting — ' +
         p.wounds + ' hit points beyond your reach.');
@@ -1252,7 +1316,9 @@ export class Game {
     if (!p || !floor || floor.tiles[y][x] !== T.SECRET) return false;
     if (this.derived().seeSecrets) { this.revealSecretAt(x, y); return true; }
     const keen = this.passives().some((a) => a.findsSecrets);
-    const odds = Math.min(0.85, (keen ? 0.35 : 0.12) + p.level * 0.03);
+    /* Fieldcraft: hidden doors give themselves up sooner under practiced
+     * hands — a tenth per rank, on top of whatever the calling knows. */
+    const odds = Math.min(0.9, (keen ? 0.35 : 0.12) + p.level * 0.03 + this.skillRank(p, 'fieldcraft') * 0.10);
     if (!this.rngOfTurn().chance(odds)) {
       this.log('You run your hands over the stone and find nothing — yet.');
       return true;   /* the search itself costs the turn */
@@ -1443,6 +1509,15 @@ export class Game {
       return false;
     }
     p.inventory.push(it);
+    /* Lore: a chance per rank that the thing is recognised the moment it is
+     * lifted — the label read on the spot instead of at the Lector's fee. */
+    if (it.identified === false) {
+      const lore = Math.max(...this.livingMembers().map((m) => this.skillRank(m, 'lore')), 0);
+      if (lore > 0 && this.rngOfTurn().chance(0.15 * lore)) {
+        this.revealItem(it);
+        this.log('A practiced eye knows it at once: ' + it.name + '.');
+      }
+    }
     const idk = !it.identified ? ' unknown' : '';
     this.uiLog((me ? 'You take: ' : p.name + ' takes: ') + it.name + idk + '.');
     return true;
@@ -1612,6 +1687,9 @@ export class Game {
   levelUp(who) {
     const p = who || this.state.player;
     p.level++;
+    /* A level teaches one thing outside of fighting, spent where its owner
+     * chooses — the Arcanum point, one a level, no banking limit. */
+    p.skillPoints = (p.skillPoints || 0) + 1;
     const c = CLASSES[p.cls] || CLASSES.fighter;
     const hpGain = this.rngOfTurn().d(Math.max(2, c.hpDie)) + Math.max(0, abilityMod(p.stats.con));
     p.maxhp += Math.max(1, hpGain);
@@ -3100,6 +3178,16 @@ export class Game {
       if (!p.buffLevels) p.buffLevels = {};
       if (!p.beatsSeen) p.beatsSeen = {};
       if (!p.npcsMet) p.npcsMet = {};
+      /* Characters from before the Arcanum turn: no background to invent
+       * for them, but the learning their levels earned is owed in full. */
+      for (const m of (this.state.party && this.state.party.members) || []) {
+        if (!m) continue;
+        if (!m.skills) m.skills = {};
+        if (!Number.isFinite(m.skillPoints)) {
+          m.skillPoints = Math.max(0, (m.level || 1) - 1);
+          if (m.skillPoints > 0) this.log((m.name || 'A member') + ' has ' + m.skillPoints + ' unspent learning — the stat sheet takes it.');
+        }
+      }
       /* A class whose base health was raised should raise it for the character
        * who reported the problem, not only for freshly rolled ones. */
       const c = CLASSES[p.cls];
