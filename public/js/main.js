@@ -1382,7 +1382,7 @@ function drawIsoGround(g, t, tset, theme, sa) {
     /* the theme's cast, so eleven dungeons do not share one grey floor */
     fillDiamond(ctx, ax, ay, theme.floor, 0.18);
   }
-  if (!vis) fillDiamond(ctx, ax, ay, '#000000', 0.55);
+  if (!vis) fillDiamond(ctx, ax, ay, '#000000', 0.38);
   if (tile === T.DOWN || tile === T.UP) {
     ctx.fillStyle = vis ? theme.accent : shade(theme.accent, 0.6);
     ctx.fillText(tile === T.DOWN ? '>' : '<', ax, ay);
@@ -1432,31 +1432,57 @@ function wallPieceId(vocab, g, t) {
   return null;
 }
 
-function drawIsoWall(g, t, tile, theme, sa, tset) {
+/* How tall a wall stands when it is cut down: enough to read as a wall
+ * stump under any light, never enough to hide a tile of floor. */
+const STUB_H = 13;
+
+function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
   const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
   const { sx, sy } = isoToScreen(t.x, t.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   const ctx = els.ctx;
   const door = tile === T.DOOR_C;
+  /* THE CUT WALL. Not removed, not turned to glass — cut down to a stub,
+   * the way ToEE actually did it. Removal left black voids nobody could
+   * read as anything ("cannot tell what is going on, or which direction I
+   * can walk" — the playtest, verbatim), and glass stacked into milk where
+   * pieces overlapped. A stub is opaque, short, and honest: wall here,
+   * room behind it, floor everywhere the stub is not. */
+  if (stub && !door) {
+    const f = vis ? 1 : 0.55;
+    drawPrism(ctx, ax, ay, STUB_H,
+      shade(theme.wallHi, 1.2 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+    if (tile === T.SECRET && vis && sa === 0) {
+      ctx.fillStyle = theme.accent;
+      ctx.fillText('+', ax, ay - STUB_H);
+    }
+    return;
+  }
   if (!door && tset) {
     const vocab = WALL_VOCAB[tset.name];
     if (vocab) {
       const id = wallPieceId(vocab, g, t);
-      if (id === null) return;   /* a near wall, cut away */
-      const r = tset.def.tiles[id];
-      if (r) {
-        const ga = ctx.globalAlpha;   /* the ghost cutaway may already hold it */
-        /* Unlit stone fades well down: a dim wall must read as a faint
-         * memory, never as a solid black slab over a passage. */
-        ctx.globalAlpha = ga * (vis ? 1 : 0.30);
-        ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
-        ctx.globalAlpha = ga;
-        if (tile === T.SECRET && vis && sa === 0) {
-          ctx.fillStyle = theme.accent;
-          ctx.fillText('+', ax, ay - ISO.WALL_H);
+      if (id !== null) {
+        const r = tset.def.tiles[id];
+        if (r) {
+          const ga = ctx.globalAlpha;
+          /* Unlit stone dims but stays legible: walls are the shape of the
+           * map, and the floor's own darkness already says "not lit". */
+          ctx.globalAlpha = ga * (vis ? 1 : 0.5);
+          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
+          ctx.globalAlpha = ga;
+          if (tile === T.SECRET && vis && sa === 0) {
+            ctx.fillStyle = theme.accent;
+            ctx.fillText('+', ax, ay - ISO.WALL_H);
+          }
+          return;
         }
-        return;
       }
+      /* No visible face from this side: the stub again, never a void. */
+      const f = vis ? 1 : 0.55;
+      drawPrism(ctx, ax, ay, STUB_H,
+        shade(theme.wallHi, 1.2 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+      return;
     }
   }
   const h = door ? Math.round(ISO.WALL_H * 0.72) : ISO.WALL_H;
@@ -1548,18 +1574,16 @@ function renderIsoScene(g, sa) {
   /* Walls that would hide a member of the company turn to glass instead —
    * the ToEE cutaway. The cone: anything standing up to four rows in front
    * of a body and within two files of it. */
-  /* The cutaway, computed as occlusion rather than guessed as a cone: every
-   * wall piece tall enough to stand between the camera and any floor the
-   * party can currently SEE turns to glass. The depth of that shadow comes
-   * from the art itself — how many screen rows a piece's height reaches
-   * back over. Lit passages and the company on them stay in view; the
-   * remembered-but-dark parts of the map keep their solid walls, because
-   * nothing is happening there. */
+  /* The cutaway, computed as occlusion: every wall piece tall enough to
+   * stand between the camera and any floor the party has SEEN is cut down
+   * to a stub. The depth of the shadow comes from the art itself — how many
+   * screen rows a piece's height reaches back over. Explored ground stays
+   * legible everywhere; the walls the camera looks at from the north keep
+   * their full carved height, because they hide nothing. */
   const rise = (tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].rise) || ISO.WALL_H;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   const shadow = new Set();
   for (const t of seenTiles) {
-    if (!(g.vis[t.y] && g.vis[t.y][t.x])) continue;
     const tt = floor.tiles[t.y][t.x];
     if (tt === T.WALL || tt === T.SECRET) continue;
     const sum = t.x + t.y, diff = t.x - t.y;
@@ -1608,11 +1632,15 @@ function renderIsoScene(g, sa) {
       }
     }
     if (faces) {
-      const ghost = ghosts(t.x, t.y);
+      const stub = ghosts(t.x, t.y);
+      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, tset, stub) });
+    } else {
+      /* The interior of a wall mass: no face to show, but a hole would lie.
+       * A dark cap at stub height reads as what it is — solid rock. */
+      const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
       standers.push({ x: t.x, y: t.y, draw: () => {
-        if (ghost) ctx.globalAlpha = 0.35;
-        drawIsoWall(g, t, tile, theme, sa, tset);
-        ctx.globalAlpha = 1;
+        const a = isoToScreen(t.x, t.y);
+        fillDiamond(ctx, a.sx - isoCamX, a.sy - isoCamY - STUB_H, shade(theme.wall, vis ? 0.32 : 0.2));
       } });
     }
   }
