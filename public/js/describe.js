@@ -82,6 +82,7 @@ export function itemEffectLines(it, ctx) {
   if (fx.removeCurse) out.push('lifts every curse you carry');
   if (fx.identify) out.push('names everything you carry');
   if (fx.teleport) out.push('throws you somewhere else on this floor');
+  if (fx.recall) out.push('carries the company home to the Whetstone — not mid-fight');
   if (fx.map) out.push('draws the whole floor, secrets and all');
   if (fx.flame) out.push('burns the nearest foe for ' + dieText(fx.flame));
   if (fx.sanctuary) out.push('the dark forgets you for ' + fx.sanctuary + ' turns');

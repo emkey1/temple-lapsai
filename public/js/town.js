@@ -43,7 +43,7 @@ function sellLift(game) { return 1 + 0.08 * haggleRank(game); }
 export function shopStock(game) {
   const p = game.state.player;
   const slain = p ? Object.keys(p.bossesSlain || {}).filter((k) => p.bossesSlain[k]).length : 0;
-  const ids = ['potion-heal', 'potion-power', 'scroll-identify'];
+  const ids = ['potion-heal', 'potion-power', 'scroll-identify', 'scroll-recall'];
   if (slain >= 1) ids.push('potion-major-heal', 'scroll-remove-curse');
   if (slain >= 2) ids.push('scroll-sanctuary', 'potion-remove-curse');
   return ids
@@ -81,13 +81,16 @@ export function sellPrice(it, game) {
   return Math.max(1, Math.floor(apparentValue(it) * PRICES.sellShare * (game ? sellLift(game) : 1)));
 }
 
-export function sellItem(game, it) {
+/* `owner` is whichever member's pack the goods leave; the coin lands in the
+ * purse at the counter — the one every shop price is quoted against. */
+export function sellItem(game, it, owner) {
   const p = game.state.player;
-  const idx = p.inventory.indexOf(it);
-  if (idx < 0) { game.log('You are not carrying that.'); return false; }
+  const from = owner || p;
+  const idx = from.inventory.indexOf(it);
+  if (idx < 0) { game.log((from === p ? 'You are' : from.name + ' is') + ' not carrying that.'); return false; }
   const paid = sellPrice(it, game);
-  p.inventory.splice(idx, 1);
-  game.unbindItem(it);
+  from.inventory.splice(idx, 1);
+  game.unbindItem(it, from);
   p.gold = (p.gold || 0) + paid;
   game.log('Sold: ' + it.name + ', for ' + paid + ' gold.');
   return true;

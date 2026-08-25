@@ -681,7 +681,13 @@ export class Game {
     } else {
       if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (this.state.player.floorIdx + 1) + '/' + d.floors);
     }
-    this.loadFloor(0);
+    /* The mouth remembers. Monsters do not respawn, so the floors above your
+     * deepest mark are swept corridors and nothing else — the stairs take you
+     * straight back to where the work stopped. Climbing UP still walks. */
+    const p = this.state.player;
+    const known = Math.min((p.deepest && p.deepest[id]) || 0, d.floors - 1);
+    if (known > 0) this.log('The upper halls are swept and the stairs are known — you descend to floor ' + (known + 1) + '.');
+    this.loadFloor(known);
   }
 
   /* `arriveAt` says which end of the floor you come in at:
@@ -931,7 +937,7 @@ export class Game {
    * dying. One is guaranteed; the rest is chance. */
   pickConsumable(floorIdx, rng) {
     const shallow = ['potion-heal', 'potion-heal', 'potion-power'];
-    const deep = ['potion-heal', 'potion-major-heal', 'potion-power', 'scroll-sanctuary'];
+    const deep = ['potion-heal', 'potion-major-heal', 'potion-power', 'scroll-sanctuary', 'scroll-recall'];
     const pool = floorIdx >= 2 ? deep : shallow;
     const tpl = this.itemTemplate(rng.pick(pool)) || this.itemTemplate('potion-heal');
     return deepItem(tpl);
@@ -2886,6 +2892,7 @@ export class Game {
     else if (fx.map) { this.revealSecrets(); this.mapRevealed = true; this.log('Ghost-lines crawl across the floor map.'); }
     else if (fx.flame) { this.scrollFlame(fx.flame); }
     else if (fx.sanctuary) { p.buffs.sanctuary = fx.sanctuary; this.log('For a while, the dark forgets your name.'); }
+    else if (fx.recall) { if (!this.scrollRecall()) return false; }
     else { this.log('It does nothing you can perceive.'); }
     const idx = p.inventory.indexOf(item);
     if (idx >= 0) p.inventory.splice(idx, 1);
@@ -3176,6 +3183,18 @@ export class Game {
     this.log(n ? 'The curses slip away like sweat (' + n + ').' : 'Nothing is bound to you.');
   }
 
+  /* THE WAY HOME. Climbing out by the stairs is walking the same emptied
+   * halls twice — monsters do not respawn, so the trip up is pure toll.
+   * Refusals follow the refused-draught law: no scroll spent, no turn. */
+  scrollRecall() {
+    if (this.inTown()) { this.log('You are already under the Whetstone’s lamps.'); return false; }
+    if (!this.outOfCombat()) { this.log('Not with something awake this close.'); return false; }
+    const p = this.state.player;
+    this.log('The words lift off the page and take the company with them.');
+    this.enterTown(p.dungeonId);
+    return true;
+  }
+
   teleportRandom() {
     const p = this.state.player;
     const floor = this.currentFloor;
@@ -3251,6 +3270,11 @@ export class Game {
         if (!Number.isFinite(m.skillPoints)) {
           m.skillPoints = Math.max(0, (m.level || 1) - 1);
           if (m.skillPoints > 0) this.log((m.name || 'A member') + ' has ' + m.skillPoints + ' unspent learning — the stat sheet takes it.');
+        }
+        /* The blink scroll gave up the name 'Recall' to the scroll that goes
+         * home; copies already in a pack take the new name with them. */
+        for (const it of m.inventory || []) {
+          if (it && it.id === 'scroll-teleport' && it.name === 'Scroll of Recall') it.name = 'Scroll of Blinking';
         }
       }
       /* A class whose base health was raised should raise it for the character

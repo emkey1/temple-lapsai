@@ -436,26 +436,63 @@ function showCamp(g) {
   box.querySelector('[data-town-back]').onclick = () => { overlayHideAll(); box.remove(); g.loadFloor(g.state.player.floorIdx, 'keep'); };
 }
 
-function showShop(g) {
+function showShop(g, sellIdx) {
   const p = g.state.player;
+  const party = g.state.party.members;
+  if (sellIdx === undefined || !party[sellIdx]) sellIdx = Math.max(0, party.indexOf(p));
+  const seller = party[sellIdx];
   const stock = shopStock(g).map((r) =>
     '<div class="eq-row"><span class="i-name">' + esc(r.name) + '</span>' +
     '<button data-buy="' + esc(r.id) + '"' + ((p.gold || 0) < r.price ? ' disabled' : '') + '>BUY · ' + r.price + ' gp</button></div>').join('');
-  const goods = (p.inventory || []).map((it, i) =>
-    '<div class="eq-row"><span class="i-name' + (it.cursed && it.identified !== false ? ' cursed' : '') + '">' + esc(it.name) + '</span>' +
-    '<button data-sell="' + i + '">SELL · ' + sellPrice(it, g) + ' gp</button></div>').join('');
+  /* Whose pack is on the scale: any member's, the fallen included — their
+   * gear travels with the company. The coin still lands in the purse at
+   * the counter. */
+  const chips = party.map((m, i) => m
+    ? '<button class="mini" data-seller="' + i + '"' + (i === sellIdx ? ' disabled' : '') +
+      ' style="color:' + partyTint(i) + ';border-color:' + partyTint(i) + '">' +
+      esc(m.name) + (m.hp > 0 ? '' : ' †') + '</button>'
+    : '').join(' ');
+  /* Grouped like the pack: eight healing draughts are one row — sell one,
+   * or the lot at once. Same stack key means same price, so the lot is
+   * plain multiplication. */
+  const groups = stackInventory(seller.inventory || []);
+  const goods = groups.map((grp, gi) => {
+    const it = grp.item, n = grp.indices.length;
+    const price = sellPrice(it, g);
+    return '<div class="eq-row"><span class="i-name' + (it.cursed && it.identified !== false ? ' cursed' : '') + '">' +
+      esc(it.name) + (n > 1 ? ' <span class="tiny">×' + n + '</span>' : '') + '</span>' +
+      '<span><button data-sell="' + gi + '">SELL' + (n > 1 ? ' 1' : '') + ' · ' + price + ' gp</button>' +
+      (n > 1 ? ' <button data-sell-all="' + gi + '">ALL · ' + (price * n) + ' gp</button>' : '') + '</span></div>';
+  }).join('');
   const box = townCard('shop-card', 'THE PROVISIONER',
     'Shelves of what the dungeon is stingy with, and a scale that weighs what you hauled up.',
     purseLine(g) +
     '<h3 class="pane">FOR SALE</h3><div class="scrolly" style="max-height:170px">' + stock + '</div>' +
-    '<h3 class="pane">YOUR GOODS</h3><div class="scrolly" style="max-height:170px">' +
-      (goods || '<div class="tiny">You carry nothing worth weighing.</div>') + '</div>',
+    '<h3 class="pane">GOODS ' + (party.length > 1 ? '<span class="tiny">from the pack of</span> ' + chips : '') + '</h3>' +
+    '<div class="scrolly" style="max-height:170px">' +
+      (goods || '<div class="tiny">' + (seller === p ? 'You carry' : esc(seller.name) + ' carries') + ' nothing worth weighing.</div>') + '</div>',
     'BACK TO THE STREET', npcPortrait('provisioner', 'female'));
   box.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-buy]');
-    if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g); return; }
+    if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g, sellIdx); return; }
+    const who = e.target.closest('[data-seller]');
+    if (who) { box.remove(); showShop(g, Number(who.dataset.seller)); return; }
+    const all = e.target.closest('[data-sell-all]');
+    if (all) {
+      const grp = stackInventory(seller.inventory || [])[Number(all.dataset.sellAll)];
+      if (grp) {
+        /* The objects first, then the selling — each sale reshuffles the
+         * indices under the group. */
+        for (const it of grp.indices.map((i) => seller.inventory[i])) sellItem(g, it, seller);
+      }
+      saveGame(); renderHud(g); box.remove(); showShop(g, sellIdx); return;
+    }
     const sell = e.target.closest('[data-sell]');
-    if (sell) { sellItem(g, p.inventory[Number(sell.dataset.sell)]); saveGame(); renderHud(g); box.remove(); showShop(g); }
+    if (sell) {
+      const grp = stackInventory(seller.inventory || [])[Number(sell.dataset.sell)];
+      if (grp) sellItem(g, grp.item, seller);
+      saveGame(); renderHud(g); box.remove(); showShop(g, sellIdx);
+    }
   });
   box.querySelector('[data-town-back]').onclick = () => {
     box.remove();

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
 import { getItemTemplate } from '../public/js/base.js';
 import { deepItem, applyMagic, applyCurse } from '../public/js/dice.js';
-import { PACK_LIMIT } from '../public/js/engine.js';
+import { PACK_LIMIT, makePlayer, initialStats } from '../public/js/engine.js';
 import {
   PRICES, shopStock, buyItem, apparentValue, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
@@ -404,4 +404,85 @@ test('a thin purse sleeps outside', () => {
   p.gold = 1; p.hp = 3;
   assert.ok(!takeRoom(g));
   assert.equal(p.hp, 3, 'healed without paying');
+});
+
+/* ---- the way home, and the way back down ----
+ *
+ * "Climbing back up is tedious and pointless since monsters do not respawn."
+ * Both halves of the trip: a Scroll of Recall folds the company home, and
+ * the dungeon mouths remember your deepest floor so the return does not
+ * re-walk the swept halls either. */
+
+
+test('the scroll of recall folds the whole company home', () => {
+  const { g, p } = rig('t-recall');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  buddy.x = p.x + 1; buddy.y = p.y;
+  g.state.party.members.push(buddy);
+  p.inventory.push(deepItem(getItemTemplate('scroll-recall')));
+  const scroll = p.inventory[p.inventory.length - 1];
+  g.useItem(scroll);
+  assert.equal(p.dungeonId, TOWN_ID, 'the reader stayed below');
+  assert.equal(buddy.dungeonId, TOWN_ID, 'the company was left behind');
+  assert.ok(!p.inventory.includes(scroll), 'the scroll survived its own reading');
+});
+
+test('the scroll refuses a fight, and costs nothing refused', () => {
+  const { g, p } = rig('t-recall-fight');
+  g.currentFloor.monsters.push({
+    t: { id: 'w', name: 'Watcher', glyph: 'w', color: 'red', hpMax: 10, ac: 10, toHit: 0, damage: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0, props: [], speed: 1, aggroRange: 10 },
+    x: p.x + 1, y: p.y, hp: 10, maxhp: 10, boss: false, aggro: true,
+    toHit: 0, dmg: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0, ini: 1,
+  });
+  p.inventory.push(deepItem(getItemTemplate('scroll-recall')));
+  const scroll = p.inventory[p.inventory.length - 1];
+  g.useItem(scroll);
+  assert.notEqual(p.dungeonId, TOWN_ID, 'recalled out of a fight');
+  assert.ok(p.inventory.includes(scroll), 'the refused scroll was spent anyway');
+});
+
+test('read at home, the scroll knows better', () => {
+  const { g, p } = rig('t-recall-home');
+  g.enterTown(p.dungeonId);
+  p.inventory.push(deepItem(getItemTemplate('scroll-recall')));
+  const scroll = p.inventory[p.inventory.length - 1];
+  g.useItem(scroll);
+  assert.ok(p.inventory.includes(scroll), 'the scroll was wasted on a walk to the well');
+});
+
+test('the provisioner keeps the way home on the shelf from day one', () => {
+  const { g } = rig('t-recall-stock');
+  assert.ok(shopStock(g).map((r) => r.id).includes('scroll-recall'));
+});
+
+test('the mouths remember the deepest floor', () => {
+  const { g, p } = rig('t-mouth-deep');
+  p.deepest = { temple: 2 };
+  g.enterTown(p.dungeonId);
+  g.enterDungeon('temple');
+  assert.equal(p.floorIdx, 2, 'the mouth forgot, and floor ' + (p.floorIdx + 1) + ' is where you stand');
+});
+
+test('a companion’s goods sell from their pack into the purse at the counter', () => {
+  const { g, p } = rig('t-sell-owner');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  g.state.party.members.push(buddy);
+  const gem = deepItem(getItemTemplate('scroll-identify'));
+  buddy.inventory.push(gem);
+  const purse = p.gold;
+  assert.ok(sellItem(g, gem, buddy));
+  assert.ok(!buddy.inventory.includes(gem), 'the goods never left the porter’s pack');
+  assert.ok(p.gold > purse, 'the coin never reached the purse');
+});
+
+test('an old blink scroll takes its new name on the next load', () => {
+  const { g, p } = rig('t-blink-rename');
+  const old = deepItem(getItemTemplate('scroll-teleport'));
+  old.name = 'Scroll of Recall';   /* as saved before the rename */
+  p.inventory.push(old);
+  const raw = JSON.stringify(g.state);
+  const g2 = newGame('t-blink-rename-2', 'fighter');
+  g2.restore(JSON.parse(raw));
+  const held = g2.state.player.inventory.find((it) => it.id === 'scroll-teleport');
+  assert.equal(held && held.name, 'Scroll of Blinking', 'the stale name survived the load');
 });

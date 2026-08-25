@@ -461,7 +461,11 @@ export const basePotions = [
 export const baseScrolls = [
   makeItem('scroll-identify', 'Scroll of Identify', 'scroll', '?', 'gold', 30, 1, { identify: true }),
   makeItem('scroll-remove-curse', 'Scroll of Remove Curse', 'scroll', '?', 'cyan', 70, 3, { removeCurse: true }),
-  makeItem('scroll-teleport', 'Scroll of Recall', 'scroll', '?', 'violet', 60, 3, { teleport: true }),
+  /* Renamed from 'Scroll of Recall': it blinks you across the floor, and the
+   * name belongs to the scroll that actually takes you home. */
+  makeItem('scroll-teleport', 'Scroll of Blinking', 'scroll', '?', 'violet', 60, 3, { teleport: true }),
+  makeItem('scroll-recall', 'Scroll of Recall', 'scroll', '?', 'white', 50, 2, { recall: true },
+    'The way home, folded small. Read it below, and the Whetstone answers.'),
   makeItem('scroll-reveal', 'Scroll of Cartography', 'scroll', '?', 'brightgreen', 40, 2, { map: true }, 'Lines crawl to truth across the whole floor.'),
   makeItem('scroll-flame', 'Scroll of Flame Burst', 'scroll', '?', 'yellow', 50, 3, { flame: '3d6' }, 'Do not read aloud indoors.'),
   makeItem('scroll-sanctuary', 'Scroll of Sanctuary', 'scroll', '?', 'white', 55, 3, { sanctuary: 12 }, 'For a few quiet steps, the dark forgets you.'),
