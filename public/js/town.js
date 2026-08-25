@@ -228,6 +228,12 @@ export function hireMember(game, clsId) {
   b.x = leader.x;
   b.y = leader.y;
   leader.gold -= cost;
+  /* A hire signs on to the EXPEDITION: what fell, what was walked and how
+   * deep is the company's knowledge, and the new sheet carries it too. */
+  b.bossesSlain = { ...(leader.bossesSlain || {}) };
+  b.visitedDungeons = { ...(leader.visitedDungeons || {}) };
+  b.explored = { ...(leader.explored || {}) };
+  b.deepest = { ...(leader.deepest || {}) };
   party.members.push(b);
   if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
   game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');

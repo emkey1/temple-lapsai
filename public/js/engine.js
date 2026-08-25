@@ -674,7 +674,10 @@ export class Game {
     this.state.player.dungeonId = id;
     this.state.player.floorIdx = 0;
     if (!this.state.player.visitedDungeons[id]) {
-      this.state.player.visitedDungeons[id] = true;
+      this.markCompany((m2) => {
+        if (!m2.visitedDungeons) m2.visitedDungeons = {};
+        m2.visitedDungeons[id] = true;
+      });
       this.journal('The company first set foot in ' + d.name + '.');
       const arc = arcForDungeon(id);
       if (this.ui.showArrival) this.ui.showArrival(d);
@@ -747,8 +750,10 @@ export class Game {
     this.placeOnArrival(floor, arriveAt);
     this.placePartyAround(floor, p);
     p.pending = undefined;
-    if (!p.deepest) p.deepest = {};
-    p.deepest[d.id] = Math.max(p.deepest[d.id] || 0, floorIdx);
+    this.markCompany((m2) => {
+      if (!m2.deepest) m2.deepest = {};
+      m2.deepest[d.id] = Math.max(m2.deepest[d.id] || 0, floorIdx);
+    });
     this.seen = Array.from({ length: H }, () => Array(W).fill(false));
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
     this.restoreSeen(memo);   /* the map you drew stays drawn */
@@ -1729,8 +1734,12 @@ export class Game {
     const d = this.dungeonById(p.dungeonId);
     this.uiLog('The great ' + m.t.name + ' crashes down like a struck bell.');
     this.journal('The great ' + m.t.name + ' fell' + (d ? ', and ' + d.name + ' went quiet' : '') + '.');
-    p.bossesSlain[p.dungeonId] = true;
-    p.explored[p.dungeonId] = true;
+    this.markCompany((m2) => {
+      if (!m2.bossesSlain) m2.bossesSlain = {};
+      if (!m2.explored) m2.explored = {};
+      m2.bossesSlain[p.dungeonId] = true;
+      m2.explored[p.dungeonId] = true;
+    });
     this.fireBeats('boss', p.floorIdx);
     /* 'finish' was documented, written for, and never fired by anything. */
     this.fireBeats('finish', p.floorIdx);
@@ -2045,6 +2054,15 @@ export class Game {
     if (!party) return 0;
     const at = party.members.findIndex((m) => m && m.hp > 0);
     return at >= 0 ? at : 0;
+  }
+
+  /* Expedition knowledge — what fell, what was walked, how deep — belongs
+   * to the COMPANY, not to whichever member held the reins or landed the
+   * blow. Written to every sheet, so every reader agrees. */
+  markCompany(write) {
+    for (const m of (this.state.party && this.state.party.members) || []) {
+      if (m) write(m);
+    }
   }
 
   livingMembers() {
@@ -3464,6 +3482,27 @@ export class Game {
          * home; copies already in a pack take the new name with them. */
         for (const it of m.inventory || []) {
           if (it && it.id === 'scroll-teleport' && it.name === 'Scroll of Recall') it.name = 'Scroll of Blinking';
+        }
+      }
+      /* Expedition knowledge recorded before it was company-wide sits on
+       * whichever sheet was active at the time — the demon fell to the
+       * fighter and the town never heard. Pool it, and deal it back out. */
+      {
+        const members2 = (this.state.party && this.state.party.members) || [];
+        const pool = { bossesSlain: {}, visitedDungeons: {}, explored: {}, deepest: {} };
+        for (const m of members2) {
+          if (!m) continue;
+          Object.assign(pool.bossesSlain, m.bossesSlain || {});
+          Object.assign(pool.visitedDungeons, m.visitedDungeons || {});
+          Object.assign(pool.explored, m.explored || {});
+          for (const k in (m.deepest || {})) pool.deepest[k] = Math.max(pool.deepest[k] || 0, m.deepest[k]);
+        }
+        for (const m of members2) {
+          if (!m) continue;
+          m.bossesSlain = { ...pool.bossesSlain };
+          m.visitedDungeons = { ...pool.visitedDungeons };
+          m.explored = { ...pool.explored };
+          m.deepest = { ...pool.deepest };
         }
       }
       /* A class whose base health was raised should raise it for the character

@@ -602,3 +602,44 @@ test('felling a god writes the next mouth into the journal', () => {
   const entries = (g.state.journal || []).map((j) => j.text).join(' | ');
   assert.match(entries, /east field/, 'the unlock left no durable trace: ' + entries);
 });
+
+/* ---- the demon's fall is the company's victory ----
+ *
+ * Reported: "It's like I didn't kill the demon, but I did." They did — with
+ * a companion at the reins, and the flag was written to that one sheet.
+ * The town read the LEADER's sheet, found nothing, and kept the second
+ * mouth shut. Expedition knowledge is written to every member now, pooled
+ * from old saves on load, and dealt to new hires at the muster. */
+test('a boss slain under any member’s reins opens the next mouth', () => {
+  const { g, p } = rig('t-company-victory');
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.dungeonId = p.dungeonId; buddy.floorIdx = p.floorIdx;
+  g.state.party.members.push(buddy);
+  g.state.party.active = 1;              /* the companion lands the blow */
+  g.onBossSlain({ t: { name: 'Demon of Lapsai' }, boss: true });
+  g.state.party.active = 0;              /* the reins come home */
+  assert.ok(p.bossesSlain.temple, 'the fall was written to one sheet only');
+  assert.ok(g.availableDungeons().some((d) => d.id === 'upper'), 'the second mouth stayed shut');
+});
+
+test('an old save with a one-sheet victory is pooled on load', () => {
+  const { g, p } = rig('t-victory-pool');
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.bossesSlain = { temple: true };
+  buddy.deepest = { temple: 3 };
+  g.state.party.members.push(buddy);
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  const g2 = newGame('t-victory-pool-2', 'fighter');
+  g2.restore(raw);
+  assert.ok(g2.state.player.bossesSlain.temple, 'the pooled victory never reached the leader');
+  assert.equal(g2.state.player.deepest.temple, 3, 'the pooled depth never reached the leader');
+});
+
+test('a new hire signs on to the expedition’s knowledge', () => {
+  const { g, p } = rig('t-hire-knows', 800);
+  p.bossesSlain.temple = true;
+  p.deepest = { temple: 3 };
+  const hired = hireMember(g, 'thief');
+  assert.ok(hired.bossesSlain.temple, 'the hire never heard the demon fell');
+  assert.equal(hired.deepest.temple, 3, 'the hire does not know the way down');
+});
