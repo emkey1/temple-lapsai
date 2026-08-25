@@ -642,7 +642,7 @@ function getTileset(name) {
     loadImage(tilesetUrl(name)),
     fetch(tilesetDefUrl(name)).then((r) => (r.ok ? r.text() : null)).catch(() => null),
   ]).then(([img, text]) => {
-    sheetCache.set(key, img && text ? { img, def: parseTilesetDef(text) } : null);
+    sheetCache.set(key, img && text ? { name, img, def: parseTilesetDef(text) } : null);
     lastTiles = '';
   });
   return null;
@@ -1214,7 +1214,7 @@ function renderClassic(g, sa) {
 let viewMode = 'iso';
 try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
 let isoCamX = 0, isoCamY = 0;
-const ISO_UNIT = 40;   /* what "one tile tall" means for a body in the scene */
+const ISO_UNIT = 46;   /* what "one tile tall" means for a body in the scene */
 
 function traceDiamond(ctx, sx, sy) {
   const pts = diamondPath(sx, sy);
@@ -1306,12 +1306,64 @@ function drawIsoGround(g, t, tset, theme, sa) {
   }
 }
 
-function drawIsoWall(g, t, tile, theme, sa) {
+/* Which atlas pieces are walls, mined from Flare's own maps: the object
+ * layer of every alpha_demo dungeon and cave was cross-checked against its
+ * collision layer, and each blocking id classified by whether its placements
+ * run along world x (broad face to the screen's lower left) or world y
+ * (face to the lower right). The dungeon builds in low masonry you can see
+ * over; the caves stand in crags, which is why their cutaway cone reaches
+ * deeper. */
+const WALL_VOCAB = {
+  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, cone: 4 },
+  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, cone: 8 },
+};
+
+/* Which piece a wall tile wears — or null, and null is the ToEE cutaway
+ * carried to its conclusion: a wall whose visible faces (south and east,
+ * the ones this camera can see) touch no open floor is not drawn at all.
+ * Rooms keep their far walls and lose their near ones, and the party is
+ * never hidden behind masonry that exists only to be in the way. */
+function wallPieceId(vocab, g, t) {
+  const floor = g.currentFloor;
+  const openAt = (x, y) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return false;
+    const tt = floor.tiles[y][x];
+    return tt !== T.WALL && tt !== T.SECRET && g.seen[y] && g.seen[y][x];
+  };
+  const openS = openAt(t.x, t.y + 1);
+  const openE = openAt(t.x + 1, t.y);
+  const h = ((t.x * 40503) ^ (t.y * 44417)) >>> 0;
+  if (openS && openE) return vocab.corner;
+  if (openS) return vocab.x[h % vocab.x.length];
+  if (openE) return vocab.y[h % vocab.y.length];
+  return null;
+}
+
+function drawIsoWall(g, t, tile, theme, sa, tset) {
   const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
   const { sx, sy } = isoToScreen(t.x, t.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   const ctx = els.ctx;
   const door = tile === T.DOOR_C;
+  if (!door && tset) {
+    const vocab = WALL_VOCAB[tset.name];
+    if (vocab) {
+      const id = wallPieceId(vocab, g, t);
+      if (id === null) return;   /* a near wall, cut away */
+      const r = tset.def.tiles[id];
+      if (r) {
+        const ga = ctx.globalAlpha;   /* the ghost cutaway may already hold it */
+        ctx.globalAlpha = ga * (vis ? 1 : 0.45);
+        ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
+        ctx.globalAlpha = ga;
+        if (tile === T.SECRET && vis && sa === 0) {
+          ctx.fillStyle = theme.accent;
+          ctx.fillText('+', ax, ay - ISO.WALL_H);
+        }
+        return;
+      }
+    }
+  }
   const h = door ? Math.round(ISO.WALL_H * 0.72) : ISO.WALL_H;
   const base = door ? theme.door : theme.wall;
   const lid = door ? theme.door : theme.wallHi;
@@ -1397,9 +1449,10 @@ function renderIsoScene(g, sa) {
    * of a body and within two files of it. */
   const bodies = g.state.party.members.filter((m) =>
     m && m.floorIdx === p.floorIdx && m.dungeonId === p.dungeonId);
+  const cone = (tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].cone) || 4;
   const ghosts = (wx, wy) => bodies.some((b) => {
     const ahead = (wx + wy) - (b.x + b.y);
-    return ahead > 0 && ahead <= 4 && Math.abs((wx - wy) - (b.x - b.y)) <= 2;
+    return ahead > 0 && ahead <= cone && Math.abs((wx - wy) - (b.x - b.y)) <= 2;
   });
   for (const t of seenTiles) {
     const tile = floor.tiles[t.y][t.x];
@@ -1419,7 +1472,7 @@ function renderIsoScene(g, sa) {
       const ghost = ghosts(t.x, t.y);
       standers.push({ x: t.x, y: t.y, draw: () => {
         if (ghost) ctx.globalAlpha = 0.35;
-        drawIsoWall(g, t, tile, theme, sa);
+        drawIsoWall(g, t, tile, theme, sa, tset);
         ctx.globalAlpha = 1;
       } });
     }
