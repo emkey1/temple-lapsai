@@ -1380,6 +1380,57 @@ function drawIsoGlyph(x, y, ch, color, lift) {
   els.ctx.fillText(ch, sx - isoCamX, sy - isoCamY + (lift || 0));
 }
 
+/* STAIRS, drawn by hand in the scene's own prism language. The atlas
+ * offered chains where the map statistics promised stairs, and a dais
+ * where the eye wanted steps — so the steps are built here instead, from
+ * the same flat-shaded stone as the stubs. A flight of four treads climbs
+ * toward whichever wall the stairwell leans on; the way down is the same
+ * flight sinking through the floor into the dark. */
+function drawIsoStairs(g, t, theme, down) {
+  const ctx = els.ctx;
+  const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+  const { sx, sy } = isoToScreen(t.x, t.y);
+  const ax = sx - isoCamX, ay = sy - isoCamY;
+  const hw = ISO.TW / 2, hh = ISO.TH / 2;
+  const N = [ax, ay - hh], E = [ax + hw, ay], S = [ax, ay + hh], W2 = [ax - hw, ay];
+  const wallAt = (x, y) => x >= 0 && y >= 0 && x < W && y < H &&
+    (g.currentFloor.tiles[y][x] === T.WALL || g.currentFloor.tiles[y][x] === T.SECRET);
+  /* The flight climbs toward a wall when one stands beside it. */
+  const toNE = wallAt(t.x, t.y - 1) || !wallAt(t.x - 1, t.y);
+  const startA = toNE ? W2 : E, startB = S;
+  const endA = N, endB = toNE ? E : W2;
+  const lerp = (P, Q, fr) => [P[0] + (Q[0] - P[0]) * fr, P[1] + (Q[1] - P[1]) * fr];
+  const steps = 4;
+  const rise = down ? -26 : 22;
+  const f = vis ? 1 : 0.7;
+  if (down) fillDiamond(ctx, ax, ay, '#020302', 0.9);   /* the opening */
+  for (let k = steps - 1; k >= 0; k--) {
+    const f0 = k / steps, f1 = (k + 1) / steps;
+    const h0 = (k / (steps - 1)) * rise;
+    const hPrev = ((k - 1) / (steps - 1)) * rise;
+    const A0 = lerp(startA, endA, f0), B0 = lerp(startB, endB, f0);
+    const A1 = lerp(startA, endA, f1), B1 = lerp(startB, endB, f1);
+    if (k > 0) {
+      ctx.fillStyle = shade(theme.wall, (down ? Math.max(0.2, 0.6 - k * 0.1) : 0.72) * f);
+      ctx.beginPath();
+      ctx.moveTo(A0[0], A0[1] - hPrev);
+      ctx.lineTo(B0[0], B0[1] - hPrev);
+      ctx.lineTo(B0[0], B0[1] - h0);
+      ctx.lineTo(A0[0], A0[1] - h0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = shade(theme.wallHi, (down ? Math.max(0.25, 0.9 - k * 0.16) : 1.06 - k * 0.06) * f);
+    ctx.beginPath();
+    ctx.moveTo(A0[0], A0[1] - h0);
+    ctx.lineTo(B0[0], B0[1] - h0);
+    ctx.lineTo(B1[0], B1[1] - h0);
+    ctx.lineTo(A1[0], A1[1] - h0);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 function drawIsoGround(g, t, tset, theme, sa) {
   const ctx = els.ctx;
   const floor = g.currentFloor;
@@ -1406,13 +1457,6 @@ function drawIsoGround(g, t, tset, theme, sa) {
     /* the theme's cast, so eleven dungeons do not share one grey floor */
     fillDiamond(ctx, ax, ay, theme.floor, 0.18);
   }
-  /* The stairs lie flat on the ground as a dais — stone up, light down —
-   * so they belong to the ground pass and can never occlude a body. */
-  if ((tile === T.UP || tile === T.DOWN) && tset) {
-    const st = WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].stairs;
-    const r = st && tset.def.tiles[tile === T.DOWN ? st.down : st.up];
-    if (r) ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
-  }
   if (!vis) fillDiamond(ctx, ax, ay, '#000000', 0.38);
   if (tile === T.DOWN || tile === T.UP) {
     ctx.fillStyle = vis ? theme.accent : shade(theme.accent, 0.6);
@@ -1438,13 +1482,8 @@ function drawIsoGround(g, t, tset, theme, sa) {
  * over; the caves stand in crags, which is why their cutaway cone reaches
  * deeper. */
 const WALL_VOCAB = {
-  /* stairs: flat dais pieces, verified BY LOOKING at the atlas after ids
-   * 192/193 — mined as "stairs" from map statistics — turned out to be
-   * hanging chains, which the playtest found dangling over every
-   * stairwell. 264 is a carved stone dais, 265 the same dais glowing:
-   * stone for the way up, light for the way down. */
-  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128, stairs: { up: 264, down: 265 } },
-  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300, stairs: { up: 264, down: 265 } },
+  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128 },
+  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300 },
 };
 
 /* Which piece a wall tile wears — or null, and null is the ToEE cutaway
@@ -1582,6 +1621,14 @@ function renderIsoScene(g, sa) {
   seenTiles.sort(paintOrder);
 
   for (const t of seenTiles) drawIsoGround(g, t, tset, theme, sa);
+
+  /* The stairs draw AFTER all the ground: the painterly floor pieces bleed
+   * over their neighbours by design, and a flight drawn in the ground pass
+   * was buried under the next tile's stone. Still under every body. */
+  for (const t of seenTiles) {
+    const tt = floor.tiles[t.y][t.x];
+    if (tt === T.UP || tt === T.DOWN) drawIsoStairs(g, t, theme, tt === T.DOWN);
+  }
 
   /* the route, drawn on the ground so the standing world occludes it */
   const preview = !(walkPath && walkPath.length) && hoverPath && hoverPath.length;
