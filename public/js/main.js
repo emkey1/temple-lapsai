@@ -1865,16 +1865,37 @@ function renderIsoScene(g, sa) {
         if (nt !== T.WALL && nt !== T.SECRET && g.seen[ny] && g.seen[ny][nx]) faces = true;
       }
     }
+    /* THE HOUSES, assembled from the two-column kit worked out on the
+     * test rig: a building's west column wears the even pieces, the east
+     * column their odd mirrors, doors where the map says, windows and
+     * plank variety by position hash. Drawn whole — the cutaway never
+     * applies to a cottage, and the x-ray rings carry anyone behind one. */
+    const hKey = t.y * W + t.x;
+    if (town && floor.houseWalls && floor.houseWalls.has(hKey)) {
+      const med = getTileset('medieval_building_tiles');
+      if (med) {
+        const eastIn = floor.houseWalls.has(t.y * W + (t.x + 1));
+        const h = ((t.x * 40503) ^ (t.y * 44417)) >>> 0;
+        const id = (floor.houseDoors && floor.houseDoors.has(hKey))
+          ? (eastIn ? 14 : 15)
+          : (eastIn ? [12, 16, 28] : [13, 17, 29])[h % 3];
+        const r = med.def.tiles[id];
+        if (r) {
+          standers.push({ x: t.x, y: t.y, draw: () => {
+            const a = isoToScreen(t.x, t.y);
+            ctx.drawImage(med.img, r.x, r.y, r.w, r.h,
+              a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+          } });
+          continue;
+        }
+      }
+    }
     if (faces) {
       /* In town the cutaway does not apply: daylight makes every tile
        * "seen", which stubbed every building into a flat ring — a hamlet
-       * of foundations. Houses stand at their full height; the x-ray
-       * rings carry anyone who walks behind one. The T key still kneels
-       * everything when asked. Houses wear masonry; the treeline wears
-       * the grassland's own rock bluffs. */
+       * of foundations. The treeline wears the grassland's rock bluffs. */
       const stub = wallMode === 'down' || (!town && ghosts(t.x, t.y));
-      const wallSet = town && !(floor.houseWalls && floor.houseWalls.has(t.y * W + t.x)) ? tset : wtset;
-      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, wallSet, stub) });
+      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, town ? tset : wtset, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
        * A low dark prism, not a flat shadow — the mass tiles into a stone

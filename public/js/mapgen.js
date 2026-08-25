@@ -576,41 +576,44 @@ export function generateTownFloor(dungeons) {
 
   /* A building is a ring of wall with a doorway. `doorSide` is 's' or 'n';
    * the keeper's spot is just outside the door. */
-  /* A house is a SOLID block now, not a ring: the medieval building
-   * pieces are one-tile slices of timber wall and roof, so a block's
-   * south face draws walls, its east face draws sides, and everything
-   * behind them draws roof — one whole cottage. The doorway is a gap in
-   * the front face; the keeper stands outside it. */
+  /* THE BUILDING KIT, derived on a test rig from Clint Bellanger's
+   * medieval tiles: a building is TWO columns wide and as deep as it
+   * likes. The west column wears the even-numbered pieces, the east
+   * column their odd mirrors, and the two rooflines meet at the ridge --
+   * one whole timber-framed house. The door sits in the east column's
+   * southmost row, facing the lane; the keeper stands on the grass
+   * beside it. Interiors do not exist: a cottage is a cottage, not a
+   * ring around a room nobody enters. */
   const houseWalls = new Set();
-  const house = (hx, hy, w, h, doorDx, doorSide = 's') => {
-    for (let y = hy; y < hy + h; y++) {
-      for (let x = hx; x < hx + w; x++) {
+  const houseDoors = new Set();
+  const house = (hx, hy, depth) => {
+    for (let y = hy; y < hy + depth; y++) {
+      for (let x = hx; x < hx + 2; x++) {
         tiles[y][x] = T.WALL;
         houseWalls.add(y * W + x);
       }
     }
-    const dx = hx + doorDx;
-    const dy = doorSide === 's' ? hy + h - 1 : hy;
-    tiles[dy][dx] = T.DOOR_O;
-    return { x: dx, y: doorSide === 's' ? dy + 1 : dy - 1 };
+    const dy = hy + depth - 1;
+    houseDoors.add(dy * W + (hx + 1));
+    return { x: hx + 2, y: dy };
   };
 
   const npcs = [];
   const post = (spot, tpl) => npcs.push({ tpl, x: spot.x, y: spot.y });
 
   /* The keepers: counters with faces. */
-  post(house(10, 10, 7, 5, 3), { id: 'provisioner', name: 'The Provisioner', sex: 'female', color: 'gold', service: 'shop',
+  post(house(12, 10, 4), { id: 'provisioner', name: 'The Provisioner', sex: 'female', color: 'gold', service: 'shop',
     desc: 'Buys what you haul up, sells what the dark is stingy with.' });
-  post(house(26, 10, 7, 5, 3), { id: 'lector', name: 'The Lector', sex: 'male', color: 'cyan', service: 'sage',
+  post(house(27, 10, 4), { id: 'lector', name: 'The Lector', sex: 'male', color: 'cyan', service: 'sage',
     desc: 'Reads runes for coin, and prises curses loose for more.' });
-  post(house(38, 9, 10, 6, 4), { id: 'innkeep', name: 'The Drowned Lantern', sex: 'male', color: 'amber', service: 'inn',
+  post(house(40, 8, 6), { id: 'innkeep', name: 'The Drowned Lantern', sex: 'male', color: 'amber', service: 'inn',
     desc: 'A tavern with three rooms and one price. The lantern over the door was pulled from the flooded floor.' });
-  post(house(10, 28, 8, 5, 4, 'n'), { id: 'muster', name: 'The Muster', sex: 'female', color: 'brightgreen', service: 'muster',
+  post(house(12, 27, 5), { id: 'muster', name: 'The Muster', sex: 'female', color: 'brightgreen', service: 'muster',
     desc: 'Sword-arms fresh off the road, seasoned for a price.' });
 
   /* The residents: doors worth knocking on, words that answer offline —
    * topics keyword-match, fallbacks catch the rest. */
-  post(house(25, 30, 5, 4, 2, 'n'), {
+  post(house(25, 30, 3), {
     id: 'maren', name: 'Maren', sex: 'female', title: 'the ferrier\u2019s widow', color: 'white',
     intro: 'You have the look of the stairs about you. My Aldous had it too, before the temple kept him.',
     topics: [
@@ -624,7 +627,7 @@ export function generateTownFloor(dungeons) {
       'Buy your draughts before you go down, not after you need them.',
     ],
   });
-  post(house(33, 29, 5, 4, 2, 'n'), {
+  post(house(34, 29, 3), {
     id: 'casp', name: 'Old Casp', sex: 'male', title: 'a digger of long standing', color: 'amber',
     intro: 'I dug half the cellars in this town and one grave I regret. Ask, or move along.',
     topics: [
@@ -638,7 +641,7 @@ export function generateTownFloor(dungeons) {
       'The mouths in the east field were dug from BELOW. Chew on that one.',
     ],
   });
-  post(house(46, 26, 5, 4, 2), {
+  post(house(46, 25, 3), {
     id: 'tilda', name: 'Tilda', sex: 'female', title: 'keeper of the smallest cottage', color: 'brightgreen',
     intro: 'The lamps burn all night here since the company came. I find I sleep better for it.',
     topics: [
@@ -695,10 +698,10 @@ export function generateTownFloor(dungeons) {
    * All of it was looked at first. */
   const fenceX = 104, fenceY = 107, fenceEnd = 108, campfire = 102, anvil = 103,
     gravestone = 140, stump = 136, basket = 99, fern = 112;
-  for (let x = 14; x <= 19; x++) props.push({ x, y: 24, atlas: fenceX });
-  props.push({ x: 20, y: 24, atlas: fenceEnd });
+  for (let x = 14; x <= 20; x += 2) props.push({ x, y: 24, atlas: fenceX });
+  props.push({ x: 22, y: 24, atlas: fenceEnd });
   props.push({ x: 8, y: 16, atlas: anvil });
-  props.push({ x: 14, y: 31, atlas: campfire });
+  props.push({ x: 16, y: 33, atlas: campfire });
   props.push({ x: 33, y: 8, atlas: gravestone });
   props.push({ x: 35, y: 7, atlas: gravestone });
   props.push({ x: 36, y: 9, atlas: gravestone });
@@ -724,7 +727,7 @@ export function generateTownFloor(dungeons) {
   return {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
     up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
-    isLast: false, den: null, mouths, props, houseWalls,
+    isLast: false, den: null, mouths, props, houseWalls, houseDoors,
     entry: { x: 36, y: 22 },
   };
 }
