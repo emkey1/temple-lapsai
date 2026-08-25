@@ -550,3 +550,62 @@ function scaledMonster(t, pos, threat, floorIdx, boss) {
     goldMax: (t.goldMax || 0) + floorIdx * 2,
   };
 }
+
+/* THE WHETSTONE, laid out by hand. The town is not generated — it is a
+ * place, and places do not reroll. A green under daylight, three houses
+ * with their keepers at the door, and a row of dungeon mouths along the
+ * east field, one per way down the world currently offers. The caller
+ * hands in that list; everything else is fixed.
+ *
+ * Returns a floor in the same shape generateFloor returns, plus `mouths`:
+ * [{x, y, dungeonId}] saying which DOWN tile leads where, and `entry`,
+ * where an arrival stands. */
+export function generateTownFloor(dungeons) {
+  const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
+  /* The clearing: an open green, walled by the treeline. */
+  for (let y = 8; y <= 36; y++) {
+    for (let x = 8; x <= 54; x++) tiles[y][x] = T.FLOOR;
+  }
+
+  /* A house is a ring of wall with a doorway; the keeper stands outside. */
+  const house = (hx, hy, w, h, doorDx) => {
+    for (let y = hy; y < hy + h; y++) {
+      for (let x = hx; x < hx + w; x++) {
+        tiles[y][x] = (y === hy || y === hy + h - 1 || x === hx || x === hx + w - 1)
+          ? T.WALL : T.FLOOR;
+      }
+    }
+    /* the doorway, on the south face, and a keeper's spot before it */
+    const dx = hx + doorDx, dy = hy + h - 1;
+    tiles[dy][dx] = T.DOOR_O;
+    return { x: dx, y: dy + 1 };
+  };
+
+  const npcs = [];
+  const post = (spot, id, name, color, service, desc) => {
+    npcs.push({ tpl: { id, name, color, service, desc }, x: spot.x, y: spot.y });
+  };
+  post(house(12, 11, 7, 5, 3), 'provisioner', 'The Provisioner', 'gold', 'shop',
+    'Buys what you haul up, sells what the dark is stingy with.');
+  post(house(26, 11, 7, 5, 3), 'lector', 'The Lector', 'cyan', 'sage',
+    'Reads runes for coin, and prises curses loose for more.');
+  post(house(19, 27, 8, 5, 4), 'muster', 'The Muster', 'brightgreen', 'muster',
+    'Sword-arms fresh off the road, seasoned for a price.');
+
+  /* The mouths: one stair down per way the world offers, in a row along
+   * the east field. */
+  const mouths = [];
+  (dungeons || []).forEach((d, i) => {
+    const x = 44, y = 12 + i * 5;
+    if (y > 34) return;   /* the field only holds so many holes */
+    tiles[y][x] = T.DOWN;
+    mouths.push({ x, y, dungeonId: d.id, name: d.name });
+  });
+
+  return {
+    w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
+    up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
+    isLast: false, den: null, mouths,
+    entry: { x: 36, y: 22 },
+  };
+}

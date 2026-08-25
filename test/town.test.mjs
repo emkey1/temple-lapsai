@@ -260,3 +260,85 @@ test('each member levels on their own account', () => {
   assert.ok(p.level >= 2 && b.level >= 2, `levels ${p.level}/${b.level}`);
   assert.equal(p.level, b.level);
 });
+
+/* ---- T5: the town is ground now ---- */
+
+import { generateTownFloor, T as TT, W as TW2, H as TH2, isTravelable as trav } from '../public/js/mapgen.js';
+import { TOWN_ID } from '../public/js/engine.js';
+
+test('the green holds three keepers and a mouth per dungeon', () => {
+  const dungeons = [{ id: 'temple', name: 'The Temple' }, { id: 'upper', name: 'The Upper' }];
+  const f = generateTownFloor(dungeons);
+  assert.equal(f.npcs.length, 3, 'a keeper is missing from the green');
+  assert.equal(f.mouths.length, 2, 'a dungeon lost its mouth');
+  for (const m of f.mouths) assert.equal(f.tiles[m.y][m.x], TT.DOWN, 'a mouth that is not a stair');
+  for (const n of f.npcs) assert.ok(trav(f.tiles[n.y][n.x]), 'a keeper standing in a wall');
+  assert.ok(trav(f.tiles[f.entry.y][f.entry.x]), 'the arrival spot is not ground');
+});
+
+test('every keeper and every mouth can be walked to from the entry', () => {
+  const f = generateTownFloor([{ id: 'temple', name: 'T' }]);
+  /* flood fill over travelable ground */
+  const seen = new Set([f.entry.x + ',' + f.entry.y]);
+  const queue = [[f.entry.x, f.entry.y]];
+  while (queue.length) {
+    const [x, y] = queue.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= TW2 || ny >= TH2) continue;
+      const k = nx + ',' + ny;
+      if (seen.has(k) || !trav(f.tiles[ny][nx])) continue;
+      seen.add(k);
+      queue.push([nx, ny]);
+    }
+  }
+  for (const n of f.npcs) assert.ok(seen.has(n.x + ',' + n.y), n.tpl.name + ' is unreachable');
+  for (const m of f.mouths) assert.ok(seen.has(m.x + ',' + m.y), m.name + '\'s mouth is unreachable');
+});
+
+test('climbing out of the first floor lands the company on the green', () => {
+  const g = newTownGame('t5-up');
+  const p = g.state.player;
+  const up = g.currentFloor.up;
+  p.x = up.x; p.y = up.y - 1;
+  g.tryMove(0, 1) || g.tryMove(0, -1) || (p.x = up.x, p.y = up.y, g.stepOn(up.x, up.y));
+  /* however they got there, standing on the up-stair takes them home */
+  if (!g.inTown()) { p.x = up.x; p.y = up.y; g.stepOn(up.x, up.y); }
+  assert.equal(g.inTown(), true, 'the stairs up did not lead to town');
+  assert.equal(p.dungeonId, TOWN_ID);
+  assert.ok(g.currentFloor.mouths.length >= 1);
+  assert.ok(g.vis[p.y][p.x], 'daylight failed');
+});
+
+test('a mouth on the green leads down into its dungeon', () => {
+  const g = newTownGame('t5-down');
+  const p = g.state.player;
+  p.x = g.currentFloor.up.x; p.y = g.currentFloor.up.y;
+  g.stepOn(p.x, p.y);
+  assert.equal(g.inTown(), true);
+  const mouth = g.currentFloor.mouths[0];
+  p.x = mouth.x; p.y = mouth.y;
+  g.stepOn(mouth.x, mouth.y);
+  assert.equal(p.dungeonId, mouth.dungeonId, 'the mouth led somewhere else');
+  assert.equal(p.floorIdx, 0);
+  assert.ok(g.currentFloor && !g.currentFloor.mouths, 'still standing in town');
+});
+
+test('a reload keeps its place on the green', () => {
+  const g = newTownGame('t5-keep');
+  const p = g.state.player;
+  p.x = g.currentFloor.up.x; p.y = g.currentFloor.up.y;
+  g.stepOn(p.x, p.y);
+  p.x = g.currentFloor.entry.x; p.y = g.currentFloor.entry.y;
+  const save = JSON.parse(JSON.stringify(g.state));
+  const g2 = newTownGame('t5-keep-2');
+  g2.restore(save);
+  g2.loadFloor(g2.state.player.floorIdx, 'keep');
+  assert.equal(g2.inTown(), true, 'the reload forgot the town');
+  assert.equal(g2.state.player.x, g.currentFloor.entry.x, 'the reload moved the party');
+});
+
+function newTownGame(seed) {
+  const g = newGame(seed);
+  return g;
+}

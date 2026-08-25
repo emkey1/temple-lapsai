@@ -526,6 +526,9 @@ export const THEMES = {
   halls: { floor: '#23201a', floorEdge: '#37321f', wall: '#6d6a3a', wallHi: '#7f7c46', door: '#52502c', secret: '#413f24', accent: '#e0c05a', vignette: '#e0c05a' },
   jungle: { floor: '#14241a', floorEdge: '#1f3726', wall: '#3f6d3a', wallHi: '#4f8046', door: '#31562e', secret: '#2a4628', accent: '#aef08a', vignette: '#aef08a' },
   arcane: { floor: '#181426', floorEdge: '#251c3a', wall: '#5a4a8a', wallHi: '#6d5ca6', door: '#443a68', secret: '#372e54', accent: '#d45ad8', vignette: '#d45ad8' },
+  /* Daylight on the green: turf underfoot, timber walls, the one theme
+   * that is not underground. */
+  town: { floor: '#26331e', floorEdge: '#38492c', wall: '#6d5c3a', wallHi: '#8a744a', door: '#52432a', secret: '#443a26', accent: '#e0c05a', vignette: '#9dc97a' },
 };
 
 export function getTheme(name) {

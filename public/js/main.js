@@ -451,7 +451,12 @@ function showShop(g) {
     const sell = e.target.closest('[data-sell]');
     if (sell) { sellItem(g, p.inventory[Number(sell.dataset.sell)]); saveGame(); renderHud(g); box.remove(); showShop(g); }
   });
-  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
+  box.querySelector('[data-town-back]').onclick = () => {
+    box.remove();
+    /* From the walkable town you step back onto the green; the camp card
+     * only exists where the town does not. */
+    if (g.inTown && g.inTown()) { overlayHideAll(); canvasFocus(); } else showCamp(g);
+  };
 }
 
 function showMuster(g) {
@@ -473,7 +478,12 @@ function showMuster(g) {
     saveGame(); renderHud(g); renderStats(g);
     box.remove(); showMuster(g);
   });
-  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
+  box.querySelector('[data-town-back]').onclick = () => {
+    box.remove();
+    /* From the walkable town you step back onto the green; the camp card
+     * only exists where the town does not. */
+    if (g.inTown && g.inTown()) { overlayHideAll(); canvasFocus(); } else showCamp(g);
+  };
 }
 
 function showSage(g) {
@@ -498,7 +508,12 @@ function showSage(g) {
     const un = e.target.closest('[data-unbind]');
     if (un) { unbindCurse(g, cursed[Number(un.dataset.unbind)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); }
   });
-  box.querySelector('[data-town-back]').onclick = () => { box.remove(); showCamp(g); };
+  box.querySelector('[data-town-back]').onclick = () => {
+    box.remove();
+    /* From the walkable town you step back onto the green; the camp card
+     * only exists where the town does not. */
+    if (g.inTown && g.inTown()) { overlayHideAll(); canvasFocus(); } else showCamp(g);
+  };
 }
 
 /* ---------------- character creation ---------------- */
@@ -1049,7 +1064,11 @@ function hoverLabel(g, x, y) {
     if (here.length) return here.map((it) => (it.i && it.i.name) || 'something').join(', ');
   }
   const t = g.currentFloor.tiles[y][x];
-  if (t === T.DOWN) return 'Stairs down';
+  if (t === T.DOWN) {
+    const mouth = (g.currentFloor.mouths || []).find((mm) => mm.x === x && mm.y === y);
+    if (mouth) return 'Down: ' + mouth.name;
+    return 'Stairs down';
+  }
   if (t === T.UP) return 'Stairs up';
   if (t === T.ALTAR) return 'An altar';
   if (t === T.WATER) return 'Black water';
@@ -1184,7 +1203,7 @@ function renderClassic(g, sa) {
   const floor = g.currentFloor;
   const p = g.state.player;
   const s = ts;
-  const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
+  const theme = getTheme(g.inTown && g.inTown() ? 'town' : (g.dungeonById(p.dungeonId) || {}).theme);
   updateCamera(p);
 
   ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
@@ -1590,7 +1609,8 @@ function renderIsoScene(g, sa) {
   const floor = g.currentFloor;
   const p = g.state.player;
   const dungeon = g.dungeonById(p.dungeonId) || {};
-  const theme = getTheme(dungeon.theme);
+  const town = g.inTown && g.inTown();
+  const theme = getTheme(town ? 'town' : dungeon.theme);
   /* The scene is drawn in its own pixels; the zoom and the device's pixel
    * density are one transform over the lot — the viewport just covers more
    * or less of it, and every source pixel of the art reaches the glass. */
@@ -1599,7 +1619,7 @@ function renderIsoScene(g, sa) {
   const centre = isoToScreen(p.x, p.y);
   isoCamX = centre.sx - cw / 2;
   isoCamY = centre.sy - ch / 2;
-  const tset = getTileset(THEME_TILESET[dungeon.theme] || 'tileset_dungeon');
+  const tset = getTileset(town ? 'tileset_grassland' : (THEME_TILESET[dungeon.theme] || 'tileset_dungeon'));
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#050705';
@@ -2249,6 +2269,14 @@ function closeHelp() {
 
 function openDialogue(npc) {
   const tpl = npc && npc.tpl ? npc.tpl : npc;
+  /* The town's keepers are counters, not conversationalists: walking into
+   * one opens their trade, the same functions the camp card used to hold. */
+  if (tpl && tpl.service && game) {
+    if (tpl.service === 'shop') showShop(game);
+    else if (tpl.service === 'sage') showSage(game);
+    else if (tpl.service === 'muster') showMuster(game);
+    return;
+  }
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);
   activeNpc = tpl;
   dialogueOpen = true;

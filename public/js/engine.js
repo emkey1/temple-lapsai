@@ -10,7 +10,7 @@ import {
   healFractionForItem, healFractionForAbility, RECOVERY,
 } from './base.js';
 import {
-  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, GEN_VERSION,
+  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
@@ -44,6 +44,7 @@ const STRENGTH_BUFF = 4;
  * of the run. Out of combat both come back, slowly, which is what makes
  * retreating a tactic instead of a longer death. */
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
+export const TOWN_ID = 'the-whetstone';   /* the town is a place, not a dungeon */
 /* Halved from 0.02. It had made the altar — which mends 35% of maximum health
  * once, and lifts every curse — worth about a third of what one free keypress
  * of R gives you. Note what the max(1, ...) floor below does to this: at a
@@ -272,6 +273,9 @@ export class Game {
   snapshotFloor() {
     const p = this.state.player;
     if (!p || !p.dungeonId || !this.currentFloor || !this.seen) return;
+    /* The town has no memory to keep — and its all-seen map must never be
+     * written over a dungeon floor's memo on the way down. */
+    if (this.currentFloor.mouths) return;
     const memo = this.currentMemo();
     if (!memo) return;
     memo.seen = this.seen.map((row) => row.map((v) => (v ? '1' : '0')).join(''));
@@ -543,6 +547,56 @@ export class Game {
   }
 
   /* ---- floors ---- */
+  inTown() {
+    return !!(this.state && this.state.player && this.state.player.dungeonId === TOWN_ID);
+  }
+
+  /* T5, THE LIVING TOWN: The Whetstone stops being a card of buttons and
+   * becomes ground. Climb out of any first floor and you stand on the
+   * green: houses with their keepers at the door, and a row of dungeon
+   * mouths in the east field. The services are the same functions town.js
+   * always ran — walking up to a keeper is how you ask for them now. */
+  enterTown(fromDungeonId) {
+    const p = this.state.player;
+    this.snapshotFloor();   /* remember the floor being climbed out of */
+    p.lastDungeon = fromDungeonId && fromDungeonId !== TOWN_ID ? fromDungeonId : (p.lastDungeon || 'temple');
+    p.dungeonId = TOWN_ID;
+    p.floorIdx = 0;
+    this.loadTown('arrive');
+    this.log('The Whetstone: lamplight, wet cobbles, and the ledger kept open for you.');
+  }
+
+  loadTown(arriveAt) {
+    const p = this.state.player;
+    const floor = generateTownFloor(this.availableDungeons());
+    this.currentFloor = floor;
+    for (const m of (this.state.party && this.state.party.members) || []) {
+      if (!m) continue;
+      this.clearActorTurn(m);
+      m.ini = undefined;
+    }
+    this._round = null;
+    /* Arrivals stand at the mouth they climbed out of; a reload keeps its
+     * place if that place still exists on the rebuilt green. */
+    const standable = (x, y) => isTravelable(floor.tiles[y] && floor.tiles[y][x]);
+    let spot = floor.entry;
+    if (arriveAt === 'keep' && standable(p.x, p.y)) {
+      spot = { x: p.x, y: p.y };
+    } else {
+      const mouth = (floor.mouths || []).find((m) => m.dungeonId === p.lastDungeon);
+      if (mouth && standable(mouth.x - 1, mouth.y)) spot = { x: mouth.x - 1, y: mouth.y };
+    }
+    p.x = spot.x; p.y = spot.y;
+    this.placePartyAround(floor, p);
+    for (const m of this.livingMembers()) { m.dungeonId = TOWN_ID; m.floorIdx = 0; }
+    this.seen = Array.from({ length: H }, () => Array(W).fill(true));
+    this.computeVisibility();
+    if (this.ui.setLocation) this.ui.setLocation('The Whetstone');
+    if (this.ui.render) this.ui.render(this);
+    if (this.ui.refreshHud) this.ui.refreshHud(this);
+    this.advanceQueue();
+  }
+
   enterDungeon(id) {
     const d = this.dungeonById(id);
     if (!d) { this.log('That path is not written yet.'); return; }
@@ -567,6 +621,7 @@ export class Game {
    * stairs that go up AGAIN rather than on the ones you had just come down. */
   loadFloor(floorIdx, arriveAt = 'up') {
     const p = this.state.player;
+    if (p.dungeonId === TOWN_ID) { this.loadTown(arriveAt); return; }
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
     this.snapshotFloor();   /* remember the floor we are stepping off */
@@ -823,6 +878,12 @@ export class Game {
   computeVisibility() {
     const floor = this.currentFloor;
     if (!floor) return;
+    /* Daylight: the town hides nothing from anyone. */
+    if (this.inTown()) {
+      this.vis = Array.from({ length: H }, () => Array(W).fill(true));
+      this.seen = Array.from({ length: H }, () => Array(W).fill(true));
+      return;
+    }
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
     const side = 17;
     /* The union of everyone's eyes: what any member can see, the party sees.
@@ -1204,6 +1265,12 @@ export class Game {
     const tile = floor.tiles[y][x];
     const p = this.state.player;
     if (tile === T.DOWN) {
+      /* In town, a stair down is a dungeon's mouth: step in and you are
+       * under that world's first floor. */
+      if (this.inTown()) {
+        const mouth = (floor.mouths || []).find((m) => m.x === x && m.y === y);
+        if (mouth) { this.enterDungeon(mouth.dungeonId); return; }
+      }
       /* Only something at your heels stops you — anything further off can be
        * outrun, and anything walled off must not hold the stairs forever. */
       const atYourHeels = (floor.monsters || []).some((m) => m.hp > 0 && m.aggro && dist8(m, p) <= 2);
@@ -1216,7 +1283,7 @@ export class Game {
     if (tile === T.UP) {
       if (p.floorIdx === 0) {
         this.log('You climb back to the sunlit world above.');
-        if (this.ui.showCamp) this.ui.showCamp(this);
+        this.enterTown(p.dungeonId);
         return;
       }
       this.log('You ascend.');
