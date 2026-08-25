@@ -674,6 +674,7 @@ export class Game {
     this.state.player.floorIdx = 0;
     if (!this.state.player.visitedDungeons[id]) {
       this.state.player.visitedDungeons[id] = true;
+      this.journal('The company first set foot in ' + d.name + '.');
       const arc = arcForDungeon(id);
       if (this.ui.showArrival) this.ui.showArrival(d);
       else this.log('— ' + d.name + ' —');
@@ -1634,6 +1635,7 @@ export class Game {
     const p = this.state.player;
     const d = this.dungeonById(p.dungeonId);
     this.uiLog('The great ' + m.t.name + ' crashes down like a struck bell.');
+    this.journal('The great ' + m.t.name + ' fell' + (d ? ', and ' + d.name + ' went quiet' : '') + '.');
     p.bossesSlain[p.dungeonId] = true;
     p.explored[p.dungeonId] = true;
     this.fireBeats('boss', p.floorIdx);
@@ -1698,6 +1700,7 @@ export class Game {
     p.power = Math.min(p.maxpower, p.power + this.computeMaxPower(p));
     this.uiLog((p === this.state.player ? 'You grow wise and strong — ' : p.name + ' grows wise and strong — ') +
       CLASSES[p.cls].name + ' level ' + p.level + '!');
+    this.journal(p.name + ' reached level ' + p.level + '.');
     /* A condition beat is pinned to a floor, but level-ups happen wherever they
      * happen — an exact match meant the beat only fired if you happened to
      * level on that one floor. Fire everything at or above your current depth;
@@ -2387,6 +2390,7 @@ export class Game {
       return;
     }
     this.log(target.name + ' falls!');
+    this.journal(target.name + ' fell to a ' + ((m && m.t && m.t.name) || 'blow in the dark') + '.');
     const party = this.state.party;
     if (party.members[party.active] === target) {
       const next = this.nextUnactedMember();
@@ -2467,13 +2471,29 @@ export class Game {
 
   /* Fires every beat matching (kind, floor), not just the first — a second beat
    * on the same floor used to be written and then silently never shown. */
+  /* THE JOURNAL: the run, told back to its owner. Entries are written at
+   * the moments a campfire retelling would keep — first arrivals, bosses
+   * down, the company changing shape, levels earned, the narration the
+   * dark offers — and capped, because a journal is memory, not a log. */
+  journal(text) {
+    const s = this.state;
+    if (!s) return;
+    if (!s.journal) s.journal = [];
+    const p = s.player;
+    const d = p && this.dungeonById(p.dungeonId);
+    const where = this.inTown() ? 'The Whetstone'
+      : d ? d.name + ', floor ' + ((p.floorIdx || 0) + 1) : '';
+    s.journal.push({ turn: this.turn || 0, where, text });
+    if (s.journal.length > 200) s.journal.splice(0, s.journal.length - 200);
+  }
+
   fireBeats(kind, floorIdx) {
     const p = this.state.player;
     if (!p || !p.dungeonId) return;
     for (const beat of beatsAt(p.dungeonId, kind, floorIdx)) {
       if (this.beatSeen(kind, floorIdx, beat)) continue;
       this.rememberBeat(kind, floorIdx, beat);
-      if (beat.type === 'narration') this.log('… ' + beat.text + ' …');
+      if (beat.type === 'narration') { this.log('… ' + beat.text + ' …'); this.journal(beat.text); }
       else if (beat.type === 'npc-intro' && beat.npcId) this.introduceNpc(beat.npcId);
       else if (beat.type === 'overlay' && this.ui.showBeat) this.ui.showBeat(beat);
       else if (beat.type === 'flag' && beat.flag) setFlag(beat.flag, beat.valueCount || 1);

@@ -2177,7 +2177,14 @@ function renderCodex(g) {
     ? met.map((n) => '<div class="codex-item"><b>' + esc(n.name) + '</b> <span class="tiny">· ' + esc(n.title) + '</span></div>').join('')
     : '<div class="tiny">You have spoken to no one down there. Walk into someone.</div>';
 
+  /* THE JOURNAL: newest ink first, the campfire version of the run. */
+  const jn = (g.state.journal || []).slice(-40).reverse().map((e) =>
+    '<div class="codex-item"><span class="tiny">' + esc(e.where || '—') + ' · turn ' + (e.turn || 0) + '</span>' +
+    '<p class="flavor">' + esc(e.text) + '</p></div>').join('')
+    || '<div class="tiny">Nothing worth ink yet. It will come.</div>';
+
   els.dungeonCodex.innerHTML =
+    codexSection('THE JOURNAL', jn) +
     codexSection('KNOWN DEPTHS', depths) +
     codexSection('THE CHRONICLE', chronicle) +
     codexSection('POWERS OF THE WORLD', powers) +

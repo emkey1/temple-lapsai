@@ -197,5 +197,6 @@ export function hireMember(game, clsId) {
   party.members.push(b);
   if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
   game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');
+  if (game.journal) game.journal(name + ' the ' + c.name + ' joined the company for ' + cost + ' gold.');
   return b;
 }
