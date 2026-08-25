@@ -1449,9 +1449,9 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
    * pieces overlapped. A stub is opaque, short, and honest: wall here,
    * room behind it, floor everywhere the stub is not. */
   if (stub && !door) {
-    const f = vis ? 1 : 0.55;
+    const f = vis ? 1 : 0.7;
     drawPrism(ctx, ax, ay, STUB_H,
-      shade(theme.wallHi, 1.2 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+      shade(theme.wallHi, 1.1 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
     if (tile === T.SECRET && vis && sa === 0) {
       ctx.fillStyle = theme.accent;
       ctx.fillText('+', ax, ay - STUB_H);
@@ -1479,9 +1479,9 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
         }
       }
       /* No visible face from this side: the stub again, never a void. */
-      const f = vis ? 1 : 0.55;
+      const f = vis ? 1 : 0.7;
       drawPrism(ctx, ax, ay, STUB_H,
-        shade(theme.wallHi, 1.2 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+        shade(theme.wallHi, 1.1 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
       return;
     }
   }
@@ -1636,11 +1636,14 @@ function renderIsoScene(g, sa) {
       standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, tset, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
-       * A dark cap at stub height reads as what it is — solid rock. */
+       * A low dark prism, not a flat shadow — the mass tiles into a stone
+       * plateau with visible sides, instead of a cliff of background. */
       const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
       standers.push({ x: t.x, y: t.y, draw: () => {
         const a = isoToScreen(t.x, t.y);
-        fillDiamond(ctx, a.sx - isoCamX, a.sy - isoCamY - STUB_H, shade(theme.wall, vis ? 0.32 : 0.2));
+        const f = vis ? 1 : 0.75;
+        drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
+          shade(theme.wall, 0.5 * f), shade(theme.wall, 0.42 * f), shade(theme.wall, 0.3 * f));
       } });
     }
   }
@@ -1669,6 +1672,18 @@ function renderIsoScene(g, sa) {
   });
   standers.sort(paintOrder);
   for (const sd of standers) sd.draw();
+
+  /* THE X-RAY RING, straight out of ToEE: whatever stands between the
+   * camera and a member of the company, their circle rides above it. The
+   * body may duck behind a wall stub or a stair; where they ARE never
+   * does. */
+  g.state.party.members.forEach((m, i) => {
+    if (!m || m.hp <= 0) return;
+    if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
+    const a = isoToScreen(m.x, m.y);
+    drawRingAt(a.sx - isoCamX, a.sy - isoCamY + 4, ISO.TW * 0.30, ISO.TW * 0.15,
+      partyTint(i), { dim: true, bold: m === p });
+  });
 
   /* the name of what the cursor rests on, above everything */
   if (hovered) {
