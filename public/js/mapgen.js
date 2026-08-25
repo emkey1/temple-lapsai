@@ -641,10 +641,11 @@ export function generateTownFloor(dungeons) {
       'Buy your draughts before you go down, not after you need them.',
     ],
   });
-  /* Old Casp moved house: his old plot stood square in front of the
-   * temple at the iso camera's angle, and the vicar vanished behind his
-   * roofline unless the walls were knelt. The digger digs further east. */
-  post(house(38, 31, 3), {
+  /* Old Casp moved house twice: his first plot hid the temple's vicar
+   * behind his roofline, and the second put HIM behind the southern
+   * treeline's crags. He keeps a cottage on the north-east green now,
+   * on the lane to the mouths, where nothing stands in front of anyone. */
+  post(house(44, 17, 3), {
     id: 'casp', name: 'Old Casp', sex: 'male', title: 'a digger of long standing', color: 'amber',
     intro: 'I dug half the cellars in this town and one grave I regret. Ask, or move along.',
     topics: [

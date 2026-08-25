@@ -595,3 +595,10 @@ test('nothing in the town stands inside anything else', () => {
     assert.ok(f.tiles[n.y][n.x] === TT.FLOOR, n.tpl.id + ' stands on an unwalkable tile');
   }
 });
+
+test('felling a god writes the next mouth into the journal', () => {
+  const { g } = rig('t-unlock-journal');
+  g.onBossSlain({ t: { name: 'Demon of Lapsai' }, boss: true });
+  const entries = (g.state.journal || []).map((j) => j.text).join(' | ');
+  assert.match(entries, /east field/, 'the unlock left no durable trace: ' + entries);
+});

@@ -1736,7 +1736,16 @@ export class Game {
     this.fireBeats('finish', p.floorIdx);
     const next = this.baseDungeonIds();
     const idx = next.indexOf(p.dungeonId);
-    if (idx >= 0 && idx < next.length - 1 && this.ui.unlock) this.ui.unlock(this.dungeonById(next[idx + 1]));
+    if (idx >= 0 && idx < next.length - 1) {
+      const opened = this.dungeonById(next[idx + 1]);
+      if (opened) {
+        /* The unlock was one log line in the middle of a boss kill, and a
+         * player who missed it walked back into the cleared mouth and
+         * wondered why the world had stopped. Say it durably. */
+        this.journal('The way into ' + opened.name + ' opened — its mouth stands in the Whetstone\u2019s east field.');
+        if (this.ui.unlock) this.ui.unlock(opened);
+      }
+    }
     this.maybeExpand();
   }
 

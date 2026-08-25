@@ -276,7 +276,7 @@ function makeUI() {
     showVictory: (run) => showVictoryCard(run),
     showBeat: (beat) => showBeat(beat),
     unlock: (d) => {
-      logLine('A new path is opened: ' + d.name + ' — ' + (d.title || ''), 'good');
+      logLine('A new path is opened: ' + d.name + ' — its mouth stands in the Whetstone\u2019s east field.', 'good');
       renderCodex(game);
       renderLibrary(game);
     },
@@ -2178,6 +2178,22 @@ function renderIsoScene(g, sa) {
     ctx.stroke();
     ctx.fillStyle = theme.accent;
     ctx.fillText(tile === T.DOWN ? '>' : '<', ax, ay - 23);
+    /* A town mouth wears its NAME, always — a second descent that opened
+     * five tiles south of the first went unfound behind a hover. */
+    const mouthHere = floor.mouths && floor.mouths.find((mm) => mm.x === t.x && mm.y === t.y);
+    if (mouthHere) {
+      ctx.font = '12px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      const wl = ctx.measureText(mouthHere.name).width + 8;
+      ctx.fillStyle = 'rgba(5, 7, 5, 0.8)';
+      ctx.fillRect(ax + 15, ay - 41, wl, 17);
+      ctx.strokeStyle = 'rgba(230, 220, 160, 0.35)';
+      ctx.strokeRect(ax + 15.5, ay - 40.5, wl - 1, 16);
+      ctx.fillStyle = theme.accent;
+      ctx.fillText(mouthHere.name, ax + 19, ay - 32);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 15px "Courier New", monospace';
+    }
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
