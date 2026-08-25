@@ -424,3 +424,66 @@ test('the working still fires when there is something to work on', () => {
   g.activateAbility('backstab');
   assert.ok(p.power < 10, 'the refusal law refused a working with a target');
 });
+
+/* ---- brushing past a companion ----
+ *
+ * "You trade places with..." displaced whoever you brushed: mid-fight it
+ * could hand a mage the exact square the fighter was holding, and on the
+ * march it churned the column. Three answers now: PASS when there is room
+ * beyond (they never move), SHOVE when there is not (they give ground away
+ * from the fight), SWAP only when nowhere else will have them. */
+test('you slip past a companion when there is room beyond', () => {
+  const g = newGame('t3-pass', 'thief');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'fighter', 'Wall');
+  f.monsters.push(beast(p.x + 8, p.y, {}));   /* combat is on, but far */
+  begin(g);
+  const bx = buddy.x, by = buddy.y;
+  g.handleKey('d');
+  assert.equal(p.x, bx + 1, 'the mover should land beyond the companion');
+  assert.ok(buddy.x === bx && buddy.y === by, 'a passing displaced the companion');
+  assert.equal(g.actorTurn(p).moved, 2, 'two tiles of ground should cost two');
+});
+
+test('a companion gives ground away from the fight, not into it', () => {
+  const g = newGame('t3-shove', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;                     /* 10,10 */
+  const buddy = companion(g, 'mage', 'Soft');   /* 11,10 */
+  f.tiles[10][12] = T.WALL;                     /* no room beyond: no pass */
+  const mo = beast(9, 10, {});                  /* the fight is BEHIND the mover */
+  f.monsters.push(mo);
+  begin(g);
+  g.handleKey('d');
+  assert.equal(p.x, 11, 'the mover should take the square');
+  assert.ok(!(buddy.x === 10 && buddy.y === 10), 'the shove fell back to a swap toward the fight');
+  const clear = Math.max(Math.abs(mo.x - buddy.x), Math.abs(mo.y - buddy.y));
+  assert.ok(clear >= 3, 'the mage was pushed toward the monster (' + clear + ' away)');
+});
+
+test('the swap survives where there is nowhere to give ground', () => {
+  const g = newGame('t3-swap-last', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;                     /* 10,10 */
+  const buddy = companion(g, 'mage', 'Cornered');   /* 11,10 */
+  /* wall the pocket: every neighbour of the mage except the mover's square */
+  for (const [wx, wy] of [[12, 10], [12, 9], [12, 11], [11, 9], [11, 11], [10, 9], [10, 11]]) {
+    f.tiles[wy][wx] = T.WALL;
+  }
+  f.monsters.push(beast(8, 10, {}));
+  begin(g);
+  g.handleKey('d');
+  assert.equal(p.x, 11, 'the mover should take the square');
+  assert.ok(buddy.x === 10 && buddy.y === 10, 'the cornered companion should land in the trade');
+});
+
+test('the march does not narrate the column flowing through itself', () => {
+  const g = newGame('t3-quiet-march', 'thief');
+  arena(g);   /* nothing awake anywhere */
+  const p = g.state.player;
+  const buddy = companion(g, 'fighter', 'Point');
+  for (let i = 0; i < 6; i++) g.handleKey('d');
+  const chatter = g.logs.filter((l) => /trade places|slip past|gives ground/.test(l));
+  assert.equal(chatter.length, 0, 'the march narrated itself: ' + chatter[0]);
+});

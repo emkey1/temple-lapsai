@@ -1160,25 +1160,74 @@ export class Game {
       this.attackMonster(mo);
       return 'strike';
     }
-    /* Walking into a companion trades places — blocking would deadlock a
-     * corridor, and a shuffle that costs the action is the tactical choice
-     * ("you take the front") rather than a wall. */
+    /* Walking into a companion. Blocking outright would deadlock a corridor;
+     * the old answer — swap, always — displaced whoever you brushed, churned
+     * the column on the march, and mid-fight could hand a mage the exact
+     * square the fighter was holding. Three answers now, in order:
+     *
+     *   PASS  — the tile beyond them is open: you slip through, they never
+     *           move. Two tiles of ground for you, nothing for them.
+     *   SHOVE — no room beyond: you take their square and they give ground
+     *           to the free neighbouring tile farthest from the fight.
+     *   SWAP  — nowhere to give: the classic trade, corridors stay passable. */
     const ally = this.memberAt(nx, ny);
     if (ally && ally !== p) {
       const tile2 = floor.tiles[ny][nx];
       if (dx && dy && !this.canCorner(p.x, p.y, nx, ny)) {
-        this.log('The corner is too tight to trade places through.');
+        this.log('The corner is too tight to slip through.');
         return false;
       }
+      const open = (x, y, fromX, fromY) => {
+        if (!this.inBounds(x, y)) return false;
+        const t = floor.tiles[y][x];
+        if (!isTravelable(t)) return false;
+        const ddx = x - fromX, ddy = y - fromY;
+        if (ddx && ddy && !this.canCorner(fromX, fromY, x, y)) return false;
+        if (this.memberAt(x, y)) return false;
+        if ((floor.monsters || []).some((m2) => m2.hp > 0 && m2.x === x && m2.y === y)) return false;
+        if ((floor.npcs || []).some((n) => n.x === x && n.y === y)) return false;
+        return true;
+      };
+      const bx = nx + dx, by = ny + dy;
+      if (open(bx, by, nx, ny)) {
+        /* PASS. The opening is paid once, at the tile you left; in combat
+         * the second tile of ground is paid for too. */
+        if (!this.provokeShift(p)) return 'swap';
+        if (!this.outOfCombat()) {
+          this.actorTurn(p).moved = (this.actorTurn(p).moved || 0) + 1;
+          this.log('You slip past ' + ally.name + '.');
+        }
+        p.x = bx; p.y = by;
+        if (isSlowGoing(floor.tiles[by][bx])) this.wadeInto(bx, by);
+        this.stepOn(bx, by);
+        return 'swap';
+      }
       if (!this.provokeShift(p)) return 'swap';   /* cut down mid-shuffle */
-      ally.x = p.x; ally.y = p.y;
-      ally.faceDx = -dx; ally.faceDy = -dy;
+      /* SHOVE, or failing that SWAP: the displaced member goes to the open
+       * tile beside them farthest from anything awake — never toward the
+       * fight — and only lands back on your own square when nothing else
+       * will have them. */
+      const threats = (floor.monsters || []).filter((m2) => m2.hp > 0 && m2.aggro && !m2.submerged);
+      const clearOf = (x, y) => threats.length ? Math.min(...threats.map((m2) => dist8(m2, { x, y }))) : 9;
+      let spot = { x: p.x, y: p.y, score: clearOf(p.x, p.y) * 4 };   /* the swap, as the floor to beat */
+      for (const [adx, ady] of DIRS8) {
+        const ax = nx + adx, ay = ny + ady;
+        if (ax === p.x && ay === p.y) continue;
+        if (!open(ax, ay, nx, ny)) continue;
+        /* Farther from the fight first; along the push, for the tie. */
+        const score = clearOf(ax, ay) * 4 + (adx === dx && ady === dy ? 2 : 0) + 1;
+        if (score > spot.score) spot = { x: ax, y: ay, score };
+      }
+      const swapped = spot.x === p.x && spot.y === p.y;
+      ally.faceDx = Math.sign(spot.x - nx) || -dx;
+      ally.faceDy = Math.sign(spot.y - ny) || -dy;
+      ally.x = spot.x; ally.y = spot.y;
       p.x = nx; p.y = ny;
-      /* Mid-fight the swap is a spent turn and deserves its line. On the
-       * march it is just the column flowing around itself — the van holds
-       * the point by being walked through — and six identical lines of
-       * "you trade places" were the whole log. */
-      if (!this.outOfCombat()) this.log('You trade places with ' + ally.name + '.');
+      if (!this.outOfCombat()) {
+        this.log(swapped
+          ? 'You trade places with ' + ally.name + ' — there is nowhere else to stand.'
+          : ally.name + ' gives ground as you shoulder past.');
+      }
       if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
       return 'swap';
     }

@@ -2048,9 +2048,11 @@ function renderIsoScene(g, sa) {
       partyTint(i), { dim: true, bold: m === p });
   });
 
-  /* WHOSE TURN IT IS, on the board: in a fight a gold chevron hangs over
-   * the head of the member holding the reins — the strip and the initiative
-   * bar say it in the margins; this says it where your eyes already are. */
+  /* WHOSE TURN IT IS, on the board: in a fight a chevron hangs over the
+   * head of the member holding the reins, in their own tint — the same
+   * colour as their ring, their nameplate and their name in the top bar.
+   * The strip and the bar say it in the margins; this says it where your
+   * eyes already are. */
   if (!g.outOfCombat() && p && p.hp > 0) {
     const a = isoToScreen(p.x, p.y);
     const ax = a.sx - isoCamX, ay = a.sy - isoCamY;
@@ -2059,7 +2061,7 @@ function renderIsoScene(g, sa) {
     ctx.lineTo(ax + 7, ay - 44);
     ctx.lineTo(ax, ay - 33);
     ctx.closePath();
-    ctx.fillStyle = '#d8b04a';
+    ctx.fillStyle = partyTint(g.state.party.members.indexOf(p));
     ctx.fill();
     ctx.strokeStyle = 'rgba(5, 7, 5, 0.85)';
     ctx.lineWidth = 1.5;

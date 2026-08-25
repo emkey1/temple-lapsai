@@ -132,15 +132,17 @@ test('sight is the union of the party\'s eyes', () => {
   assert.ok(g.vis[6][32], 'the party is blind to the room the thief is standing in');
 });
 
-test('walking into a companion trades places', () => {
+test('walking into a companion slips past them when there is room', () => {
+  /* The old law was swap, always — which displaced whoever you brushed.
+   * In the open you now pass THROUGH: they hold their ground entirely. */
   const { g, p } = rig('tk-swap');
   clearing(g);
   const b = recruit(g);
   b.x = p.x + 1; b.y = p.y;
   const was = { px: p.x, py: p.y, bx: b.x, by: b.y };
   assert.ok(g.tryMove(1, 0));
-  assert.deepEqual({ x: p.x, y: p.y }, { x: was.bx, y: was.by });
-  assert.deepEqual({ x: b.x, y: b.y }, { x: was.px, y: was.py });
+  assert.deepEqual({ x: p.x, y: p.y }, { x: was.bx + 1, y: was.by }, 'the mover should land beyond');
+  assert.deepEqual({ x: b.x, y: b.y }, { x: was.bx, y: was.by }, 'the companion should hold their ground');
 });
 
 test('a monster never steps onto a member\'s tile', () => {
