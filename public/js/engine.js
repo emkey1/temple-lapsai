@@ -3157,30 +3157,37 @@ export class Game {
   }
 
   identifyAll() {
-    const p = this.state.player;
     const named = [];
-    const read = (it) => { if (this.revealItem(it)) named.push(it.name); };
-    p.inventory.forEach(read);
-    Object.values(p.equipment || {}).forEach(read);
+    const held = this.companyItems();
+    for (const it of held) { if (this.revealItem(it)) named.push(it.name); }
     if (named.length) {
       this.log('The letters settle and hold still: ' + named.join('; ') + '.');
-      const cursed = [...p.inventory, ...Object.values(p.equipment || {})]
-        .filter((it) => it && it.cursed).length;
-      if (cursed) this.log('Some of what you carry wishes you ill.');
+      if (held.some((it) => it.cursed)) this.log('Some of what the company carries wishes you ill.');
     } else {
       this.log('You read by touch and firelight — all is known.');
     }
   }
 
+  /* Every pack and every back in the company — the fallen included, their
+   * gear travels with the rest. Reading and unbinding welded to the active
+   * member was the heal-yourself bug wearing different clothes: a companion's
+   * ring had to be handed over, read, and handed back. */
+  companyItems() {
+    const out = [];
+    for (const m of (this.state.party && this.state.party.members) || []) {
+      if (!m) continue;
+      out.push(...(m.inventory || []), ...Object.values(m.equipment || {}));
+    }
+    return out.filter(Boolean);
+  }
+
   removeAllCurses() {
-    const p = this.state.player;
     let n = 0;
     /* Lifting a curse also names it: you should know what it was that had you. */
-    const unbind = (it) => { if (it && it.cursed) { this.revealItem(it); it.cursed = false; n++; } };
-    p.inventory.forEach(unbind);
-    Object.values(p.equipment || {}).forEach(unbind);
-    p.belt.filter(Boolean).forEach(unbind);
-    this.log(n ? 'The curses slip away like sweat (' + n + ').' : 'Nothing is bound to you.');
+    for (const it of this.companyItems()) {
+      if (it.cursed) { this.revealItem(it); it.cursed = false; n++; }
+    }
+    this.log(n ? 'The curses slip away like sweat (' + n + ').' : 'Nothing is bound to anyone here.');
   }
 
   /* THE WAY HOME. Climbing out by the stairs is walking the same emptied

@@ -486,3 +486,61 @@ test('an old blink scroll takes its new name on the next load', () => {
   const held = g2.state.player.inventory.find((it) => it.id === 'scroll-teleport');
   assert.equal(held && held.name, 'Scroll of Blinking', 'the stale name survived the load');
 });
+
+/* ---- the company's knowledge is the company's ----
+ *
+ * Reading and unbinding were welded to the active member — the heal-yourself
+ * bug wearing different clothes: a companion's unread ring had to be handed
+ * to the leader, read, and handed back. The Lector's ledger, the identify
+ * scroll and the curse-lifting now sweep every pack in the company. */
+
+test('the lector’s ledger lists a companion’s unread ring', () => {
+  const { g, p } = rig('t-ledger-company');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  g.state.party.members.push(buddy);
+  const it = deepItem(getItemTemplate('short-sword'));
+  applyMagic(it, 1); it.identified = false;
+  buddy.inventory.push(it);
+  assert.ok(unreadItems(g).includes(it), 'the ledger cannot see past the leader');
+  assert.ok(identifyItem(g, it), 'the lector refused a companion’s item');
+  assert.equal(it.identified, true);
+});
+
+test('an identify scroll reads every pack in the company', () => {
+  const { g, p } = rig('t-scroll-company');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  g.state.party.members.push(buddy);
+  const it = deepItem(getItemTemplate('short-sword'));
+  applyMagic(it, 1); it.identified = false;
+  buddy.inventory.push(it);
+  g.identifyAll();
+  assert.equal(it.identified, true, 'the scroll stopped at the leader’s pack');
+});
+
+test('lifting curses reaches a companion’s back', () => {
+  const { g } = rig('t-curse-company');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  g.state.party.members.push(buddy);
+  const it = deepItem(getItemTemplate('short-sword'));
+  applyMagic(it, 1); applyCurse(it); it.identified = true;
+  buddy.equipment.weapon = it;
+  g.removeAllCurses();
+  assert.equal(it.cursed, false, 'the curse stayed bound across the campfire');
+});
+
+test('a trade moves the knowing with the thing', () => {
+  const { g, p } = rig('t-trade-knowing');
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  buddy.x = p.x + 1; buddy.y = p.y;
+  g.state.party.members.push(buddy);
+  const known = deepItem(getItemTemplate('short-sword'));
+  applyMagic(known, 2); g.revealItem(known);
+  const unread = deepItem(getItemTemplate('short-sword'));
+  applyMagic(unread, 1); applyCurse(unread); unread.identified = false;
+  p.inventory.push(known, unread);
+  g.giveItem(known, buddy, p);
+  g.giveItem(unread, buddy, p);
+  assert.equal(known.identified, true, 'a read rune went dark in the handover');
+  assert.equal(unread.identified, false, 'an unread rune read itself in the handover');
+  assert.equal(unread.cursed, true, 'the hidden curse washed off in the handover');
+});

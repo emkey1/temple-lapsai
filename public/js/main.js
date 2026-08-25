@@ -400,6 +400,16 @@ function townCard(id, title, sub, bodyHtml, backLabel, face) {
     '<div class="row"><button class="mini" data-town-back>' + backLabel + '</button></div>';
   els.overlay.appendChild(box);
   overlayShow(box);
+  /* Every card gets a WORKING way back from birth; callers with somewhere
+   * specific to go override this. The inn shipped without wiring its own,
+   * and with the movement keys refused behind a card, the only way back
+   * to the street was a page reload. */
+  box.querySelector('[data-town-back]').onclick = () => {
+    box.remove();
+    if (game && game.inTown && game.inTown()) { overlayHideAll(); canvasFocus(); }
+    else if (game) showCamp(game);
+    else overlayHideAll();
+  };
   return box;
 }
 

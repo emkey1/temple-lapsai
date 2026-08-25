@@ -97,16 +97,14 @@ export function sellItem(game, it, owner) {
 }
 
 /* The Lector's ledger: what in your possession still has something to tell. */
+/* The Lector reads for the whole company: anything unread in anyone's pack
+ * or on anyone's back is in the ledger, no hand-it-to-the-leader shuffle. */
 export function unreadItems(game) {
-  const p = game.state.player;
-  return [...(p.inventory || []), ...Object.values(p.equipment || {})]
-    .filter((it) => it && it.identified === false);
+  return game.companyItems().filter((it) => it.identified === false);
 }
 
 export function knownCurses(game) {
-  const p = game.state.player;
-  return [...(p.inventory || []), ...Object.values(p.equipment || {})]
-    .filter((it) => it && it.cursed && it.identified !== false);
+  return game.companyItems().filter((it) => it.cursed && it.identified !== false);
 }
 
 /* THE DROWNED LANTERN. One price, three rooms, and the whole company
