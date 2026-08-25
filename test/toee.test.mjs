@@ -339,3 +339,20 @@ test('a member who falls to the opening does not bill the turn to the next in li
   assert.ok(g.turn > before, 'the round queue stalled after the fall');
   assert.ok(!g.actorTurn(a).moved && !g.actorTurn(a).acted, 'the new round did not reset the turn');
 });
+
+test('a blade in reach is in reach on the diagonal too', () => {
+  /* Backstab refused a foe on the diagonal that a plain strike would take:
+   * ability range was measured in Manhattan, where the corner is two away,
+   * while every other law of reach — strikes, openings, flanks — plays in
+   * king moves. Shield Bash suffered the same. */
+  for (const [cls, id] of [['thief', 'backstab'], ['fighter', 'shield-bash']]) {
+    const g = newGame('diag-' + id, cls);
+    const f = arena(g);
+    const p = g.state.player;
+    p.level = 3; p.power = 20;
+    const mo = beast(p.x + 1, p.y + 1, { ac: 30 });   /* the corner foe, a barn door */
+    f.monsters.push(mo);
+    g.activateAbility(id);
+    assert.ok(mo.hp < mo.maxhp, id + ' found no target on the diagonal');
+  }
+});

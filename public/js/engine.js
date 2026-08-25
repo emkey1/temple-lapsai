@@ -2620,8 +2620,13 @@ export class Game {
     for (const m of floor.monsters) {
       if (m.hp <= 0) continue;
       if (!this.vis[m.y] || !this.vis[m.y][m.x]) continue;
+      /* Reach is KING-move reach — a Backstab refused a foe on the diagonal
+       * that a plain strike would take. The preference among those in reach
+       * stays Manhattan (the adjacentMember idiom): straight-on before the
+       * corner, and ranged targeting unchanged. */
+      if (dist8(m, p) > range) continue;
       const d = dist1(m, p);
-      if (d <= range && d < best) { best = d; target = m; }
+      if (d < best) { best = d; target = m; }
     }
     const bonus = this.abilityBonus(a.damage, der);
     const r = this.rngOfTurn();
