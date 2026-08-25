@@ -302,3 +302,40 @@ test('a hidden member lets the opening pass rather than spend the shadow', () =>
   assert.equal(mo.hp, 20, 'the reflex swing spent the shadow');
   assert.ok(p.buffs.shadow > 0, 'the shadow broke on a swing that never happened');
 });
+
+/* ---- the bill for a fatal step ----
+ *
+ * Reported: "after the first turn that combat starts, movement no longer
+ * resets on the next turn... spells can't be cast and skills can't be used
+ * unless the character moves first." The trigger was a member falling to an
+ * opportunity blow on their own step: memberDown handed the reins to a
+ * companion inside the same keystroke, and endPlayerTurn billed the dead
+ * member's move to the living one — whose ground then never reset, while
+ * the stalled round stopped ticking cooldowns and power with it. */
+test('a member who falls to the opening does not bill the turn to the next in line', () => {
+  const g = newGame('t3-fatal-bill');
+  const f = arena(g);
+  const a = g.state.player;                       /* the one who inherits the reins */
+  const doomed = companion(g, 'mage', 'Doomed');  /* at a.x+1 — beside the beast */
+  doomed.hp = 1;
+  f.monsters.push(beast(doomed.x + 1, doomed.y, { toHit: 100 }));  /* every blow lands */
+  a.ini = 20; doomed.ini = 30;
+  g._round = null;
+  g.advanceQueue();
+  assert.equal(g.state.player, doomed, 'the doomed mage should hold the reins first');
+
+  g.handleKey('w');   /* step one: the free shift */
+  g.handleKey('w');   /* step two calls in the debt — and the blow kills */
+  assert.equal(doomed.hp, 0, 'the opening should have been fatal');
+  assert.equal(g.state.player, a, 'the reins should pass to the survivor');
+  const at = g.actorTurn(a);
+  assert.ok(!at.moved, `the dead member's ground was billed to the survivor (moved ${at.moved})`);
+  assert.ok(!at.acted, 'the survivor was marked as having acted before acting');
+
+  /* And the round still turns: waiting spends the turn, the beast moves,
+   * the round ends, and the next one opens with fresh ground. */
+  const before = g.turn;
+  g.handleKey('x');
+  assert.ok(g.turn > before, 'the round queue stalled after the fall');
+  assert.ok(!g.actorTurn(a).moved && !g.actorTurn(a).acted, 'the new round did not reset the turn');
+});

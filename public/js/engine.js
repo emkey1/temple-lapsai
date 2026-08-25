@@ -1057,8 +1057,11 @@ export class Game {
       turn = this.tryMove(dx, dy);
       if (turn && !this.dying) {
         /* A step spends ground; a blow or a search spends the standard.
-         * endPlayerTurn knows which holds the turn open and which ends it. */
-        this.endPlayerTurn(turn === 'step' || turn === 'swap' || turn === 'door' ? 'move' : undefined);
+         * endPlayerTurn knows which holds the turn open and which ends it.
+         * `p` and not state.player: if the mover fell to the opening,
+         * memberDown has already moved the reins, and the bill must still
+         * go to the one who stepped. */
+        this.endPlayerTurn(turn === 'step' || turn === 'swap' || turn === 'door' ? 'move' : undefined, p);
       }
       return !!turn;
     } else if (k === 'g') {
@@ -1083,13 +1086,13 @@ export class Game {
       if (got) this.uiLog('Looted.');
       else this.lookAround();
     } else if (k === ' ' || k === 'x') {
-      this.endPlayerTurn();
+      this.endPlayerTurn(undefined, p);
     } else if (k === 'r') {
       this.rest();
     } else {
       return false;
     }
-    if (turn && !this.dying) this.endPlayerTurn();
+    if (turn && !this.dying) this.endPlayerTurn(undefined, p);
     return turn;
   }
 
@@ -1759,9 +1762,24 @@ export class Game {
    * full advance still ends in a swing rather than a shrug. Striking,
    * casting, quaffing, searching, or waiting spends the turn whole. Out of
    * combat none of this exists: one keypress is one round for everybody. */
-  endPlayerTurn(kind) {
-    const p = this.state.player;
+  endPlayerTurn(kind, actor) {
+    /* The turn is billed to whoever ACTED, not to whoever holds the reins
+     * when the bill arrives. They were the same object for years — until a
+     * member could fall to an opportunity blow mid-step, memberDown handed
+     * the reins to a companion inside the same keystroke, and the rest of
+     * this method charged the dead member's move to the living one: their
+     * ground never reset, and the round queue stalled with it — no monster
+     * turns, no cooldown ticks, no power regained, for as long as the stall
+     * held. */
+    const p = actor || this.state.player;
     if (!p || this.dying) return;
+    if (p.hp <= 0) {
+      /* The actor fell mid-action. Their turn is over by force; hand the
+       * round back to the queue instead of booking what remains. */
+      this._memberShiftDebt = null;
+      this.advanceQueue();
+      return;
+    }
     if (kind === 'move' && !this.outOfCombat()) {
       const at = this.actorTurn(p);
       at.moved = (at.moved || 0) + 1;
@@ -2590,7 +2608,7 @@ export class Game {
       default: this.log('Nothing visibly happens.');
     }
     if (this.dying) return;
-    this.endPlayerTurn();
+    this.endPlayerTurn(undefined, p);
   }
 
   abilityDamage(a, der) {
@@ -2828,6 +2846,7 @@ export class Game {
 
   useItem(item) {
     if (!item) return;
+    const user = this.state.player;
     const fx = item.effects || {};
     if (item.kind === 'potion' || item.kind === 'scroll' || item.slot === 'consumable') {
       /* A refused draught costs neither the flask nor the turn. */
@@ -2845,7 +2864,7 @@ export class Game {
       this.log('You turn the ' + item.name + ' over in your hands and learn nothing.');
       return;
     }
-    this.endPlayerTurn();
+    this.endPlayerTurn(undefined, user);
   }
 
   consumeItem(item, fx) {
