@@ -2694,14 +2694,19 @@ export class Game {
 
   rememberBeat(kind, floorIdx, beat) {
     const p = this.state.player;
-    if (!p.beatsSeen) p.beatsSeen = {};
-    p.beatsSeen[this.beatKey(kind, floorIdx, beat)] = true;
+    const key = this.beatKey(kind, floorIdx, beat);
+    this.markCompany((m) => {
+      if (!m.beatsSeen) m.beatsSeen = {};
+      m.beatsSeen[key] = true;
+    });
   }
 
   introduceNpc(npcId) {
     const p = this.state.player;
-    if (!p.npcsMet) p.npcsMet = {};
-    p.npcsMet[npcId] = true;
+    this.markCompany((m) => {
+      if (!m.npcsMet) m.npcsMet = {};
+      m.npcsMet[npcId] = true;
+    });
     if (this.ui.flagNpcIntroduced) this.ui.flagNpcIntroduced(npcId);
   }
 
@@ -3489,12 +3494,14 @@ export class Game {
        * fighter and the town never heard. Pool it, and deal it back out. */
       {
         const members2 = (this.state.party && this.state.party.members) || [];
-        const pool = { bossesSlain: {}, visitedDungeons: {}, explored: {}, deepest: {} };
+        const pool = { bossesSlain: {}, visitedDungeons: {}, explored: {}, deepest: {}, beatsSeen: {}, npcsMet: {} };
         for (const m of members2) {
           if (!m) continue;
           Object.assign(pool.bossesSlain, m.bossesSlain || {});
           Object.assign(pool.visitedDungeons, m.visitedDungeons || {});
           Object.assign(pool.explored, m.explored || {});
+          Object.assign(pool.beatsSeen, m.beatsSeen || {});
+          Object.assign(pool.npcsMet, m.npcsMet || {});
           for (const k in (m.deepest || {})) pool.deepest[k] = Math.max(pool.deepest[k] || 0, m.deepest[k]);
         }
         for (const m of members2) {
@@ -3503,6 +3510,8 @@ export class Game {
           m.visitedDungeons = { ...pool.visitedDungeons };
           m.explored = { ...pool.explored };
           m.deepest = { ...pool.deepest };
+          m.beatsSeen = { ...pool.beatsSeen };
+          m.npcsMet = { ...pool.npcsMet };
         }
       }
       /* A class whose base health was raised should raise it for the character

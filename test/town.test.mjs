@@ -643,3 +643,18 @@ test('a new hire signs on to the expedition’s knowledge', () => {
   assert.ok(hired.bossesSlain.temple, 'the hire never heard the demon fell');
   assert.equal(hired.deepest.temple, 3, 'the hire does not know the way down');
 });
+
+test('a story beat seen under one member’s reins does not replay under another’s', () => {
+  const { g, p } = rig('t-beat-once');
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.dungeonId = p.dungeonId; buddy.floorIdx = p.floorIdx;
+  g.state.party.members.push(buddy);
+  const shown = [];
+  g.ui.showBeat = (b) => shown.push(b.title || b.text);
+  g.state.party.active = 1;
+  g.fireBeats('enter', 0);           /* the companion walks in first */
+  const afterFirst = shown.length;
+  g.state.party.active = 0;
+  g.fireBeats('enter', 0);           /* the leader follows — silence */
+  assert.equal(shown.length, afterFirst, 'the same beat played twice for two sets of reins');
+});

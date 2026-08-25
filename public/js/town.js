@@ -234,6 +234,8 @@ export function hireMember(game, clsId) {
   b.visitedDungeons = { ...(leader.visitedDungeons || {}) };
   b.explored = { ...(leader.explored || {}) };
   b.deepest = { ...(leader.deepest || {}) };
+  b.beatsSeen = { ...(leader.beatsSeen || {}) };
+  b.npcsMet = { ...(leader.npcsMet || {}) };
   party.members.push(b);
   if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
   game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');
