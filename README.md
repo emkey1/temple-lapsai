@@ -383,11 +383,13 @@ their class weapon in hand, priced for the seasoning (60 gold + 40 per level). E
 among the living, the classic way, and the fallen earn nothing until camp puts them back on their
 feet.
 
-**The Lector** reads a rune for 20 gold and prises a curse loose for 80 — so identification and
-unbinding no longer depend on a lucky scroll drop. Reading a curse warns you; unbinding one names it
-in the act. The ledger covers the **whole company's** packs and backs — as do the identify scroll
-and the curse-lifting, because knowledge welded to the active member is the heal-yourself bug in
-different clothes.
+**The Lector** reads a rune for 20 gold, so identification no longer depends on a lucky scroll
+drop, and his ledger covers the **whole company's** packs and backs — as does the identify scroll,
+because knowledge welded to the active member is the heal-yourself bug in different clothes.
+
+**The Little Temple** rings curses loose for gold — the vicar unbinds anything bound, anywhere in
+the company, and names it in the act. The Lector reads; the temple looses; neither does the
+other's trade.
 
 **The Drowned Lantern** beds the company for one price: everyone wakes healed, rested, cooled down
 and mended — wounds included, the number nothing free can fully reach.

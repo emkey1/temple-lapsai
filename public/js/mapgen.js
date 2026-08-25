@@ -615,11 +615,15 @@ export function generateTownFloor(dungeons) {
   post(house(12, 10, 4), { id: 'provisioner', name: 'The Provisioner', sex: 'female', color: 'gold', service: 'shop',
     desc: 'Buys what you haul up, sells what the dark is stingy with.' });
   post(house(27, 10, 4), { id: 'lector', name: 'The Lector', sex: 'male', color: 'cyan', service: 'sage',
-    desc: 'Reads runes for coin, and prises curses loose for more.' });
+    desc: 'Reads runes for coin. For the curse itself, the temple\u2019s bell.' });
   post(house(40, 8, 6), { id: 'innkeep', name: 'The Drowned Lantern', sex: 'male', color: 'amber', service: 'inn',
     desc: 'A tavern with three rooms and one price. The lantern over the door was pulled from the flooded floor.' });
   post(house(12, 27, 5), { id: 'muster', name: 'The Muster', sex: 'female', color: 'brightgreen', service: 'muster',
     desc: 'Sword-arms fresh off the road, seasoned for a price.' });
+  /* The temple: tall, quiet, and busiest of all in a town that lives off
+   * a cursed ruin. The vicar unbinds for gold; the Lector only reads. */
+  post(house(30, 24, 6), { id: 'vicar', name: 'The Little Temple', sex: 'female', color: 'white', service: 'temple',
+    desc: 'A bell, a basin, and a vicar who loosens what the dark ties. Curses lifted, for gold.' });
 
   /* The residents: doors worth knocking on, words that answer offline —
    * topics keyword-match, fallbacks catch the rest. */
@@ -718,6 +722,9 @@ export function generateTownFloor(dungeons) {
   props.push({ x: 22, y: 8, atlas: stump });
   props.push({ x: 50, y: 34, atlas: stump });
   props.push({ x: 12, y: 21, atlas: basket });
+  /* Two leaning stones by the temple door: the vicar's oldest parish. */
+  props.push({ x: 28, y: 27, atlas: gravestone });
+  props.push({ x: 33, y: 25, atlas: gravestone });
   props.push({ x: 42, y: 22, atlas: fern });
   props.push({ x: 28, y: 36, atlas: fern });
 

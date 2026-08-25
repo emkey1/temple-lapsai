@@ -566,25 +566,25 @@ function showInn(g) {
 
 function showSage(g) {
   const unread = unreadItems(g);
+  /* The Lector READS. The loosening moved up the lane to the Little
+   * Temple — a reader who also unbinds is a temple with worse lighting. */
   const cursed = knownCurses(g);
   const rows =
     unread.map((it, i) =>
       '<div class="eq-row"><span class="i-name mag">' + esc(it.name) + '</span>' +
-      '<button data-read="' + i + '">READ · ' + identifyCost(g) + ' gp</button></div>').join('') +
-    cursed.map((it, i) =>
-      '<div class="eq-row"><span class="i-name cursed">' + esc(it.name) + '</span>' +
-      '<button data-unbind="' + i + '">UNBIND · ' + unbindCost(g) + ' gp</button></div>').join('');
+      '<button data-read="' + i + '">READ · ' + identifyCost(g) + ' gp</button></div>').join('');
+  const known = cursed.length
+    ? '<div class="tiny">Of the curses you carry: “not my trade any longer — take them up the lane, the vicar rings them loose.”</div>'
+    : '';
   const box = townCard('sage-card', 'THE LECTOR',
     'A reader of runes who has outlived four of the things people brought in to be read.',
     purseLine(g) +
     '<div class="scrolly" style="max-height:280px">' +
-      (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>',
+      (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>' + known,
     'BACK TO THE STREET', npcPortrait('lector', 'male'));
   box.addEventListener('click', (e) => {
     const read = e.target.closest('[data-read]');
-    if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); return; }
-    const un = e.target.closest('[data-unbind]');
-    if (un) { unbindCurse(g, cursed[Number(un.dataset.unbind)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); }
+    if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); }
   });
   box.querySelector('[data-town-back]').onclick = () => {
     box.remove();
@@ -592,6 +592,26 @@ function showSage(g) {
      * only exists where the town does not. */
     if (g.inTown && g.inTown()) { overlayHideAll(); canvasFocus(); } else showCamp(g);
   };
+}
+
+/* THE LITTLE TEMPLE: a bell, a basin, and the loosening of what the dark
+ * ties on. The vicar works through every pack and back in the company —
+ * the same law as the Lector's ledger. */
+function showTemple(g) {
+  const cursed = knownCurses(g);
+  const rows = cursed.map((it, i) =>
+    '<div class="eq-row"><span class="i-name cursed">' + esc(it.name) + '</span>' +
+    '<button data-unbind="' + i + '">UNBIND · ' + unbindCost(g) + ' gp</button></div>').join('');
+  const box = townCard('temple-card', 'THE LITTLE TEMPLE',
+    'Candle-smoke and old stone. The vicar reads nothing and asks nothing; she rings the bell, and what has hold of a thing lets go.',
+    purseLine(g) +
+    '<div class="scrolly" style="max-height:280px">' +
+      (rows || '<div class="tiny">Nothing the company carries is bound. The bell stays still.</div>') + '</div>',
+    'BACK TO THE STREET', npcPortrait('vicar', 'female'));
+  box.addEventListener('click', (e) => {
+    const un = e.target.closest('[data-unbind]');
+    if (un) { unbindCurse(g, cursed[Number(un.dataset.unbind)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showTemple(g); }
+  });
 }
 
 /* ---------------- character creation ---------------- */
@@ -2722,6 +2742,7 @@ function openDialogue(npc) {
     else if (tpl.service === 'sage') showSage(game);
     else if (tpl.service === 'muster') showMuster(game);
     else if (tpl.service === 'inn') showInn(game);
+    else if (tpl.service === 'temple') showTemple(game);
     return;
   }
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);

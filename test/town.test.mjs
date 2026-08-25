@@ -266,12 +266,13 @@ test('each member levels on their own account', () => {
 import { generateTownFloor, T as TT, W as TW2, H as TH2, isTravelable as trav } from '../public/js/mapgen.js';
 import { TOWN_ID } from '../public/js/engine.js';
 
-test('the hamlet holds four keepers, three residents, and a mouth per dungeon', () => {
+test('the hamlet holds five keepers, three residents, and a mouth per dungeon', () => {
   const dungeons = [{ id: 'temple', name: 'The Temple' }, { id: 'upper', name: 'The Upper' }];
   const f = generateTownFloor(dungeons);
   const keepers = f.npcs.filter((n) => n.tpl.service);
   const residents = f.npcs.filter((n) => !n.tpl.service);
-  assert.equal(keepers.length, 4, 'a counter went unkept');
+  assert.equal(keepers.length, 5, 'a counter went unkept');
+  assert.ok(keepers.some((n) => n.tpl.service === 'temple'), 'the town lost its temple');
   assert.equal(residents.length, 3, 'a cottage stands empty');
   for (const r of residents) {
     assert.ok(r.tpl.intro && Array.isArray(r.tpl.topics) && r.tpl.topics.every((t) => t.keys && t.replies) && r.tpl.fallbacks, r.tpl.name + ' has nothing to say, or says it in the wrong shape');

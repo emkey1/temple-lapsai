@@ -159,7 +159,7 @@ export function unbindCurse(game, it) {
   p.gold -= fee;
   game.revealItem(it);
   it.cursed = false;
-  game.log('The Lector speaks the loosening words over the ' + it.name + '. It is only a thing again.');
+  game.log('The bell rings once over the ' + it.name + ', and what had hold of it lets go. It is only a thing again.');
   return true;
 }
 
