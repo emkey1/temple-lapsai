@@ -2738,12 +2738,13 @@ export class Game {
     return getAbility(id) || (this.registry.abilities || []).find((a) => a && a.id === id) || null;
   }
 
-  /* A member who is NOT at the reins works a power. Between fights any
-   * living member may — the company stands still and the round passes.
-   * Mid-fight the initiative order decides, the same as always. */
-  castAs(member, id) {
+  /* A member who is NOT at the reins acts. Between fights any living
+   * member may — the company stands still, the round passes, and the
+   * reins go back where they were: an errand is not a coup. Mid-fight
+   * the initiative order decides, the same as always. */
+  asMember(member, act) {
     if (!member || member.hp <= 0) return false;
-    if (member === this.state.player) { this.activateAbility(id); return true; }
+    if (member === this.state.player) { act(); return true; }
     const party = this.state.party;
     const idx = party.members.indexOf(member);
     if (idx < 0) return false;
@@ -2755,13 +2756,27 @@ export class Game {
     party.active = idx;
     this._standingCast = true;
     try {
-      this.activateAbility(id);
+      act();
     } finally {
       this._standingCast = false;
-      /* The reins go back where they were — a cast is not a coup. */
       if (party.members[prev] && party.members[prev].hp > 0) party.active = prev;
     }
     return true;
+  }
+
+  /* The standing cast, the standing swig, the standing read: the same law
+   * wearing three coats. */
+  castAs(member, id) {
+    return this.asMember(member, () => this.activateAbility(id));
+  }
+
+  useItemAs(member, item) {
+    if (!item) return false;
+    return this.asMember(member, () => this.useItem(item));
+  }
+
+  useBeltItemAs(member, index) {
+    return this.asMember(member, () => this.useBeltItem(index));
   }
 
   activateAbility(id) {

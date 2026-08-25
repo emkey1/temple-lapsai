@@ -572,3 +572,38 @@ test('the stairs work with a friend standing on them', () => {
   g.tryMove(-1, 0);
   assert.equal(p.floorIdx, 0, 'the stairs did not work with a friend on them');
 });
+
+import { getItemTemplate as tpl2 } from '../public/js/base.js';
+import { deepItem as deep2 } from '../public/js/dice.js';
+const makeItem2 = (id) => deep2(tpl2(id));
+
+test('a companion reads a scroll between fights — the standing swig', () => {
+  const g = newGame('t3-standing-swig', 'fighter');
+  arena(g);
+  const p = g.state.player;
+  const reader = companion(g, 'thief', 'Reader');
+  /* an unread blade in the LEADER's pack; the scroll in the COMPANION's */
+  const blade = makeItem2('short-sword');
+  blade.identified = false; blade.trueName = '+1 Short Sword';
+  p.inventory.push(blade);
+  const scroll = makeItem2('scroll-identify');
+  reader.inventory.push(scroll);
+  const reins = g.state.party.active;
+  assert.ok(g.useItemAs(reader, scroll), 'the standing swig was refused in calm halls');
+  assert.equal(blade.identified, true, 'the companion’s reading identified nothing');
+  assert.ok(!reader.inventory.includes(scroll), 'the scroll survived its own reading');
+  assert.equal(g.state.party.active, reins, 'the reading stole the reins');
+});
+
+test('mid-fight the standing swig defers to the round', () => {
+  const g = newGame('t3-swig-fight', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const reader = companion(g, 'thief', 'Reader');
+  const scroll = makeItem2('scroll-identify');
+  reader.inventory.push(scroll);
+  f.monsters.push(beast(p.x + 2, p.y, {}));
+  begin(g);
+  assert.equal(g.useItemAs(reader, scroll), false, 'a companion drank out of turn mid-fight');
+  assert.ok(reader.inventory.includes(scroll), 'the refused reading still spent the scroll');
+});

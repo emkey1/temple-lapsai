@@ -1716,7 +1716,12 @@ const WALL_VOCAB = {
    * slab where a wall should be" report since the masonry landed. A
    * corner shows BOTH textured faces, one piece over the other. */
   tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
-  tileset_cave: { x: [67, 71], y: [66, 70], corner: [72], rise: 300 },
+  /* tileset_cave is deliberately ABSENT: audited on the rig, every wall
+   * piece in the set (64-80) is a shadow-bodied mass — one lit rock facet
+   * on a slab of pure black. The Upper Reaches rendered as a black
+   * mountain range ("what is the point of having a wall there if it's
+   * just black?"). Cave themes wear the painted prisms instead, which
+   * carry the theme's own colours and read as structure. */
   /* The town's treeline: the grassland set's natural rock bluffs, so the
    * clearing's edge reads as valley rim rather than dwarven rampart. */
   tileset_grassland: { x: [48, 56, 64], y: [52, 60, 68], corner: [64], rise: 245 },
@@ -2486,7 +2491,7 @@ function renderGear(g) {
       ? others.map((m) => '<button data-give-to="' + g.state.party.members.indexOf(m) + '" data-give="' + giveIdx + '" style="color:' + partyTint(g.state.party.members.indexOf(m)) + '">&rarr; ' + esc(m.name) + '</button>').join('') +
         '<button data-give-cancel="1">&times;</button>'
       : (it.slot === 'consumable' || it.kind === 'wand'
-          ? '<button data-inv="' + grp.indices[0] + '"' + (own ? '' : ' disabled title="on their turn"') + '>' + itemVerb(it) + '</button>'
+          ? '<button data-inv="' + grp.indices[0] + '"' + (own || g.outOfCombat() ? '' : ' disabled title="on their turn"') + '>' + itemVerb(it) + '</button>'
           : '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>') +
         (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
         (others.length ? '<button data-give-start="' + giveIdx + '">GIVE</button>' : '') +
@@ -2507,7 +2512,7 @@ function renderGear(g) {
     belt += '<div class="eq-row"><span class="slot">⇧' + (i + 1) + '</span>' +
       '<span class="ico">' + (it ? itemIcon(it) : '·') + '</span>' +
       '<span class="i-name">' + (it ? esc(it.name) : '—') + '</span>' +
-      (it ? '<button data-use-belt="' + i + '"' + (own ? '' : ' disabled title="on their turn"') + '>USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
+      (it ? '<button data-use-belt="' + i + '"' + (own || g.outOfCombat() ? '' : ' disabled title="on their turn"') + '>USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
   }
   els.beltBlock.innerHTML = '<h3 class="pane">BELT <span class="tiny">shift + 1-4</span></h3>' + belt;
 }
@@ -2621,7 +2626,9 @@ function onKey(e) {
   const k = String(e.key).toLowerCase();
   const cardUp = !els.overlay.classList.contains('hidden');
   if (e.shiftKey && e.code && /^Digit[1-4]$/.test(e.code) && !cardUp) {
-    game.handleKey(null, { belt: Number(e.code.slice(5)) - 1 });
+    const beltWho = viewedMember(game);
+    if (beltWho && beltWho !== game.state.player) game.useBeltItemAs(beltWho, Number(e.code.slice(5)) - 1);
+    else game.handleKey(null, { belt: Number(e.code.slice(5)) - 1 });
     renderGear(game); renderStats(game); saveGame();
     e.preventDefault();
     return;
@@ -3302,10 +3309,11 @@ function inventoryClick(e) {
     game.bindToBelt(p.inventory[Number(b.dataset.bind)], p);
   } else if (b.dataset.inv !== undefined) {
     const it = p.inventory[Number(b.dataset.inv)];
-    /* Wearing is arranging straps — free, anyone's. Drinking spends the turn
-     * of whoever drinks, so only the member at the reins may. */
-    if (it && (it.slot === 'consumable' || it.kind === 'wand') && p !== game.state.player) return;
+    /* Wearing is arranging straps — free, anyone's. Drinking spends the
+     * turn of whoever drinks: at the reins, the classic path; a companion
+     * between fights, the standing swig (refused with a line mid-fight). */
     if (it && WEARABLE.includes(it.slot)) game.equip(it, p);
+    else if (p !== game.state.player) game.useItemAs(p, it);
     else game.useItem(it);
   }
   renderGear(game); renderStats(game); saveGame(); canvasFocus();
@@ -3325,8 +3333,9 @@ function inventDrop(e) {
 function beltClick(e) {
   const use = e.target.closest('[data-use-belt]');
   if (use && game && !use.disabled) {
-    if (viewedMember(game) !== game.state.player) return;
-    game.useBeltItem(Number(use.dataset.useBelt));
+    const who = viewedMember(game);
+    if (who !== game.state.player) game.useBeltItemAs(who, Number(use.dataset.useBelt));
+    else game.useBeltItem(Number(use.dataset.useBelt));
     renderGear(game); renderStats(game); saveGame(); canvasFocus();
     return;
   }
