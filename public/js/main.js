@@ -955,10 +955,14 @@ let hoverPath = null;   /* the previewed route to it, or null */
 let walkDest = null;    /* where the click is taking the company */
 let walkPath = null;    /* the route being walked — recomputed every tick, kept for the dots */
 let walkTimer = null;
+let walkLastLen = Infinity;   /* the stall breaker: a walk that stops shrinking is going nowhere */
+let walkStall = 0;
 
 function cancelWalk() {
   walkPath = null;
   walkDest = null;
+  walkLastLen = Infinity;
+  walkStall = 0;
   if (walkTimer) { clearTimeout(walkTimer); walkTimer = null; }
 }
 
@@ -1018,11 +1022,15 @@ function routeTo(g, x, y) {
 
 /* One step of the route: the same keypress the keyboard would have made,
  * with the same bookkeeping after it. */
-function takeStep(step) {
+function takeStep(step, next) {
   const g = game, p = g.state.player;
   const dx = step.x - p.x, dy = step.y - p.y;
   if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) return false;
-  const acted = g.handleKey(null, { dx, dy });
+  /* Where the route CONTINUES after this tile — so a slip past a companion
+   * ejects along the route instead of blindly straight through. */
+  const flags = { dx, dy };
+  if (next) { flags.exitDx = next.x - step.x; flags.exitDy = next.y - step.y; }
+  const acted = g.handleKey(null, flags);
   if (currentTab === 'gear') renderGear(g);
   saveGame();
   return acted;
@@ -1042,9 +1050,28 @@ function walkTick() {
    * step. The destination is the promise; the route is disposable. */
   walkPath = routeTo(g, walkDest.x, walkDest.y);
   if (!walkPath || !walkPath.length) { cancelWalk(); return; }
+  /* Clicking a friend is not an order to trample them: when the destination
+   * is a companion on plain ground, arriving beside them is arriving. */
+  const destAlly = g.livingMembers().find((m) => m !== p && m.x === walkDest.x && m.y === walkDest.y);
+  if (destAlly && Math.max(Math.abs(p.x - walkDest.x), Math.abs(p.y - walkDest.y)) <= 1) {
+    const dt = g.currentFloor.tiles[walkDest.y][walkDest.x];
+    const special = dt === T.UP || dt === T.DOWN || dt === T.ALTAR ||
+      (g.currentFloor.items || []).some((it) => it.x === walkDest.x && it.y === walkDest.y);
+    if (!special) { cancelWalk(); return; }
+  }
+  /* The stall breaker: three ticks without the route getting shorter means
+   * the walk is fighting the world — a shuffle, a shove, a slip that gave
+   * the ground back. Stop rather than shake the screen. */
+  if (walkPath.length >= walkLastLen) {
+    if (++walkStall >= 3) { cancelWalk(); return; }
+  } else {
+    walkStall = 0;
+  }
+  walkLastLen = walkPath.length;
   const floorBefore = p.floorIdx + ':' + p.dungeonId;
   const bloodBefore = g.livingMembers().reduce((s, m) => s + m.hp, 0);
-  if (!takeStep(walkPath.shift())) { cancelWalk(); return; }
+  if (!takeStep(walkPath[0], walkPath[1])) { cancelWalk(); return; }
+  walkPath.shift();
   const stillCalm = g.outOfCombat();
   const bloodAfter = g.livingMembers().reduce((s, m) => s + m.hp, 0);
   if ((p.x === walkDest.x && p.y === walkDest.y) || !stillCalm || bloodAfter < bloodBefore ||
@@ -1096,7 +1123,7 @@ function onCanvasClick(e) {
       const step = route[0];
       const hostile = monsterAtTile(g, step.x, step.y);
       if (!hostile && (g.actorTurn(me).moved || 0) >= g.memberSpeed(me)) break;
-      if (!takeStep(step)) break;
+      if (!takeStep(step, route[1])) break;
       if (hostile) break;
     }
   }

@@ -1060,7 +1060,12 @@ export class Game {
       dy = uiFlags.dy || 0;
     }
     if (dx !== 0 || dy !== 0) {
-      turn = this.tryMove(dx, dy);
+      /* The autopilot knows where its route CONTINUES past the next tile;
+       * a slip past a companion should eject along the route, not blindly
+       * straight — straight-through at a corner ping-ponged forever. */
+      const exit = (uiFlags.exitDx !== undefined || uiFlags.exitDy !== undefined)
+        ? { dx: uiFlags.exitDx || 0, dy: uiFlags.exitDy || 0 } : undefined;
+      turn = this.tryMove(dx, dy, exit);
       if (turn && !this.dying) {
         /* A step spends ground; a blow or a search spends the standard.
          * endPlayerTurn knows which holds the turn open and which ends it.
@@ -1145,7 +1150,7 @@ export class Game {
     return true;
   }
 
-  tryMove(dx, dy) {
+  tryMove(dx, dy, exit) {
     const p = this.state.player;
     const floor = this.currentFloor;
     const nx = p.x + dx, ny = p.y + dy;
@@ -1188,8 +1193,18 @@ export class Game {
         if ((floor.npcs || []).some((n) => n.x === x && n.y === y)) return false;
         return true;
       };
-      const bx = nx + dx, by = ny + dy;
-      if (open(bx, by, nx, ny)) {
+      /* A tile worth STANDING ON is a destination, not a doorway: stairs,
+       * an altar, anything lying there. Slipping past would carry you over
+       * the very thing you were stepping onto — the stair "not working"
+       * because the van was standing on it, and the walker ping-ponging
+       * through the friend forever while the camera shook. */
+      const worth = tile2 === T.UP || tile2 === T.DOWN || tile2 === T.ALTAR ||
+        (floor.items || []).some((it) => it.x === nx && it.y === ny);
+      /* Where the slip ejects: along the route's continuation when the
+       * autopilot knows it, straight ahead when the keyboard does not. */
+      const ex = exit && (exit.dx || exit.dy) ? exit : { dx, dy };
+      const bx = nx + ex.dx, by = ny + ex.dy;
+      if (!worth && open(bx, by, nx, ny)) {
         /* PASS. The opening is paid once, at the tile you left; in combat
          * the second tile of ground is paid for too. */
         if (!this.provokeShift(p)) return 'swap';
@@ -1229,6 +1244,10 @@ export class Game {
           : ally.name + ' gives ground as you shoulder past.');
       }
       if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
+      /* You STOOD on it, so it happens: the stair ascends, the gem reports,
+       * the altar hums. Swaps never stepped on what they landed on, which
+       * is how a staircase could be broken by a friend standing on it. */
+      this.stepOn(nx, ny);
       return 'swap';
     }
     const npc = (floor.npcs || []).find((n) => n.x === nx && n.y === ny);

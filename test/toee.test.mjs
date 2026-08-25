@@ -526,3 +526,49 @@ test('mid-fight the standing cast defers to the round', () => {
   assert.equal(g.castAs(voice, 'lay-hands'), false, 'a companion cast out of turn mid-fight');
   assert.equal(voice.power, 20, 'the refused cast still charged power');
 });
+
+/* ---- the tile worth standing on ----
+ *
+ * Reported twice in one evening: the gem in the demon's lair "vibrated the
+ * screen" instead of being picked up, and the stairs off the fourth floor
+ * "did not work" — both because a companion stood on the tile and the slip
+ * carried the mover PAST the very thing they were stepping onto, while the
+ * walker re-routed back through them forever. Landing beats passing where
+ * the ground itself matters, and the landing steps on what it lands on. */
+test('you land on what is worth standing on, not past it', () => {
+  const g = newGame('t3-worth', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'mage', 'Idle');   /* at p.x+1 */
+  f.items.push({ x: buddy.x, y: buddy.y, i: { name: 'Gemstone', kind: 'treasure', value: 40 } });
+  const bx = buddy.x;
+  g.tryMove(1, 0);
+  assert.equal(p.x, bx, 'the mover slipped past the gem instead of landing on it');
+  assert.ok(g.logs.some((l) => /Underfoot: Gemstone/.test(l)), 'the landing never noticed the gem');
+});
+
+test('a slip past a companion follows the route, not the compass', () => {
+  const g = newGame('t3-exit', 'fighter');
+  arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'mage', 'Door');   /* at p.x+1 — the corner tile */
+  const bx = buddy.x, by = buddy.y;
+  /* The route turns south at the companion's tile: the exit says so. */
+  g.tryMove(1, 0, { dx: 0, dy: 1 });
+  assert.deepEqual([p.x, p.y], [bx, by + 1], 'the slip ejected straight instead of along the route');
+  assert.deepEqual([buddy.x, buddy.y], [bx, by], 'the companion was displaced by a routed slip');
+});
+
+test('the stairs work with a friend standing on them', () => {
+  const g = newGame('t3-stair-friend', 'fighter');
+  g.loadFloor(1);   /* a real temple floor, with a real up-staircase */
+  g.currentFloor.monsters.length = 0;
+  const p = g.state.player;
+  const up = g.currentFloor.up;
+  const buddy = companion(g, 'thief', 'Perch');
+  buddy.x = up.x; buddy.y = up.y;          /* the van, on the stairs */
+  p.x = up.x + 1; p.y = up.y;
+  g.computeVisibility();
+  g.tryMove(-1, 0);
+  assert.equal(p.floorIdx, 0, 'the stairs did not work with a friend on them');
+});
