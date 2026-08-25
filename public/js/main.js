@@ -2121,6 +2121,9 @@ function bar(fill, text, pct) {
 function renderHud(g) {
   const p = g.state.player;
   if (!p) return;
+  /* The nameplates carry health bars now, and blood is drawn on every kind
+   * of turn — the strip repaints with the HUD, not only with the sheets. */
+  renderPartyStrip(g);
   bar(els.hpFill, els.hpText, 100 * p.hp / Math.max(1, p.maxhp));
   bar(els.powFill, els.powText, 100 * p.power / Math.max(1, p.maxpower));
   /* The part of the bar resting cannot reach, hatched off at the top. Without
@@ -2159,10 +2162,14 @@ function renderPartyStrip(g) {
     if (!m) return '';
     const tint = partyTint(i);
     const reins = m === g.state.player ? ' ●' : '';
+    /* The nameplate carries the health: the same red bar as the HUD, in
+     * miniature, so the whole company's blood is one glance up. */
+    const hp = Math.max(0, Math.min(100, 100 * m.hp / Math.max(1, m.maxhp)));
     return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
       (m === shown ? 'viewed' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
-      '<img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
-      esc(m.name) + reins + '</button>';
+      '<span class="pchip-row"><img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
+      esc(m.name) + reins + '</span>' +
+      '<span class="pbar"><i style="width:' + hp + '%"></i></span></button>';
   }).join('');
 }
 
