@@ -918,7 +918,9 @@ function onCanvasClick(e) {
   if (!t) return;
   const p = g.state.player;
   if (t.x === p.x && t.y === p.y) {
-    g.handleKey('g', {});   /* your own feet: loot them, or hear what is here */
+    /* your own feet: loot them (into the focused character's pack), or
+     * hear what is here */
+    g.handleKey('g', { lootTo: viewedIdx === null ? undefined : viewedIdx });
     saveGame();
     return;
   }
@@ -1404,6 +1406,13 @@ function drawIsoGround(g, t, tset, theme, sa) {
     /* the theme's cast, so eleven dungeons do not share one grey floor */
     fillDiamond(ctx, ax, ay, theme.floor, 0.18);
   }
+  /* The stairs lie flat on the ground as a dais — stone up, light down —
+   * so they belong to the ground pass and can never occlude a body. */
+  if ((tile === T.UP || tile === T.DOWN) && tset) {
+    const st = WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].stairs;
+    const r = st && tset.def.tiles[tile === T.DOWN ? st.down : st.up];
+    if (r) ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
+  }
   if (!vis) fillDiamond(ctx, ax, ay, '#000000', 0.38);
   if (tile === T.DOWN || tile === T.UP) {
     ctx.fillStyle = vis ? theme.accent : shade(theme.accent, 0.6);
@@ -1429,8 +1438,13 @@ function drawIsoGround(g, t, tset, theme, sa) {
  * over; the caves stand in crags, which is why their cutaway cone reaches
  * deeper. */
 const WALL_VOCAB = {
-  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128, stairs: { x: 193, y: 192 } },
-  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300 },
+  /* stairs: flat dais pieces, verified BY LOOKING at the atlas after ids
+   * 192/193 — mined as "stairs" from map statistics — turned out to be
+   * hanging chains, which the playtest found dangling over every
+   * stairwell. 264 is a carved stone dais, 265 the same dais glowing:
+   * stone for the way up, light for the way down. */
+  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128, stairs: { up: 264, down: 265 } },
+  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300, stairs: { up: 264, down: 265 } },
 };
 
 /* Which piece a wall tile wears — or null, and null is the ToEE cutaway
@@ -1618,31 +1632,6 @@ function renderIsoScene(g, sa) {
   const ghosts = (wx, wy) => shadow.has((wx + wy) * 512 + (wx - wy));
   for (const t of seenTiles) {
     const tile = floor.tiles[t.y][t.x];
-    /* Stairs stand up as furniture where the atlas offers them — rising
-     * against whichever wall they lean on. The glyph rides the steps, so
-     * up and down still read at a glance. */
-    if ((tile === T.UP || tile === T.DOWN) && tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].stairs) {
-      const st = WALL_VOCAB[tset.name].stairs;
-      const wallAt = (x, y) => x >= 0 && y >= 0 && x < W && y < H &&
-        (floor.tiles[y][x] === T.WALL || floor.tiles[y][x] === T.SECRET);
-      const r = tset.def.tiles[wallAt(t.x, t.y - 1) ? st.x : st.y];
-      if (r) {
-        const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
-        /* The atlas stairs are monumental — half scale suits a stairwell
-         * one tile wide, and like any wall they turn to glass when they
-         * stand between the camera and lit ground. */
-        const sc = 0.55;
-        standers.push({ x: t.x, y: t.y, draw: () => {
-          const a = isoToScreen(t.x, t.y);
-          const ga = ctx.globalAlpha;
-          ctx.globalAlpha = ga * (vis ? 1 : 0.30) * (ghosts(t.x, t.y) ? 0.55 : 1);
-          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
-            a.sx - isoCamX - r.ox * sc, a.sy - isoCamY - r.oy * sc, r.w * sc, r.h * sc);
-          ctx.globalAlpha = ga;
-        } });
-      }
-      continue;
-    }
     if (tile !== T.WALL && tile !== T.SECRET && tile !== T.DOOR_C) continue;
     /* Only the shell: a wall with no walkable neighbour in the light is the
      * void, and the void is already the colour of the background. */
@@ -2142,6 +2131,14 @@ function onKey(e) {
   }
   if ((k === '+' || k === '=' || k === '-') && viewMode === 'iso' && !cardUp) {
     setIsoZoom(k === '-' ? isoZoom - 0.15 : isoZoom + 0.15);
+    e.preventDefault();
+    return;
+  }
+  if (k === 'g' && !cardUp && game) {
+    /* Loot lands in the pack of the character whose sheet is in focus. */
+    game.handleKey('g', { lootTo: viewedIdx === null ? undefined : viewedIdx });
+    if (currentTab === 'gear') renderGear(game);
+    saveGame();
     e.preventDefault();
     return;
   }

@@ -166,3 +166,82 @@ test('the class speeds are the promised ground', () => {
     assert.equal(g.memberSpeed(g.state.player), speed, cls);
   }
 });
+
+/* ---- the company's dues: healing and loot stop being welded to the
+ * active member, which betrayed the game's single-character origins the
+ * moment there was anyone else to save or to carry. ---- */
+
+import { makePlayer, initialStats as stats2 } from '../public/js/engine.js';
+
+function companion(g, cls, name) {
+  const b = makePlayer(name, cls, stats2(cls));
+  const p = g.state.player;
+  b.dungeonId = p.dungeonId; b.floorIdx = p.floorIdx;
+  b.x = p.x + 1; b.y = p.y;
+  g.state.party.members.push(b);
+  return b;
+}
+
+test('a healing touch falls on the worst-hurt in reach, not the caster', () => {
+  const g = newGame('t3-heal', 'cleric');
+  arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'fighter', 'Hurt');
+  p.hp = p.maxhp - 1;                          /* scratched */
+  buddy.hp = Math.floor(buddy.maxhp / 4);      /* bleeding out beside you */
+  g.activateAbility('lay-hands');
+  assert.ok(buddy.hp > Math.floor(buddy.maxhp / 4), 'the cleric healed nobody but themselves');
+});
+
+test('a healing touch does not reach across the room', () => {
+  const g = newGame('t3-heal-far', 'cleric');
+  arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'fighter', 'Far');
+  buddy.x = p.x + 6;
+  buddy.hp = 1;
+  p.hp = p.maxhp - 2;
+  g.activateAbility('lay-hands');
+  /* Calm regen may tick a point as the turn passes; a real 2d6 heal cannot
+   * be mistaken for it. */
+  assert.ok(buddy.hp <= 3, 'Lay on Hands is a touch, not a volley');
+  assert.ok(p.hp > p.maxhp - 2, 'with nobody in reach the touch falls on the caster');
+});
+
+test('second wind is the fighter\'s own breath', () => {
+  const g = newGame('t3-wind', 'fighter');
+  arena(g);
+  const p = g.state.player;
+  for (let i = 1; i < 6; i++) g.levelUp(p);
+  p.power = 99; p.maxpower = 99;
+  const buddy = companion(g, 'cleric', 'Worse');
+  buddy.hp = 1;
+  p.hp = Math.floor(p.maxhp / 2);
+  g.activateAbility('second-wind');
+  assert.ok(buddy.hp <= 3, 'selfOnly leaked onto a companion');
+  assert.ok(p.hp > Math.floor(p.maxhp / 2), 'the fighter did not catch their own breath');
+});
+
+test('G sends the loot to the pack in focus', () => {
+  const g = newGame('t3-loot');
+  arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'thief', 'Packrat');
+  g.currentFloor.items.push({ x: p.x, y: p.y, i: { id: 'x', name: 'A Trinket', kind: 'misc', value: 1 } });
+  g.handleKey('g', { lootTo: 1 });
+  assert.ok(buddy.inventory.some((it) => it.name === 'A Trinket'), 'the trinket missed the focused pack');
+  assert.ok(!p.inventory.some((it) => it.name === 'A Trinket'), 'the taker kept it anyway');
+});
+
+test('mid-fight, a pack across the room is out of reach', () => {
+  const g = newGame('t3-loot-far');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'thief', 'Away');
+  buddy.x = p.x + 7;
+  f.monsters.push(beast(p.x + 3, p.y));   /* something awake and close: combat */
+  g.currentFloor.items.push({ x: p.x, y: p.y, i: { id: 'x', name: 'A Coin Purse', kind: 'misc', value: 1 } });
+  g.handleKey('g', { lootTo: 1 });
+  assert.ok(p.inventory.some((it) => it.name === 'A Coin Purse'), 'the loot vanished');
+  assert.ok(!buddy.inventory.length, 'the purse teleported across a fight');
+});

@@ -91,7 +91,7 @@ export const ABILITIES = [
   { cls: 'fighter', level: 3, id: 'shield-bash', name: 'Shield Bash', kind: 'damage', name2: 'Shield Bash', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 2, n: 'str' }, description: 'Knock a foe senseless: deal 1d6+STR and it cannot attack next turn.' },
   /* Half a bar, twice a fight. The fraction and the price moved together: with
    * the old 5 power it would have been four castings and two full bars. */
-  { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', powerCost: 8, cooldown: 0, heal: '3d6', healFraction: 0.5, description: 'Breathe deep and shake off the dark: heal 3d6.' },
+  { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', selfOnly: true, powerCost: 8, cooldown: 0, heal: '3d6', healFraction: 0.5, description: 'Breathe deep and shake off the dark: heal 3d6. Your own breath — no one else’s.' },
   { cls: 'fighter', level: 9, id: 'whirlwind', name: 'Whirlwind', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 6, bonus: 3, dice: 2, n: 'str' }, description: 'A dance of death: deal 2d6+STR to every foe around you.' },
 
   /* Thief */

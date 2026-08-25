@@ -930,7 +930,22 @@ export class Game {
       }
       return !!turn;
     } else if (k === 'g') {
-      const got = this.tryPickup(p.x, p.y, true);
+      /* The loot goes to the pack of whoever the sheets are OPEN ON — the
+       * character in focus — not silently to whoever holds the reins. Out
+       * of combat the company shares freely; mid-fight a pack across the
+       * room is out of reach, and the loot stays with the taker. */
+      let carrier = null;
+      if (uiFlags.lootTo !== undefined) {
+        const cand = this.state.party.members[uiFlags.lootTo];
+        if (cand && cand !== p && cand.hp > 0) {
+          if (!this.outOfCombat() && dist8(cand, p) > 1) {
+            this.log(cand.name + ' is too far to hand it across a fight — you keep it.');
+          } else {
+            carrier = cand;
+          }
+        }
+      }
+      const got = this.tryPickup(p.x, p.y, true, carrier);
       /* Nothing to take is not nothing to learn: say what is here instead, so
        * the key teaches itself the first time someone presses it. */
       if (got) this.uiLog('Looted.');
@@ -1314,13 +1329,13 @@ export class Game {
     }
   }
 
-  tryPickup(x, y, manual) {
+  tryPickup(x, y, manual, who) {
     const floor = this.currentFloor;
     const here = (floor.items || []).filter((it) => it.x === x && it.y === y);
     let got = 0;
     for (const it of here) {
       if (manual || it.auto) {
-        if (this.pickupItem(it.i)) {
+        if (this.pickupItem(it.i, who)) {
           got++;
           this.rememberTake(it);
           this.forgetDrop(it);
@@ -1331,19 +1346,23 @@ export class Game {
     return got > 0;
   }
 
-  pickupItem(it) {
-    const p = this.state.player;
+  pickupItem(it, who) {
+    const p = who || this.state.player;
+    const me = p === this.state.player;
     if (!it) return false;
     if (it.kind === 'special') {
       const v = Math.round((it.value || 10) * this.goldMul());
       p.gold = (p.gold || 0) + v;
-      this.uiLog('Picked up ' + v + ' gold' + (it.name && it.name !== 'Pile of Gold' ? ' (' + it.name + ')' : '') + '.');
+      this.uiLog((me ? 'Picked up ' : p.name + ' pockets ') + v + ' gold' + (it.name && it.name !== 'Pile of Gold' ? ' (' + it.name + ')' : '') + '.');
       return true;
     }
-    if (p.inventory.length >= PACK_LIMIT) { this.log('Your pack is full.'); return false; }
+    if (p.inventory.length >= PACK_LIMIT) {
+      this.log(me ? 'Your pack is full.' : p.name + '’s pack is full.');
+      return false;
+    }
     p.inventory.push(it);
     const idk = !it.identified ? ' unknown' : '';
-    this.uiLog('You take: ' + it.name + idk + '.');
+    this.uiLog((me ? 'You take: ' : p.name + ' takes: ') + it.name + idk + '.');
     return true;
   }
 
@@ -2480,8 +2499,8 @@ export class Game {
     return closed;
   }
 
-  applyHeal(rolled, fraction) {
-    const p = this.state.player;
+  applyHeal(rolled, fraction, who) {
+    const p = who || this.state.player;
     const roll = Math.max(1, Math.round(Number(rolled) || 0));
     const floor = fraction > 0 ? Math.max(1, Math.round(p.maxhp * fraction)) : 0;
     const want = Math.max(roll, floor);
@@ -2493,11 +2512,31 @@ export class Game {
     return p.hp - before;
   }
 
+  /* Who a healing touch falls on: the worst-hurt living member in reach of
+   * the caster, the caster included. Healing was welded to the active
+   * member — a cleric in a company could mend nobody but themselves, which
+   * betrayed the game's single-character origins the moment there was
+   * anyone else to save. An ability marked selfOnly (the Fighter's Second
+   * Wind is his own breath, no one else's) keeps to its caster. */
+  healTarget(a) {
+    const p = this.state.player;
+    if (a && a.selfOnly) return p;
+    let best = p, worst = p.hp / Math.max(1, p.maxhp);
+    for (const m of this.livingMembers()) {
+      if (dist8(m, p) > 1) continue;
+      const ratio = m.hp / Math.max(1, m.maxhp);
+      if (ratio < worst) { worst = ratio; best = m; }
+    }
+    return best;
+  }
+
   abilityHeal(a) {
     /* Hand-authored abilities carry "3d6"; generated ones carry {dice,sides}. */
     const rolled = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal, this.rngOfTurn());
-    const mended = this.applyHeal(rolled, healFractionForAbility(a));
-    this.log('Old forces knit your wounds for ' + mended + ' hit points.');
+    const mark = this.healTarget(a);
+    const mended = this.applyHeal(rolled, healFractionForAbility(a), mark);
+    this.log('Old forces knit ' + (mark === this.state.player ? 'your' : mark.name + '’s') +
+      ' wounds for ' + mended + ' hit points.');
   }
 
   /* A short-lived edge on your attacks. The validator accepts kind "buff", so
@@ -2669,9 +2708,12 @@ export class Game {
     const r = this.rngOfTurn();
     const spell = fx.spell;
     if (spell === 'heal') {
-      /* Wands written before the heal was data still roll the old 1d6+3. */
-      const v = this.applyHeal(fx.heal ? evaluateDice(fx.heal, r) : r.d(6) + 3, healFractionForItem(item));
-      this.log('The wand warms: +' + v + ' HP. (' + fx.charges + ' charges)' );
+      /* Wands written before the heal was data still roll the old 1d6+3 —
+       * and a healing wand, like a healing touch, favours whoever in reach
+       * is worst hurt. */
+      const mark = this.healTarget(null);
+      const v = this.applyHeal(fx.heal ? evaluateDice(fx.heal, r) : r.d(6) + 3, healFractionForItem(item), mark);
+      this.log('The wand warms ' + (mark === p ? 'you' : mark.name) + ': +' + v + ' HP. (' + fx.charges + ' charges)');
     } else {
       const floor = this.currentFloor;
       let target = null, best = 1e9;

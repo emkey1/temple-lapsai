@@ -30,9 +30,7 @@ html {
 }
 
 body {
-  background:
-    repeating-linear-gradient(0deg, rgba(0,0,0,.10) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at 50% 40%, #0d140b 0%, #05070a 75%, #000 100%);
+  background: radial-gradient(ellipse at 50% 40%, #0d140b 0%, #05070a 75%, #000 100%);
   overflow: hidden;
 }
 
@@ -62,17 +60,12 @@ body {
 #location { color: var(--ink-dim); letter-spacing: 1px; white-space: nowrap; }
 #topstatus { color: var(--ink); white-space: nowrap; }
 .spacer { flex: 1; }
-/* The scanlines survive as a whisper: at .32 they were a third of every
- * third row of the artwork gone dark — the whole game read as low
- * resolution no matter what the canvas held. */
-.crt {
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,.08) 0 1px, transparent 1px 3px);
-  z-index: 60;
-  mix-blend-mode: multiply;
-}
+/* The scanlines are gone. Softened first (.32 to .08), and the playtest
+ * still read them as low resolution — because they were: a deliberate
+ * darkening of every third row of the art. The terminal look lives on in
+ * the colours, the type and the frames; the painting gets the whole
+ * screen. */
+.crt { display: none; }
 
 #main { flex: 1; display: flex; min-height: 0; }
 
