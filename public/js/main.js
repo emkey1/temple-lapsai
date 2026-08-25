@@ -257,7 +257,14 @@ function makeUI() {
     log: logByKind,
     /* The handle on window is a dev tool, the way the console always is in a
      * single-player game: it is how a bug report becomes a reproduction. */
-    render: (g) => { game = g; window.lapsaiGame = g; renderGame(g); renderInitiative(g); },
+    render: (g) => {
+      game = g; window.lapsaiGame = g;
+      /* The console's window into module scope: what tile a mouse event
+       * lands on, and the route the click would take. Debugging surface
+       * only — nothing in the game calls this. */
+      window.lapsaiUI = { tileFromEvent, routeTo: (x, y) => routeTo(g, x, y), dialogueUp: () => dialogueOpen };
+      renderGame(g); renderInitiative(g);
+    },
     refreshHud: (g) => renderHud(g),
     refreshStats: (g) => { if (currentTab === 'stats') renderStats(g); },
     setLocation: (s) => { els.location.textContent = s; },
@@ -945,11 +952,13 @@ function drawMember(m, tint, acting) {
 
 let hoverTile = null;   /* {x, y} under the cursor, in floor coordinates */
 let hoverPath = null;   /* the previewed route to it, or null */
-let walkPath = null;    /* the route being walked, step queue */
+let walkDest = null;    /* where the click is taking the company */
+let walkPath = null;    /* the route being walked — recomputed every tick, kept for the dots */
 let walkTimer = null;
 
 function cancelWalk() {
   walkPath = null;
+  walkDest = null;
   if (walkTimer) { clearTimeout(walkTimer); walkTimer = null; }
 }
 
@@ -1022,16 +1031,23 @@ function takeStep(step) {
 function walkTick() {
   walkTimer = null;
   const g = game;
-  if (!walkPath || !walkPath.length || !g || g.dying) { cancelWalk(); return; }
+  if (!walkDest || !g || g.dying) { cancelWalk(); return; }
   if (!els.overlay.classList.contains('hidden')) { cancelWalk(); return; }
   const p = g.state.player;
+  if (p.x === walkDest.x && p.y === walkDest.y) { cancelWalk(); return; }
+  /* Re-routed from WHERE YOU NOW STAND, every tick. A queue of steps laid
+   * at click time went stale the moment a step slipped past a companion
+   * (two tiles covered, not one) or the van re-took its station in front
+   * of the leader — and a stale queue cancelled the walk on its second
+   * step. The destination is the promise; the route is disposable. */
+  walkPath = routeTo(g, walkDest.x, walkDest.y);
+  if (!walkPath || !walkPath.length) { cancelWalk(); return; }
   const floorBefore = p.floorIdx + ':' + p.dungeonId;
   const bloodBefore = g.livingMembers().reduce((s, m) => s + m.hp, 0);
-  const step = walkPath.shift();
-  if (!takeStep(step)) { cancelWalk(); return; }
+  if (!takeStep(walkPath.shift())) { cancelWalk(); return; }
   const stillCalm = g.outOfCombat();
   const bloodAfter = g.livingMembers().reduce((s, m) => s + m.hp, 0);
-  if (!walkPath.length || !stillCalm || bloodAfter < bloodBefore ||
+  if ((p.x === walkDest.x && p.y === walkDest.y) || !stillCalm || bloodAfter < bloodBefore ||
       floorBefore !== p.floorIdx + ':' + p.dungeonId ||
       !els.overlay.classList.contains('hidden')) {
     cancelWalk();
@@ -1060,23 +1076,28 @@ function onCanvasClick(e) {
   const path = routeTo(g, t.x, t.y);
   if (!path || !path.length) { g.log('No way there that you have seen.'); return; }
   if (g.outOfCombat()) {
-    walkPath = path;
+    walkDest = { x: t.x, y: t.y };
     walkTick();
   } else {
-    /* In combat one click is one TURN'S worth: walk the route as far as
-     * this member's remaining ground allows, and if it ends at something
-     * hostile, the blow lands too — ToEE's move-and-strike on one click.
+    /* In combat one click is one TURN'S worth: walk toward the tile while
+     * this member's ground lasts, re-routing after every step — a step can
+     * slip past a companion and cover two tiles, and a queue laid at click
+     * time goes stale. If the next step is something hostile, the blow
+     * lands too, ground or none — ToEE's move-and-strike on one click.
      * Openings given along the way are given; the preview showed them red. */
     const me = p;
-    const at = g.actorTurn(me);
-    let ground = Math.max(0, g.memberSpeed(me) - (at.moved || 0));
-    for (const step of path) {
-      if (g.dying) break;
-      if (monsterAtTile(g, step.x, step.y)) { takeStep(step); break; }
-      if (ground <= 0) break;
+    const turn0 = g.turn;   /* one click never spends a second round */
+    let guard = 32;
+    while (guard-- > 0) {
+      if (g.dying || g.state.player !== me || g.outOfCombat() || g.turn !== turn0) break;
+      if (me.x === t.x && me.y === t.y) break;
+      const route = routeTo(g, t.x, t.y);
+      if (!route || !route.length) break;
+      const step = route[0];
+      const hostile = monsterAtTile(g, step.x, step.y);
+      if (!hostile && (g.actorTurn(me).moved || 0) >= g.memberSpeed(me)) break;
       if (!takeStep(step)) break;
-      ground--;
-      if (g.state.player !== me || g.outOfCombat()) break;
+      if (hostile) break;
     }
   }
 }
@@ -2511,7 +2532,7 @@ function canvasFocus() { els.canvas.focus(); }
 
 function onKey(e) {
   /* The keyboard outranks the autopilot: any key stops the walk. */
-  if (walkPath) cancelWalk();
+  if (walkPath || walkDest) cancelWalk();
   if (e.key === 'Tab') {
     e.preventDefault();
     if (game) setTab(nextTab());
