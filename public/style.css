@@ -83,6 +83,52 @@ body {
 }
 #game { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
+/* THE INITIATIVE BAR: who goes when, floating over the top of the scene.
+ * Party chips wear their member's tint; everything hostile wears red; the
+ * chip whose turn it is burns brighter and carries the turn readout. */
+#initiative-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  z-index: 6;
+  pointer-events: none;
+  max-width: 92%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#initiative-bar.hidden { display: none; }
+#initiative-bar .ini-chip {
+  font: 11px "Courier New", monospace;
+  letter-spacing: .04em;
+  padding: 2px 7px;
+  border: 1px solid var(--ink-dim);
+  border-radius: 2px;
+  background: rgba(5, 7, 5, .82);
+  color: var(--ink);
+  opacity: .62;
+  white-space: nowrap;
+}
+#initiative-bar .ini-chip.hostile { border-color: #7a3a30; color: #d08a70; }
+#initiative-bar .ini-chip.done { opacity: .3; }
+#initiative-bar .ini-chip.now {
+  opacity: 1;
+  background: #0a0d0a;
+  box-shadow: 0 0 6px rgba(230, 220, 160, .25);
+}
+#initiative-bar .ini-turn {
+  font: 11px "Courier New", monospace;
+  color: var(--accent, #e0c05a);
+  padding: 2px 6px;
+  background: rgba(5, 7, 5, .82);
+  border: 1px solid var(--ink-dim);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
 #hud-overlay {
   position: absolute;
   left: 10px;

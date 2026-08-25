@@ -26,6 +26,7 @@ export const CLASSES = {
     goldMul: 1.0,
     statAdj: { str: 1, dex: 0, con: 1, int: 0, wis: 0, cha: 0 },
     weapon: 'Broadsword',
+    speed: 3,   /* tiles of ground a combat turn buys, before the blow */
   },
   thief: {
     id: 'thief',
@@ -42,6 +43,7 @@ export const CLASSES = {
     goldMul: 1.5,
     statAdj: { str: 0, dex: 2, con: 0, int: 1, wis: 0, cha: 0 },
     weapon: 'Short Sword',
+    speed: 5,   /* the swift one: ground is the Thief's whole armour */
   },
   mage: {
     id: 'mage',
@@ -61,6 +63,7 @@ export const CLASSES = {
      * lowest hit points and the worst armour in the game. */
     statAdj: { str: 0, dex: 0, con: 0, int: 2, wis: 1, cha: 0 },
     weapon: 'Staff',
+    speed: 4,   /* unburdened by armour, if by nothing else */
   },
   cleric: {
     id: 'cleric',
@@ -78,6 +81,7 @@ export const CLASSES = {
     powerPerChr: 1,
     statAdj: { str: 0, dex: 0, con: 1, int: 0, wis: 2, cha: 1 },
     weapon: 'Mace',
+    speed: 3,   /* mail and conviction weigh about the same */
   },
 };
 

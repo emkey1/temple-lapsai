@@ -1,0 +1,168 @@
+/* THE TOEE TURN: movement and a blow, attacks of opportunity, flanking.
+ *
+ * In combat a member's turn is ground up to their speed plus one standard
+ * action, in the order they choose; the round advances only when the turn
+ * is spent. Leaving a threatened square provokes one free blow per creature
+ * per round — with the 3.5 mercy that one step, and no more, is free.
+ * Flanking is +2 for anyone with an ally roughly opposite. All of it is
+ * pinned here headless, because this is the phase where the game stops
+ * being a bump-fest and starts being a battle map. */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { T, W, H } from '../public/js/mapgen.js';
+import { newGame } from './helpers.mjs';
+
+/* An open arena with the walls far away, so nothing here is about corridors. */
+function arena(g) {
+  const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
+  for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) tiles[y][x] = T.FLOOR;
+  g.currentFloor = {
+    w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs: [],
+    up: { x: 3, y: 3 }, down: null, isLast: false, den: null,
+  };
+  g.seen = Array.from({ length: H }, () => Array(W).fill(true));
+  g.vis = Array.from({ length: H }, () => Array(W).fill(true));
+  const p = g.state.player;
+  p.x = 10; p.y = 10;
+  return g.currentFloor;
+}
+
+function beast(x, y, over = {}) {
+  return {
+    t: {
+      id: over.id || 'test-beast', name: over.name || 'Test Beast', glyph: 'b', color: 'green',
+      hpMax: over.hp || 60, ac: over.ac ?? 10, toHit: over.toHit ?? 0,
+      damage: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0,
+      props: [], speed: over.speed || 1, aggroRange: 20,
+    },
+    x, y, hp: over.hp || 60, maxhp: over.hp || 60, boss: false, aggro: true,
+    toHit: over.toHit ?? 0, dmg: { dice: 1, sides: 2, bonus: 0 },
+    xp: 1, goldMin: 0, goldMax: 0, ini: over.ini ?? 1,
+  };
+}
+
+/* Deal the reins to the tester and count what the monsters get to do. */
+function begin(g) {
+  g.state.player.ini = 30;
+  g._round = null;
+  let acts = 0;
+  const real = g.monsterTakeTurn.bind(g);
+  g.monsterTakeTurn = (m, f) => { if (m.hp > 0) acts++; real(m, f); };
+  g.advanceQueue();
+  return () => acts;
+}
+
+test('a step in combat holds the turn: the round does not advance', () => {
+  const g = newGame('t3-hold');
+  const f = arena(g);
+  f.monsters.push(beast(16, 10));
+  const acts = begin(g);
+  g.handleKey('d');
+  assert.equal(acts(), 0, 'one step spent the whole turn');
+  assert.equal(g.actorTurn(g.state.player).moved, 1);
+  assert.equal(g.state.player.x, 11, 'the step did not land');
+});
+
+test('the budget spends itself when nothing stands in reach', () => {
+  const g = newGame('t3-budget');
+  const f = arena(g);
+  f.monsters.push(beast(20, 10));    /* far enough that three steps end short */
+  const acts = begin(g);
+  g.handleKey('d');
+  g.handleKey('d');
+  assert.equal(acts(), 0);
+  g.handleKey('d');                  /* a fighter's third step: budget gone, nothing adjacent */
+  assert.equal(acts(), 1, 'the turn should spend itself at full stretch');
+});
+
+test('a full advance ends in a swing, not a shrug', () => {
+  const g = newGame('t3-advance');
+  const f = arena(g);
+  const mo = beast(14, 10, { ac: 30 });   /* descending AC: high is a barn door */
+  f.monsters.push(mo);
+  const acts = begin(g);
+  g.handleKey('d'); g.handleKey('d'); g.handleKey('d');   /* three steps: now adjacent */
+  assert.equal(acts(), 0, 'the turn spent itself with a monster in reach');
+  const hpBefore = mo.hp;
+  g.handleKey('d');                                       /* the blow */
+  assert.equal(acts(), 1, 'the strike should end the turn');
+  assert.ok(mo.hp < hpBefore, 'the strike did not land on a barn door');
+});
+
+test('waiting spends the turn whole', () => {
+  const g = newGame('t3-wait');
+  const f = arena(g);
+  f.monsters.push(beast(16, 10));
+  const acts = begin(g);
+  g.handleKey('d');
+  g.handleKey(' ');
+  assert.equal(acts(), 1, 'space should surrender the rest of the turn');
+});
+
+test('one careful step is free; the second calls the debt in', () => {
+  const g = newGame('t3-shift');
+  const f = arena(g);
+  f.monsters.push(beast(11, 10, { toHit: 40 }));   /* adjacent, and cannot miss */
+  const acts = begin(g);
+  const hp0 = g.state.player.hp;
+  g.handleKey('a');   /* step away: the shift, provisionally free */
+  assert.equal(g.state.player.hp, hp0, 'the shift itself drew blood');
+  g.handleKey('a');   /* the second step: the debt comes due */
+  assert.ok(g.state.player.hp < hp0, 'walking off never provoked');
+  assert.match(g.logs.join(' '), /seizes the opening/i);
+  assert.equal(acts(), 0, 'the provoked blow is free — it is not the monster\'s turn');
+});
+
+test('an opening is one blow per creature per round', () => {
+  const g = newGame('t3-once');
+  const f = arena(g);
+  f.monsters.push(beast(11, 10, { toHit: 40 }));
+  begin(g);
+  g.handleKey('a'); g.handleKey('a');
+  const seizures = g.logs.filter((l) => /seizes the opening/i.test(l)).length;
+  assert.equal(seizures, 1, 'the same creature collected twice in one round');
+});
+
+test('a monster stepping out of reach is struck at in turn', () => {
+  const g = newGame('t3-mono');
+  const f = arena(g);
+  /* Fleeing and fast: it will turn tail and cross the party's reach. */
+  const mo = beast(11, 10, { speed: 3, hp: 200 });
+  mo.fleeing = true;
+  f.monsters.push(mo);
+  g.state.player.ini = 30;
+  g._round = null;
+  g.advanceQueue();
+  g.handleKey(' ');   /* wait; the beast's turn comes, and it runs */
+  assert.match(g.logs.join(' '), /seize.? the opening as the Test Beast turns/i,
+    'no member collected on the retreat');
+});
+
+test('flanking is the geometry it claims: opposites yes, shoulders no', () => {
+  const g = newGame('t3-flank');
+  const target = { x: 10, y: 10, hp: 10 };
+  const attacker = { x: 9, y: 10, hp: 10 };
+  assert.equal(g.flankBonus(attacker, target, [{ x: 11, y: 10, hp: 10 }]), 2, 'the true opposite');
+  assert.equal(g.flankBonus(attacker, target, [{ x: 11, y: 11, hp: 10 }]), 2, 'the near-opposite diagonal');
+  assert.equal(g.flankBonus(attacker, target, [{ x: 9, y: 11, hp: 10 }]), 0, 'a shoulder is not a pincer');
+  assert.equal(g.flankBonus(attacker, target, [{ x: 13, y: 10, hp: 10 }]), 0, 'an ally across the room');
+  assert.equal(g.flankBonus(attacker, target, [{ x: 11, y: 10, hp: 0 }]), 0, 'the dead do not flank');
+  assert.equal(g.flankBonus(attacker, target, [attacker]), 0, 'you cannot flank with yourself');
+});
+
+test('out of combat, one keypress is still one round for everybody', () => {
+  const g = newGame('t3-calm');
+  arena(g);   /* no monsters at all */
+  const turn0 = g.turn;
+  g.handleKey('d');
+  assert.ok(g.turn > turn0, 'a calm step no longer advances the round');
+  assert.equal(g.actorTurn(g.state.player).moved || 0, 0, 'combat bookkeeping leaked into the calm');
+});
+
+test('the class speeds are the promised ground', () => {
+  for (const [cls, speed] of [['fighter', 3], ['thief', 5], ['mage', 4], ['cleric', 3]]) {
+    const g = newGame('t3-speed-' + cls, cls);
+    assert.equal(g.memberSpeed(g.state.player), speed, cls);
+  }
+});

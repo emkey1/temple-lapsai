@@ -32,7 +32,9 @@ test('you can wade into water', () => {
   const g = newGame('wade');
   pond(g);
   const p = g.state.player;
-  assert.equal(g.tryMove(1, 0), true, 'the move was refused');
+  /* tryMove says WHAT it did now — 'step', 'strike', 'swap' — because the
+   * combat turn needs to know a blow from a stride. */
+  assert.equal(g.tryMove(1, 0), 'step', 'the move was refused');
   assert.equal(p.x, 15, 'the player did not enter the water');
   assert.match(g.logs.join(' '), /wade/i);
 });

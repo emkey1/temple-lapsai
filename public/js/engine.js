@@ -923,6 +923,12 @@ export class Game {
     }
     if (dx !== 0 || dy !== 0) {
       turn = this.tryMove(dx, dy);
+      if (turn && !this.dying) {
+        /* A step spends ground; a blow or a search spends the standard.
+         * endPlayerTurn knows which holds the turn open and which ends it. */
+        this.endPlayerTurn(turn === 'step' || turn === 'swap' || turn === 'door' ? 'move' : undefined);
+      }
+      return !!turn;
     } else if (k === 'g') {
       const got = this.tryPickup(p.x, p.y, true);
       /* Nothing to take is not nothing to learn: say what is here instead, so
@@ -987,7 +993,7 @@ export class Game {
     const mo = floor.monsters.find((m) => m.x === nx && m.y === ny);
     if (mo) {
       this.attackMonster(mo);
-      return true;
+      return 'strike';
     }
     /* Walking into a companion trades places — blocking would deadlock a
      * corridor, and a shuffle that costs the action is the tactical choice
@@ -999,12 +1005,13 @@ export class Game {
         this.log('The corner is too tight to trade places through.');
         return false;
       }
+      if (!this.provokeShift(p)) return 'swap';   /* cut down mid-shuffle */
       ally.x = p.x; ally.y = p.y;
       ally.faceDx = -dx; ally.faceDy = -dy;
       p.x = nx; p.y = ny;
       this.log('You trade places with ' + ally.name + '.');
       if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
-      return true;
+      return 'swap';
     }
     const npc = (floor.npcs || []).find((n) => n.x === nx && n.y === ny);
     if (npc) {
@@ -1016,12 +1023,12 @@ export class Game {
       this.rememberDoor(nx, ny);
       for (const m of floor.monsters) if (dist1(m, { x: nx, y: ny }) <= 10 && !m.boss) { m.aggro = true; }
       this.log('A heavy door groans open.');
-      return true;
+      return 'door';
     }
     if (!isTravelable(tile)) {
       /* Searching happens where you push, not floor-wide: bumping a wall gives
        * one roll against the tile in front of you. */
-      if (tile === T.SECRET && this.searchSecretAt(nx, ny)) return true;
+      if (tile === T.SECRET && this.searchSecretAt(nx, ny)) return 'search';
       this.log(tile === T.WALL || tile === T.SECRET ? 'The way is blocked.' : 'You cannot pass here.');
       return false;
     }
@@ -1029,10 +1036,96 @@ export class Game {
       this.log('The corner is too tight to slip through.');
       return false;
     }
+    if (!this.provokeShift(p)) return 'step';   /* the opening was fatal */
     p.x = nx; p.y = ny;
     if (isSlowGoing(tile)) this.wadeInto(nx, ny);
     this.stepOn(nx, ny);
+    return 'step';
+  }
+
+  /* ATTACKS OF OPPORTUNITY, the member's half. Leaving a square something
+   * hostile threatens gives it one free blow, once per round per creature —
+   * with one mercy: a single careful step, and no more, is the shift, and
+   * the shift is free. The mercy is PROVISIONAL: take a second step this
+   * turn and the creatures you slipped past on the first collect after all,
+   * which is the 3.5 rule this chapter is named for. Returns false if the
+   * opening killed the mover, so the caller can abandon the move. */
+  provokeShift(mover) {
+    if (this.outOfCombat()) return true;
+    const at = this.actorTurn(mover);
+    const here = (this.currentFloor.monsters || []).filter((m) =>
+      m.hp > 0 && m.aggro && !(m.stunned > 0) && !m.submerged && dist8(m, mover) <= 1);
+    /* The debts live on the Game, not the actors: they are runtime-only,
+     * and refs from a member's save to a monster's (and back) would tie the
+     * save file in a circle. Only one member is ever mid-turn. */
+    if ((at.moved || 0) < 1) {
+      this._memberShiftDebt = here;
+      return true;
+    }
+    const owed = [...(this._memberShiftDebt || []), ...here];
+    this._memberShiftDebt = null;
+    for (const m of owed) {
+      if (m.hp <= 0 || m.aooTurn === this.turn) continue;
+      m.aooTurn = this.turn;
+      this.log('The ' + m.t.name + ' seizes the opening!');
+      this.monsterOpportunity(m, mover);
+      if (this.dying || mover.hp <= 0) return false;
+    }
     return true;
+  }
+
+  /* One plain swing, outside the creature's own turn: no routine, no arms
+   * for the whole company — an opening is one blow wide. */
+  monsterOpportunity(m, target) {
+    const der = this.derived(target);
+    const r = this.rngOfTurn();
+    const dc = Math.max(1, 20 - der.ac);
+    const raw = r.d(20);
+    if (raw !== 20 && raw + m.toHit < dc) {
+      this.log('The blow whistles past ' + this.nameOf(target) + '.');
+      return;
+    }
+    const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
+    this.log('The ' + m.t.name + ' hits ' + this.nameOf(target) + ' for ' + dmg + ' hit points.');
+    this.damageMember(target, dmg, m);
+  }
+
+  /* The company's half of the same law. A monster stepping out of a
+   * member's reach is struck at by that member — one opening per member
+   * per round, spent from their turn state. */
+  memberOpportunity(member, mo) {
+    const at = this.actorTurn(member);
+    if (at.aoo) return;
+    at.aoo = true;
+    const der = this.derived(member);
+    const r = this.rngOfTurn();
+    const dc = Math.max(1, 20 - mo.t.ac);
+    const raw = r.d(20);
+    const who = member === this.state.player ? 'You seize' : member.name + ' seizes';
+    this.log(who + ' the opening as the ' + mo.t.name + ' turns!');
+    if (raw !== 20 && raw + der.toHit < dc) {
+      this.log('The blow goes wide.');
+      return;
+    }
+    const dmg = this.rollDamage(der.dmg, mo.t);
+    this.log((member === this.state.player ? 'You strike' : member.name + ' strikes') +
+      ' the ' + mo.t.name + ' for ' + dmg + ' hit points.');
+    this.applyDamageToMonster(mo, dmg, false, der);
+  }
+
+  /* FLANKING: +2 to hit when an ally stands roughly opposite the attacker
+   * across the target — the pincer the tokens were built for. The dot
+   * product test admits true opposites and the near-opposite diagonals,
+   * and refuses anyone on the attacker's own side. */
+  flankBonus(attacker, target, allies) {
+    for (const a of allies || []) {
+      if (!a || a === attacker || a.hp <= 0) continue;
+      if (dist8(a, target) > 1) continue;
+      const dot = (attacker.x - target.x) * (a.x - target.x) +
+                  (attacker.y - target.y) * (a.y - target.y);
+      if (dot <= -1) return 2;
+    }
+    return 0;
   }
 
   /* Water is crossable, but you flounder: the turn costs double and the noise
@@ -1261,13 +1354,16 @@ export class Game {
     const r = this.rngOfTurn();
     let raw = r.d(20);
     const dc = Math.max(1, 20 - m.t.ac);
-    let hit = raw === 20 || raw + der.toHit >= dc;
+    /* The pincer: an ally roughly opposite you across the target is worth
+     * +2 — the reason a company spreads around a boss instead of queueing. */
+    const flank = this.flankBonus(this.state.player, m, this.livingMembers());
+    let hit = raw === 20 || raw + der.toHit + flank >= dc;
 
     /* The Lucky Coin was carrying a number nothing read. It buys one second
      * look at a blow that missed. */
     if (!hit && der.luck > 0 && r.chance(Math.min(0.6, der.luck * 0.15))) {
       raw = r.d(20);
-      hit = raw === 20 || raw + der.toHit >= dc;
+      hit = raw === 20 || raw + der.toHit + flank >= dc;
       if (hit) this.log('Someone else’s fortune turns the blade — it lands after all.');
     }
 
@@ -1283,7 +1379,7 @@ export class Game {
     const isCrit = raw === 20 || r.chance(der.crit || 0);
     let dmg = this.rollDamage(der.dmg, m.t);
     if (isCrit) dmg += this.rollDamage(der.dmg, m.t);
-    this.log('You strike the ' + m.t.name + ' for ' + dmg + ' hit points.');
+    this.log('You strike the ' + m.t.name + ' for ' + dmg + ' hit points.' + (flank ? ' The pincer tells.' : ''));
     /* A blow landed with a focus draws power back through it. Paid BEFORE the
      * damage, because killing the thing ends the floor's business and the blow
      * should still have been worth striking. This is what turns a Mage out of
@@ -1444,10 +1540,45 @@ export class Game {
    *
    * Six call sites spend an action (move, wait, search, item, ability, rest);
    * none of them needs to know any of this. */
-  endPlayerTurn() {
+  memberSpeed(m) {
+    const c = CLASSES[(m || this.state.player).cls];
+    return (c && c.speed) || 3;
+  }
+
+  monsterInReach(member) {
+    return (this.currentFloor.monsters || []).some((m) =>
+      m.hp > 0 && m.aggro && !m.submerged && dist8(m, member) <= 1);
+  }
+
+  /* The turn holds without the round moving: the world repaints, control
+   * stays with the same member. This is what a step in combat costs now —
+   * ground, not the whole action. */
+  midTurn() {
+    this.computeVisibility();
+    if (this.ui.render) this.ui.render(this);
+    if (this.ui.refreshHud) this.ui.refreshHud(this);
+  }
+
+  /* In combat a member's turn is MOVEMENT AND A BLOW, the way the game this
+   * chapter is named for played it: ground up to your speed, one standard
+   * action, in the order you choose. A step (kind 'move') holds the turn
+   * open while ground remains — or while something stands in reach, so a
+   * full advance still ends in a swing rather than a shrug. Striking,
+   * casting, quaffing, searching, or waiting spends the turn whole. Out of
+   * combat none of this exists: one keypress is one round for everybody. */
+  endPlayerTurn(kind) {
     const p = this.state.player;
     if (!p || this.dying) return;
+    if (kind === 'move' && !this.outOfCombat()) {
+      const at = this.actorTurn(p);
+      at.moved = (at.moved || 0) + 1;
+      if (at.moved < this.memberSpeed(p) || this.monsterInReach(p)) {
+        this.midTurn();
+        return;
+      }
+    }
     this.actorTurn(p).acted = true;
+    this._memberShiftDebt = null;   /* the turn is over; the shift held */
     /* OUTSIDE OF COMBAT THE PARTY MOVES AS ONE. Whatever the member at the
      * reins just did — a step, a search, a swig — the rest of the company
      * keeps pace behind them and their actions are spent with it, so one
@@ -1805,12 +1936,34 @@ export class Game {
      * twice in one turn. It keeps going only while it is STEPPING. */
     const steps = Math.max(1, Math.min(4, m.t.speed || 1));
     const f = field || this.playerDistanceField();
+    this._monShiftDebt = null;
     for (let i = 0; i < steps; i++) {
+      this._monStep = i;   /* the first step is the shift, and free */
       const did = this.monsterAct(m, seen, null, f);
       if (this.dying) return;
       if (m.hp <= 0) break;
       if (did !== 'step') break;
     }
+    this._monStep = 0;
+    this._monShiftDebt = null;
+  }
+
+  /* The company's law applied to the other side: a monster's first step is
+   * the same provisional shift, and its second step calls in the same debt.
+   * memberOpportunity itself keeps each member to one opening per round. */
+  provokeMonsterShift(m) {
+    const here = this.targetableMembers().filter((mem) => dist8(mem, m) <= 1);
+    if (!this._monStep) {
+      this._monShiftDebt = here;
+      return true;
+    }
+    const owed = [...(this._monShiftDebt || []), ...here];
+    this._monShiftDebt = null;
+    for (const mem of owed) {
+      this.memberOpportunity(mem, m);
+      if (m.hp <= 0) return false;
+    }
+    return true;
   }
 
   /* INITIATIVE, rolled once per encounter and held — the way the game this is
@@ -1853,6 +2006,13 @@ export class Game {
   monsterAct(m, seen, der, field) {
     const inReach = this.adjacentMember(m);
     if (!m.aggro) return 'nothing';
+    /* Fleeing means FLEEING — it used to be checked after reach, so a thing
+     * that had turned tail would stand and trade blows the moment anyone
+     * closed with it. Now it runs even from beside you, and pays the law of
+     * the battle map for it: the company strikes at what shows its back. */
+    if (m.fleeing) {
+      return this.monsterFlee(m) ? 'step' : 'nothing';
+    }
     if (inReach) {
       this.monsterMelee(m, inReach);
       return 'strike';
@@ -1866,13 +2026,16 @@ export class Game {
       this.monsterRanged(m, mark);
       return 'strike';
     }
-    if (m.fleeing) {
-      return this.monsterFlee(m) ? 'step' : 'nothing';
-    }
     if (dist <= range || seen) {
       return this.monsterChase(m, field) ? 'step' : 'nothing';
     }
     return 'nothing';
+  }
+
+  /* What the pack knows that the lone wolf does not: the other jaws. */
+  monsterFlank(m, mark) {
+    return this.flankBonus(m, mark,
+      (this.currentFloor.monsters || []).filter((o) => o !== m && o.aggro && o.hp > 0 && !o.submerged));
   }
 
   monsterMelee(m, target) {
@@ -1884,7 +2047,7 @@ export class Game {
     const raw = r.d(20);
     /* A natural 20 always lands, as it does for the player. Without it, enough
      * armour put the player permanently out of a monster's reach. */
-    const hit = raw === 20 || raw + m.toHit >= dc;
+    const hit = raw === 20 || raw + m.toHit + this.monsterFlank(m, mark) >= dc;
     if (!hit) { this.log('The ' + m.t.name + ' lashes out — and misses!'); return; }
     const dmg = this.rollDamage({ dice: m.dmg.dice, sides: m.dmg.sides, bonus: m.dmg.bonus }, m.t);
     this.log('The ' + m.t.name + ' hits ' + this.nameOf(mark) + ' for ' + dmg + ' hit points.');
@@ -1937,7 +2100,7 @@ export class Game {
       const der = this.derived(mark);
       const dc = Math.max(1, 20 - der.ac);
       const raw = r.d(20);
-      const hit = raw === 20 || raw + m.toHit - 1 >= dc;
+      const hit = raw === 20 || raw + m.toHit - 1 + this.monsterFlank(m, mark) >= dc;
       const label = entry.name || 'blow';
       if (!hit) { this.log('The ' + m.t.name + '\'s ' + label + ' misses ' + this.nameOf(mark) + '.'); return; }
       const d = entry.damage || { dice: 1, sides: 3, bonus: 0 };
@@ -1982,6 +2145,7 @@ export class Game {
       bestD = d; best = [nx, ny];
     }
     if (!best) return false;
+    if (!this.provokeMonsterShift(m)) return false;
     m.x = best[0]; m.y = best[1];
     return true;
   }
@@ -1998,6 +2162,7 @@ export class Game {
       if (!isTravelable(t)) continue;
       if (floor.monsters.some((o) => o !== m && o.x === nx && o.y === ny)) continue;
       if (this.memberAt(nx, ny)) continue;
+      if (!this.provokeMonsterShift(m)) return false;
       m.x = nx; m.y = ny;
       if (dist1(m, p) > 10) { m.aggro = false; m.fleeing = false; m.revealed = false; }
       return true;

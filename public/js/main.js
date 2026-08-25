@@ -61,6 +61,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   canvas: $('game'),
   ctx: $('game').getContext('2d'),
+  iniBar: $('initiative-bar'),
   location: $('location'),
   topstatus: $('topstatus'),
   log: $('log'),
@@ -146,6 +147,7 @@ const CONTROLS = [
     ['Mouse', 'Click somewhere seen and the company walks there; click a monster to close and strike; hover to see the route and name what waits. In a fight, one click is one action. Any key takes the reins back.'],
     ['V', 'Turn the view: the isometric scene, or the flat tactical map.'],
     ['+ − · wheel', 'Lean in or out of the scene.'],
+    ['In combat', 'A turn is ground AND a blow: move up to your speed, strike when you choose — the strike, or SPACE, ends the turn. Leaving a monster\'s reach gives it a free blow, except one single careful step. Stand on opposite sides of a thing and you flank it: +2 to hit, for them as for you.'],
   ]],
   ['Reading the dark', [
     ['Anything red', 'Alive, and interested in you. The duller the red the milder the thing — rust and dark red are vermin, bright red and orange are trouble, and something the colour of a hot coal will kill you.'],
@@ -249,7 +251,7 @@ function makeUI() {
     log: logByKind,
     /* The handle on window is a dev tool, the way the console always is in a
      * single-player game: it is how a bug report becomes a reproduction. */
-    render: (g) => { game = g; window.lapsaiGame = g; renderGame(g); },
+    render: (g) => { game = g; window.lapsaiGame = g; renderGame(g); renderInitiative(g); },
     refreshHud: (g) => renderHud(g),
     refreshStats: (g) => { if (currentTab === 'stats') renderStats(g); },
     setLocation: (s) => { els.location.textContent = s; },
@@ -926,7 +928,21 @@ function onCanvasClick(e) {
     walkPath = path;
     walkTick();
   } else {
-    takeStep(path[0]);   /* a fight is clicked one action at a time */
+    /* In combat one click is one TURN'S worth: walk the route as far as
+     * this member's remaining ground allows, and if it ends at something
+     * hostile, the blow lands too — ToEE's move-and-strike on one click.
+     * Openings given along the way are given; the preview showed them red. */
+    const me = p;
+    const at = g.actorTurn(me);
+    let ground = Math.max(0, g.memberSpeed(me) - (at.moved || 0));
+    for (const step of path) {
+      if (g.dying) break;
+      if (monsterAtTile(g, step.x, step.y)) { takeStep(step); break; }
+      if (ground <= 0) break;
+      if (!takeStep(step)) break;
+      ground--;
+      if (g.state.player !== me || g.outOfCombat()) break;
+    }
   }
 }
 
@@ -951,6 +967,69 @@ function onCanvasLeave() {
   hoverPath = null;
   els.canvas.style.cursor = 'default';
   lastTiles = '';
+}
+
+/* THE INITIATIVE BAR: the round, made visible. Party chips in their tints,
+ * everything hostile in red, the chip whose turn it is burning brighter,
+ * and the turn readout beside them — because with a company on the board,
+ * "whose turn is it and how far can they still go" belongs on the screen. */
+function renderInitiative(g) {
+  const bar = els.iniBar;
+  if (!bar) return;
+  const r = g._round;
+  if (!g.currentFloor || !r || g.outOfCombat() || g.dying) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  const p = g.state.player;
+  const at = g.actorTurn(p);
+  const out = [];
+  r.order.forEach((e, i) => {
+    if (!e.ref || e.ref.hp <= 0) return;
+    const now = e.member && e.ref === p && !at.acted;
+    const done = i < r.idx && !now;
+    if (e.member) {
+      const idx = g.state.party.members.indexOf(e.ref);
+      out.push('<span class="ini-chip' + (now ? ' now' : done ? ' done' : '') +
+        '" style="color:' + partyTint(idx) + ';border-color:' + partyTint(idx) + '">' +
+        esc(e.ref.name) + '</span>');
+    } else {
+      out.push('<span class="ini-chip hostile' + (done ? ' done' : '') + '">' +
+        esc(e.ref.t.name) + '</span>');
+    }
+  });
+  const moved = at.moved || 0;
+  out.push('<span class="ini-turn">moves ' + moved + '/' + g.memberSpeed(p) +
+    ' · strike or SPACE ends</span>');
+  bar.innerHTML = out.join('');
+}
+
+/* Would this step draw blood on the way out? Leaving a square a woken
+ * monster threatens provokes — except the turn's single free shift. The
+ * preview paints those steps red, which is the threat display ToEE put on
+ * the battle map: you see the cost before you spend it. */
+function leavesThreat(g, fromX, fromY) {
+  return (g.currentFloor.monsters || []).some((m) =>
+    m.hp > 0 && m.aggro && !(m.stunned > 0) && !m.submerged &&
+    Math.max(Math.abs(m.x - fromX), Math.abs(m.y - fromY)) <= 1);
+}
+
+/* The colour of each previewed step: red where the route would draw blood
+ * on the way out. A route of one single step is the free shift and stays
+ * calm; any longer and every threatened departure shows its price. */
+function routeDotStyles(g, path) {
+  if (!path || g.outOfCombat()) return null;
+  const p = g.state.player;
+  const moved = g.actorTurn(p).moved || 0;
+  if (moved + path.length <= 1) return null;   /* the shift */
+  const styles = [];
+  let fx = p.x, fy = p.y;
+  for (const st of path) {
+    styles.push(leavesThreat(g, fx, fy));
+    fx = st.x; fy = st.y;
+  }
+  return styles;
 }
 
 /* What the cursor rests on, named. Only what the party could name too. */
@@ -978,9 +1057,10 @@ function hoverLabel(g, x, y) {
 function drawMouseOverlay(g) {
   const ctx = els.ctx, s = ts;
   if (hoverPath && hoverPath.length && !walkPath) {
-    ctx.fillStyle = 'rgba(230, 220, 160, 0.5)';
+    const styles = routeDotStyles(g, hoverPath);
     for (let i = 0; i < hoverPath.length - 1; i++) {
       const st = hoverPath[i];
+      ctx.fillStyle = styles && styles[i] ? 'rgba(224, 96, 80, 0.8)' : 'rgba(230, 220, 160, 0.5)';
       ctx.beginPath();
       ctx.arc((st.x - camX) * s + s / 2, (st.y - camY) * s + s / 2, Math.max(1.5, s * 0.09), 0, Math.PI * 2);
       ctx.fill();
@@ -1440,16 +1520,18 @@ function renderIsoScene(g, sa) {
   for (const t of seenTiles) drawIsoGround(g, t, tset, theme, sa);
 
   /* the route, drawn on the ground so the standing world occludes it */
+  const preview = !(walkPath && walkPath.length) && hoverPath && hoverPath.length;
   const dots = (walkPath && walkPath.length) ? walkPath
-    : (hoverPath && hoverPath.length ? hoverPath.slice(0, -1) : null);
+    : (preview ? hoverPath.slice(0, -1) : null);
   if (dots) {
-    ctx.fillStyle = 'rgba(230, 220, 160, 0.45)';
-    for (const st of dots) {
+    const styles = preview ? routeDotStyles(g, hoverPath) : null;
+    dots.forEach((st, i) => {
       const d = isoToScreen(st.x, st.y);
+      ctx.fillStyle = styles && styles[i] ? 'rgba(224, 96, 80, 0.85)' : 'rgba(230, 220, 160, 0.45)';
       ctx.beginPath();
       ctx.arc(d.sx - isoCamX, d.sy - isoCamY, 3, 0, Math.PI * 2);
       ctx.fill();
-    }
+    });
   }
   const hovered = hoverTile && g.seen && g.seen[hoverTile.y] && g.seen[hoverTile.y][hoverTile.x]
     ? hoverTile : null;
