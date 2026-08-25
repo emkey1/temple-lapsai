@@ -106,6 +106,31 @@ export function knownCurses(game) {
     .filter((it) => it && it.cursed && it.identified !== false);
 }
 
+/* THE DROWNED LANTERN. One price, three rooms, and the whole company
+ * rises whole: health, power, cooldowns — and wounds, the number nothing
+ * free can fully reach. Mending closes them slowly for nothing; the inn
+ * closes them tonight for coin. That is the economy of it. */
+export function innCost(game) {
+  const level = (game.state.player && game.state.player.level) || 1;
+  return Math.max(10, Math.round((8 + 4 * level) * buyCut(game)));
+}
+
+export function takeRoom(game) {
+  const p = game.state.player;
+  const cost = innCost(game);
+  if ((p.gold || 0) < cost) { game.log('A room is ' + cost + ' gold, and your purse says no.'); return false; }
+  p.gold -= cost;
+  for (const m of game.livingMembers()) {
+    m.hp = m.maxhp;
+    m.power = m.maxpower;
+    m.wounds = 0;
+    m.cooldowns = {};
+  }
+  game.log('A night at the Drowned Lantern: beds, board, and the lamps kept lit. The company rises whole. (' + cost + ' gold)');
+  if (game.journal) game.journal('A night at the Drowned Lantern set the company right for ' + cost + ' gold.');
+  return true;
+}
+
 export function identifyCost(game) {
   return Math.max(1, Math.round(PRICES.identify * buyCut(game)));
 }

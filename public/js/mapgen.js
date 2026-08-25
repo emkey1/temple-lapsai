@@ -552,73 +552,148 @@ function scaledMonster(t, pos, threat, floorIdx, boss) {
 }
 
 /* THE WHETSTONE, laid out by hand. The town is not generated — it is a
- * place, and places do not reroll. A green under daylight, three houses
- * with their keepers at the door, and a row of dungeon mouths along the
- * east field, one per way down the world currently offers. The caller
- * hands in that list; everything else is fixed.
+ * place, and places do not reroll. A hamlet under daylight: seven stone
+ * buildings around a green with a pond and a market cross, keepers at
+ * their counters, residents at their doors with something to say, dirt
+ * paths worn between them, and a row of dungeon mouths in the east
+ * field — one per way down the world currently offers. The caller hands
+ * in that list; everything else is fixed.
  *
- * Returns a floor in the same shape generateFloor returns, plus `mouths`:
- * [{x, y, dungeonId}] saying which DOWN tile leads where, and `entry`,
- * where an arrival stands. */
+ * Returns a floor in the same shape generateFloor returns, plus `mouths`
+ * ([{x, y, dungeonId, name}]), `entry`, and `props` — standing furniture
+ * plus `flat` ground pieces (the paths) the renderer lays under feet. */
 export function generateTownFloor(dungeons) {
   const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
-  /* The clearing: an open green, walled by the treeline. */
-  for (let y = 8; y <= 36; y++) {
-    for (let x = 8; x <= 54; x++) tiles[y][x] = T.FLOOR;
+  /* The clearing, with an uneven treeline: a hash decides where the woods
+   * lean in a tile or two, so the edge reads grown rather than drawn. */
+  for (let y = 6; y <= 40; y++) {
+    for (let x = 6; x <= 58; x++) {
+      const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const edge = (x <= 7 || x >= 57 || y <= 7 || y >= 39) && (h % 3 === 0);
+      if (!edge) tiles[y][x] = T.FLOOR;
+    }
   }
 
-  /* A house is a ring of wall with a doorway; the keeper stands outside. */
-  const house = (hx, hy, w, h, doorDx) => {
+  /* A building is a ring of wall with a doorway. `doorSide` is 's' or 'n';
+   * the keeper's spot is just outside the door. */
+  const house = (hx, hy, w, h, doorDx, doorSide = 's') => {
     for (let y = hy; y < hy + h; y++) {
       for (let x = hx; x < hx + w; x++) {
         tiles[y][x] = (y === hy || y === hy + h - 1 || x === hx || x === hx + w - 1)
           ? T.WALL : T.FLOOR;
       }
     }
-    /* the doorway, on the south face, and a keeper's spot before it */
-    const dx = hx + doorDx, dy = hy + h - 1;
+    const dx = hx + doorDx;
+    const dy = doorSide === 's' ? hy + h - 1 : hy;
     tiles[dy][dx] = T.DOOR_O;
-    return { x: dx, y: dy + 1 };
+    return { x: dx, y: doorSide === 's' ? dy + 1 : dy - 1 };
   };
 
   const npcs = [];
-  const post = (spot, id, name, color, service, desc) => {
-    npcs.push({ tpl: { id, name, color, service, desc }, x: spot.x, y: spot.y });
-  };
-  post(house(12, 11, 7, 5, 3), 'provisioner', 'The Provisioner', 'gold', 'shop',
-    'Buys what you haul up, sells what the dark is stingy with.');
-  post(house(26, 11, 7, 5, 3), 'lector', 'The Lector', 'cyan', 'sage',
-    'Reads runes for coin, and prises curses loose for more.');
-  post(house(19, 27, 8, 5, 4), 'muster', 'The Muster', 'brightgreen', 'muster',
-    'Sword-arms fresh off the road, seasoned for a price.');
+  const post = (spot, tpl) => npcs.push({ tpl, x: spot.x, y: spot.y });
+
+  /* The keepers: counters with faces. */
+  post(house(10, 10, 7, 5, 3), { id: 'provisioner', name: 'The Provisioner', color: 'gold', service: 'shop',
+    desc: 'Buys what you haul up, sells what the dark is stingy with.' });
+  post(house(26, 10, 7, 5, 3), { id: 'lector', name: 'The Lector', color: 'cyan', service: 'sage',
+    desc: 'Reads runes for coin, and prises curses loose for more.' });
+  post(house(38, 9, 10, 6, 4), { id: 'innkeep', name: 'The Drowned Lantern', color: 'amber', service: 'inn',
+    desc: 'A tavern with three rooms and one price. The lantern over the door was pulled from the flooded floor.' });
+  post(house(10, 28, 8, 5, 4, 'n'), { id: 'muster', name: 'The Muster', color: 'brightgreen', service: 'muster',
+    desc: 'Sword-arms fresh off the road, seasoned for a price.' });
+
+  /* The residents: doors worth knocking on, words that answer offline —
+   * topics keyword-match, fallbacks catch the rest. */
+  post(house(25, 30, 5, 4, 2, 'n'), {
+    id: 'maren', name: 'Maren', title: 'the ferrier\u2019s widow', color: 'white',
+    intro: 'You have the look of the stairs about you. My Aldous had it too, before the temple kept him.',
+    topics: [
+      { keys: ['temple', 'stairs'], replies: ['The temple took my husband and gave back his boots. Mind the water on the lower floors \u2014 he never did.'] },
+      { keys: ['husband', 'aldous'], replies: ['Aldous. He shod horses and then he shod himself for the dark, and only one trade paid.'] },
+      { keys: ['lector'], replies: ['The Lector reads true, but count your change. Grief has not made me generous.'] },
+      { keys: ['water', 'drain'], replies: ['The drains under the temple are not empty. That is all I will say with the light going.'] },
+    ],
+    fallbacks: [
+      'The green is quiet. Keep it so.',
+      'Buy your draughts before you go down, not after you need them.',
+    ],
+  });
+  post(house(33, 29, 5, 4, 2, 'n'), {
+    id: 'casp', name: 'Old Casp', title: 'a digger of long standing', color: 'amber',
+    intro: 'I dug half the cellars in this town and one grave I regret. Ask, or move along.',
+    topics: [
+      { keys: ['grave'], replies: ['Not mine to open again. But the gravedigger\u2019s girl grew up strong \u2014 turned earth is good soil.'] },
+      { keys: ['dig', 'cellar', 'stone'], replies: ['Every cellar in the Whetstone hits stone at six feet. The same stone the temple is cut from. Think on that.'] },
+      { keys: ['bone'], replies: ['You will see bones down there laid neat as cutlery. Nothing lays bones neat but hands.'] },
+      { keys: ['gold'], replies: ['Gold from below spends the same as gold from above. It just remembers where it has been.'] },
+    ],
+    fallbacks: [
+      'These hands have opinions, and they are all about shovels.',
+      'The mouths in the east field were dug from BELOW. Chew on that one.',
+    ],
+  });
+  post(house(46, 26, 5, 4, 2), {
+    id: 'tilda', name: 'Tilda', title: 'keeper of the smallest cottage', color: 'brightgreen',
+    intro: 'The lamps burn all night here since the company came. I find I sleep better for it.',
+    topics: [
+      { keys: ['lantern', 'inn', 'tavern'], replies: ['The Drowned Lantern? Good beds, honest ale, and the innkeep waters nothing but the horses.'] },
+      { keys: ['muster'], replies: ['The Muster\u2019s people are braver than their prices suggest. Tip them.'] },
+      { keys: ['whetstone', 'town', 'name'], replies: ['They named the town for the temple steps \u2014 the stone that keeps the knives of the world sharp.'] },
+      { keys: ['company', 'east'], replies: ['Yours is the fourth company I have seen walk east. Walk back west. The others did not.'] },
+    ],
+    fallbacks: [
+      'Mind the pond. The geese are worse than the kobolds.',
+      'If you find a blue door down there, Old Casp owes me a story about it.',
+    ],
+  });
+
+  /* The pond, and the green\u2019s old market cross. */
+  for (let y = 19; y <= 22; y++) {
+    for (let x = 16; x <= 20; x++) {
+      if (Math.abs(y - 20.5) + Math.abs(x - 18) * 0.7 <= 2.4) tiles[y][x] = T.WATER;
+    }
+  }
 
   /* The mouths: one stair down per way the world offers, in a row along
    * the east field. */
   const mouths = [];
   (dungeons || []).forEach((d, i) => {
-    const x = 44, y = 12 + i * 5;
-    if (y > 34) return;   /* the field only holds so many holes */
+    const x = 52, y = 12 + i * 5;
+    if (y > 36) return;
     tiles[y][x] = T.DOWN;
     mouths.push({ x, y, dungeonId: d.id, name: d.name });
   });
 
-  /* Furniture on the green: Kenney's pieces (CC0), placed where a town
-   * would put them — stock by the shop, crates by the muster hall, a
-   * table outside the Lector's, columns flanking the first mouth. Props
-   * are decor, not obstacles: the ground stays walkable, the renderer
-   * draws them as standers, and nothing pathfinds around a barrel. */
+  /* Furniture (standing) and paths (flat, laid under feet). */
   const props = [
-    { x: 10, y: 15, piece: 'barrelsStacked_S' },
-    { x: 20, y: 15, piece: 'barrel_S' },
-    { x: 28, y: 27, piece: 'woodenCrates_S' },
-    { x: 17, y: 30, piece: 'woodenCrate_S' },
-    { x: 34, y: 14, piece: 'tableRoundChairs_S' },
-    { x: 36, y: 27, piece: 'woodenPile_S' },
+    { x: 9, y: 15, piece: 'barrelsStacked_S' },
+    { x: 17, y: 15, piece: 'barrel_S' },
+    { x: 36, y: 15, piece: 'tableRoundChairs_S' },
+    { x: 44, y: 16, piece: 'tableShort_S' },
+    { x: 47, y: 15, piece: 'barrels_S' },
+    { x: 9, y: 26, piece: 'woodenCrates_S' },
+    { x: 19, y: 26, piece: 'woodenCrate_S' },
+    { x: 30, y: 20, piece: 'stoneColumn_S' },
+    { x: 24, y: 35, piece: 'woodenPile_S' },
+    { x: 40, y: 34, piece: 'chestClosed_S' },
+    { x: 51, y: 28, piece: 'stoneColumnWood_S' },
   ];
   if (mouths.length) {
     props.push({ x: mouths[0].x - 1, y: mouths[0].y - 1, piece: 'stoneColumn_S' });
     props.push({ x: mouths[0].x + 1, y: mouths[0].y + 1, piece: 'stoneColumn_S' });
   }
+  /* The worn path: from the shop fronts east through the green to the
+   * mouths, flat dirt pieces the renderer lays on the grass. */
+  const PATH = [];
+  for (let x = 12; x <= 50; x++) {
+    const y = x < 30 ? 18 + Math.round((x - 12) * 0.1) : 20 - Math.round((x - 30) * 0.15);
+    PATH.push([x, y + 2]);
+  }
+  PATH.forEach(([x, y], i) => {
+    if (tiles[y] && tiles[y][x] === T.FLOOR) {
+      props.push({ x, y, piece: i % 4 === 0 ? 'dirtTiles_S' : 'dirt_S', flat: true });
+    }
+  });
 
   return {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,

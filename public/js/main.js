@@ -23,7 +23,7 @@ import { ISO, isoToScreen, screenToIso, diamondPath, paintOrder, makeViewTest } 
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
-  identifyCost, unbindCost, musterRoster, hireMember,
+  identifyCost, unbindCost, musterRoster, hireMember, innCost, takeRoom,
 } from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
 import {
@@ -489,6 +489,24 @@ function showMuster(g) {
     /* From the walkable town you step back onto the green; the camp card
      * only exists where the town does not. */
     if (g.inTown && g.inTown()) { overlayHideAll(); canvasFocus(); } else showCamp(g);
+  };
+}
+
+function showInn(g) {
+  const box = townCard('inn-card', 'THE DROWNED LANTERN',
+    'Three rooms, one price, and the lamps kept lit until morning. The lantern over the door was pulled from the flooded floor.',
+    purseLine(g) +
+    '<div class="row"><button id="btn-inn-room">A ROOM FOR THE NIGHT · ' + innCost(g) + ' gp</button></div>' +
+    '<div class="tiny">Beds and board: the whole company wakes healed, rested, and mended — wounds and all.</div>',
+    'BACK TO THE STREET', npcPortrait('innkeep'));
+  box.querySelector('#btn-inn-room').onclick = () => {
+    if (takeRoom(g)) {
+      saveGame();
+      renderHud(g);
+      renderStats(g);
+      box.remove();
+      showInn(g);
+    }
   };
 }
 
@@ -1736,6 +1754,20 @@ function renderIsoScene(g, sa) {
     if (tt === T.UP || tt === T.DOWN) drawIsoStairs(g, t, theme, tt === T.DOWN);
   }
 
+  /* Flat props — the worn paths — lie on the ground the same way, under
+   * every foot that walks them. */
+  for (const pr of floor.props || []) {
+    if (!pr.flat) continue;
+    const img = getProp(pr.piece);
+    if (!img) continue;
+    const a = isoToScreen(pr.x, pr.y);
+    const sc = (ISO.TW / 256) * 1.05;
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(img, a.sx - isoCamX - (img.width * sc) / 2,
+      a.sy - isoCamY + ISO.TH / 2 - img.height * sc, img.width * sc, img.height * sc);
+    ctx.globalAlpha = 1;
+  }
+
   /* THE DEAD OF THE TEMPLE. Flare's bone pieces — looked at before being
    * wired in, a lesson the chains taught — scattered on about one floor
    * tile in twenty-five, position-hashed so the same corpse lies in the
@@ -1794,7 +1826,10 @@ function renderIsoScene(g, sa) {
    * screen rows a piece's height reaches back over. Explored ground stays
    * legible everywhere; the walls the camera looks at from the north keep
    * their full carved height, because they hide nothing. */
-  const rise = (tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].rise) || ISO.WALL_H;
+  /* The hamlet builds in stone: town walls draw from the dungeon's carved
+   * masonry, since the grassland set has no buildings in it. */
+  const wtset = town ? getTileset('tileset_dungeon') : tset;
+  const rise = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   const shadow = new Set();
   for (const t of seenTiles) {
@@ -1822,7 +1857,7 @@ function renderIsoScene(g, sa) {
     }
     if (faces) {
       const stub = wallMode === 'down' || ghosts(t.x, t.y);
-      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, tset, stub) });
+      standers.push({ x: t.x, y: t.y, draw: () => drawIsoWall(g, t, tile, theme, sa, wtset, stub) });
     } else {
       /* The interior of a wall mass: no face to show, but a hole would lie.
        * A low dark prism, not a flat shadow — the mass tiles into a stone
@@ -1864,6 +1899,7 @@ function renderIsoScene(g, sa) {
   }
 
   for (const pr of floor.props || []) {
+    if (pr.flat) continue;   /* the paths were laid with the ground */
     const img = getProp(pr.piece);
     if (!img) continue;
     standers.push({ x: pr.x, y: pr.y, draw: () => {
@@ -2458,6 +2494,7 @@ function openDialogue(npc) {
     if (tpl.service === 'shop') showShop(game);
     else if (tpl.service === 'sage') showSage(game);
     else if (tpl.service === 'muster') showMuster(game);
+    else if (tpl.service === 'inn') showInn(game);
     return;
   }
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);

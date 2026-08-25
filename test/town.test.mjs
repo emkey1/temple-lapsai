@@ -266,14 +266,21 @@ test('each member levels on their own account', () => {
 import { generateTownFloor, T as TT, W as TW2, H as TH2, isTravelable as trav } from '../public/js/mapgen.js';
 import { TOWN_ID } from '../public/js/engine.js';
 
-test('the green holds three keepers and a mouth per dungeon', () => {
+test('the hamlet holds four keepers, three residents, and a mouth per dungeon', () => {
   const dungeons = [{ id: 'temple', name: 'The Temple' }, { id: 'upper', name: 'The Upper' }];
   const f = generateTownFloor(dungeons);
-  assert.equal(f.npcs.length, 3, 'a keeper is missing from the green');
+  const keepers = f.npcs.filter((n) => n.tpl.service);
+  const residents = f.npcs.filter((n) => !n.tpl.service);
+  assert.equal(keepers.length, 4, 'a counter went unkept');
+  assert.equal(residents.length, 3, 'a cottage stands empty');
+  for (const r of residents) {
+    assert.ok(r.tpl.intro && Array.isArray(r.tpl.topics) && r.tpl.topics.every((t) => t.keys && t.replies) && r.tpl.fallbacks, r.tpl.name + ' has nothing to say, or says it in the wrong shape');
+  }
   assert.equal(f.mouths.length, 2, 'a dungeon lost its mouth');
   for (const m of f.mouths) assert.equal(f.tiles[m.y][m.x], TT.DOWN, 'a mouth that is not a stair');
-  for (const n of f.npcs) assert.ok(trav(f.tiles[n.y][n.x]), 'a keeper standing in a wall');
+  for (const n of f.npcs) assert.ok(trav(f.tiles[n.y][n.x]), n.tpl.name + ' standing in a wall');
   assert.ok(trav(f.tiles[f.entry.y][f.entry.x]), 'the arrival spot is not ground');
+  assert.ok(f.tiles.some((row) => row.includes(TT.WATER)), 'the pond dried up');
 });
 
 test('every keeper and every mouth can be walked to from the entry', () => {
@@ -371,4 +378,30 @@ test('a founded adventurer starts in the same basic loadout', () => {
   assert.ok(p.equipment.weapon, 'founded without a weapon');
   assert.equal(p.equipment.body.id, 'leather-armor', 'founded without armour');
   assert.ok(p.equipment.shield, 'a cleric founded without a shield');
+});
+
+/* ---- the Drowned Lantern ---- */
+
+import { innCost, takeRoom } from '../public/js/town.js';
+
+test('a night at the inn sets the whole company right, for coin', () => {
+  const g = newGame('inn-1');
+  const p = g.state.player;
+  p.gold = 500;
+  p.hp = 3; p.wounds = 4; p.power = 0; p.cooldowns = { cleave: 3 };
+  const cost = innCost(g);
+  assert.ok(takeRoom(g), 'the room was refused');
+  assert.equal(p.hp, p.maxhp, 'woke unhealed');
+  assert.equal(p.wounds, 0, 'woke still wounded — the whole point of paying');
+  assert.equal(p.power, p.maxpower, 'woke unrested');
+  assert.deepEqual(p.cooldowns, {}, 'woke with powers still stirring');
+  assert.equal(p.gold, 500 - cost, 'the lamps are not free');
+});
+
+test('a thin purse sleeps outside', () => {
+  const g = newGame('inn-2');
+  const p = g.state.player;
+  p.gold = 1; p.hp = 3;
+  assert.ok(!takeRoom(g));
+  assert.equal(p.hp, 3, 'healed without paying');
 });
