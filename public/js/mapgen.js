@@ -51,14 +51,24 @@ function overlaps(a, b) {
 function carveCorridor(grid, rng, ax, ay, bx, by) {
   let x = ax, y = ay;
   /* Seeded, not Math.random: the module's contract is that a floor is
-   * reproducible from (dungeonId, floorIdx), and the tests depend on it. */
+   * reproducible from (dungeonId, floorIdx), and the tests depend on it.
+   *
+   * TWO WIDE — ten feet, the playtest's ruler. A one-tile corridor made
+   * every fight a single-file queue: nobody could stand beside the
+   * fighter, nothing could be flanked, and the thief was a spectator
+   * with a salary. Every horizontal run carves its southern twin, every
+   * vertical run its eastern one. */
+  const dig = (dx, dy) => {
+    if (dx < 1 || dy < 1 || dx >= W - 1 || dy >= H - 1) return;
+    if (grid[dy][dx] === T.WALL) grid[dy][dx] = T.FLOOR;
+  };
   const horizFirst = rng.chance(0.5);
   if (horizFirst) {
-    while (x !== bx) { x += Math.sign(bx - x); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
-    while (y !== by) { y += Math.sign(by - y); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
+    while (x !== bx) { x += Math.sign(bx - x); dig(x, y); dig(x, y + 1); }
+    while (y !== by) { y += Math.sign(by - y); dig(x, y); dig(x + 1, y); }
   } else {
-    while (y !== by) { y += Math.sign(by - y); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
-    while (x !== bx) { x += Math.sign(bx - x); if (grid[y][x] === T.WALL) grid[y][x] = T.FLOOR; }
+    while (y !== by) { y += Math.sign(by - y); dig(x, y); dig(x + 1, y); }
+    while (x !== bx) { x += Math.sign(bx - x); dig(x, y); dig(x + 1, y); }
   }
 }
 
@@ -166,7 +176,7 @@ function cy(r) { return r.y + Math.floor(r.h / 2); }
 /* Bumped whenever the generator changes shape or its rng draws move. Floor
  * memories record "monster 4 is dead" by index, so they are only meaningful
  * against the generator that produced them. */
-export const GEN_VERSION = 5;
+export const GEN_VERSION = 6;   /* corridors carved two wide */
 
 const CACHE = 3;   /* a hidden cache is CACHE x CACHE */
 

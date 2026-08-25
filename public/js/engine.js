@@ -1250,6 +1250,9 @@ export class Game {
    * member's reach is struck at by that member — one opening per member
    * per round, spent from their turn state. */
   memberOpportunity(member, mo) {
+    /* A hidden member lets the moment pass: a reflex swing would spend the
+     * shadow on a graze when it was saved for a throat. */
+    if (member.buffs && member.buffs.shadow > 0) return;
     const at = this.actorTurn(member);
     if (at.aoo) return;
     at.aoo = true;
@@ -1527,13 +1530,18 @@ export class Game {
   /* ---- combat ---- */
   attackMonster(m) {
     this.breakSanctuary();
+    const p = this.state.player;
+    /* The blow from the dark: +4 to land it, twice the depth when it does,
+     * and the hiding ends with the swing — landed or not, you are seen. */
+    const shadowed = !!(p.buffs && p.buffs.shadow > 0);
+    if (shadowed) delete p.buffs.shadow;
     const der = this.derived();
     const r = this.rngOfTurn();
     let raw = r.d(20);
     const dc = Math.max(1, 20 - m.t.ac);
     /* The pincer: an ally roughly opposite you across the target is worth
      * +2 — the reason a company spreads around a boss instead of queueing. */
-    const flank = this.flankBonus(this.state.player, m, this.livingMembers());
+    const flank = this.flankBonus(this.state.player, m, this.livingMembers()) + (shadowed ? 4 : 0);
     let hit = raw === 20 || raw + der.toHit + flank >= dc;
 
     /* The Lucky Coin was carrying a number nothing read. It buys one second
@@ -1556,7 +1564,10 @@ export class Game {
     const isCrit = raw === 20 || r.chance(der.crit || 0);
     let dmg = this.rollDamage(der.dmg, m.t);
     if (isCrit) dmg += this.rollDamage(der.dmg, m.t);
-    this.log('You strike the ' + m.t.name + ' for ' + dmg + ' hit points.' + (flank ? ' The pincer tells.' : ''));
+    if (shadowed) dmg *= 2;
+    this.log(shadowed
+      ? 'From the shadows — your blade finds the ' + m.t.name + ' for ' + dmg + ' hit points.'
+      : 'You strike the ' + m.t.name + ' for ' + dmg + ' hit points.' + (flank ? ' The pincer tells.' : ''));
     /* A blow landed with a focus draws power back through it. Paid BEFORE the
      * damage, because killing the thing ends the floor's business and the blow
      * should still have been worth striking. This is what turns a Mage out of
@@ -1894,7 +1905,8 @@ export class Game {
    * Sanctuary used to hide "the player"; with several bodies it hides the one
    * who read the scroll, and the rest of the party is still very much there. */
   targetableMembers() {
-    return this.livingMembers().filter((m) => !(m.buffs && m.buffs.sanctuary > 0));
+    return this.livingMembers().filter((m) =>
+      !(m.buffs && m.buffs.sanctuary > 0) && !(m.buffs && m.buffs.shadow > 0));
   }
 
   memberAt(x, y) {
@@ -2741,6 +2753,15 @@ export class Game {
      * level 13, and the blows themselves nearly double over that stretch. */
     const bonus = Math.max(1, (a.bonus || 2) + Math.floor((p.level - 1) / 4));
     const turns = Math.max(2, a.turns || a.aura || 5);
+    /* THE SHADOW. Nothing hunts what it cannot see: a hidden member drops
+     * out of every monster's targeting the way Sanctuary's reader does,
+     * and the first blow from the dark is the whole point of going there —
+     * attackMonster pays it out and ends the hiding. */
+    if (a.buff === 'shadow') {
+      p.buffs.shadow = turns;
+      this.log('You step out of the world’s attention. (' + turns + ' turns, or one blow)');
+      return;
+    }
     const kind = a.buff === 'ward' ? 'ward' : 'might';
     p.buffs[kind] = turns;
     if (!p.buffLevels) p.buffLevels = {};

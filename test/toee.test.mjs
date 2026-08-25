@@ -245,3 +245,60 @@ test('mid-fight, a pack across the room is out of reach', () => {
   assert.ok(p.inventory.some((it) => it.name === 'A Coin Purse'), 'the loot vanished');
   assert.ok(!buddy.inventory.length, 'the purse teleported across a fight');
 });
+
+/* ---- ten-foot corridors, and the shadow ---- */
+
+import { generateFloor, W as MW, H as MH, isTravelable as mtrav } from '../public/js/mapgen.js';
+import { getDungeon as getDungeon2 } from '../public/js/base.js';
+
+test('corridors are wide enough to fight beside a friend', () => {
+  /* The old carve made single-file queues of every fight. Now nearly every
+   * walkable tile has an orthogonal walkable partner — room for two. */
+  for (const seed of ['wide-a', 'wide-b']) {
+    const f = generateFloor({ dungeon: getDungeon2('temple'), floorIdx: 1, seed: seed.length * 7919 + seed.charCodeAt(5) });
+    let open = 0, partnered = 0;
+    for (let y = 1; y < MH - 1; y++) {
+      for (let x = 1; x < MW - 1; x++) {
+        if (!mtrav(f.tiles[y][x])) continue;
+        open++;
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => mtrav(f.tiles[y + dy][x + dx]))) partnered++;
+      }
+    }
+    assert.ok(partnered / open > 0.97, 'single-file ground remains: ' + (partnered / open).toFixed(3));
+  }
+});
+
+test('a hidden thief is not there, until the knife is', () => {
+  const g = newGame('shadow-1', 'thief');
+  const f = arena(g);
+  g.levelUp(g.state.player);   /* level 2: the art is learned */
+  const p = g.state.player;
+  p.power = 20;
+  const mo = beast(p.x + 1, p.y, { ac: 30, hp: 200, toHit: 40 });
+  f.monsters.push(mo);
+  g.state.player.ini = 30;
+  g._round = null; g.advanceQueue();
+  g.activateAbility('hide-shadows');
+  assert.ok(p.buffs.shadow > 0, 'the shadow did not take');
+  assert.equal(g.targetableMembers().length, 0, 'hidden, yet still hunted');
+  const hpBefore = p.hp;
+  g.handleKey(' ', {});   /* let the beast's turn pass: it cannot find you */
+  assert.equal(p.hp, hpBefore, 'a blow landed on someone who is not there');
+
+  const monHp = mo.hp;
+  g.tryMove(1, 0);         /* the knife */
+  assert.ok(!(p.buffs.shadow > 0), 'the strike should end the hiding');
+  assert.ok(mo.hp < monHp, 'the blow from the dark missed a barn door');
+  assert.ok(monHp - mo.hp >= 2, 'no depth to the shadow blow');
+});
+
+test('a hidden member lets the opening pass rather than spend the shadow', () => {
+  const g = newGame('shadow-2', 'thief');
+  arena(g);
+  const p = g.state.player;
+  p.buffs.shadow = 5;
+  const mo = { t: { id: 'x', name: 'X', ac: 30, hpMax: 20 }, x: p.x + 1, y: p.y, hp: 20 };
+  g.memberOpportunity(p, mo);
+  assert.equal(mo.hp, 20, 'the reflex swing spent the shadow');
+  assert.ok(p.buffs.shadow > 0, 'the shadow broke on a swing that never happened');
+});

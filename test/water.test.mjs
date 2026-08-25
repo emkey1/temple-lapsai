@@ -219,6 +219,9 @@ test('a submerged thing does nothing and shows nothing until you are close', () 
   const found = withLurker('lurk-idle');
   assert.ok(found, 'no floor in forty had anything lying in the water');
   const { g, lurker } = found;
+  /* The claim is about the LURKER's silence; the floor's other residents
+   * are not on trial, and the wider corridors changed where they roam. */
+  g.currentFloor.monsters = g.currentFloor.monsters.filter((m) => m === lurker);
   const p = g.state.player;
   p.x = lurker.x + 5; p.y = lurker.y;
   g.computeVisibility();
