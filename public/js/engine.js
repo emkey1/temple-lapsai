@@ -458,7 +458,8 @@ export class Game {
     const taken = new Set([leader.y * W + leader.x]);
     const fits = (x, y) => this.inBounds(x, y) && isTravelable(floor.tiles[y][x]) &&
       !taken.has(y * W + x) &&
-      !(floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === x && mo.y === y);
+      !(floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === x && mo.y === y) &&
+      !(floor.npcs || []).some((n) => n.x === x && n.y === y);
     for (const m of party.members) {
       if (!m || m === leader) continue;
       m.dungeonId = leader.dungeonId;
@@ -1943,6 +1944,10 @@ export class Game {
           if (d < 0 || d >= bestD) continue;
           if (this.memberAt(nx, ny)) continue;
           if ((floor.monsters || []).some((mo) => mo.hp > 0 && mo.x === nx && mo.y === ny)) continue;
+          /* Townsfolk are solid: a follower who marches INTO the widow
+           * stands inside her, and every bump after that greets the
+           * follower — she simply stops answering her own door. */
+          if ((floor.npcs || []).some((n) => n.x === nx && n.y === ny)) continue;
           bestD = d; best = [nx, ny];
         }
         /* Followers step quietly: no wading surcharge and no pickups — the

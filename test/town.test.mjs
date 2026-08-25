@@ -545,3 +545,25 @@ test('a trade moves the knowing with the thing', () => {
   assert.equal(unread.identified, false, 'an unread rune read itself in the handover');
   assert.equal(unread.cursed, true, 'the hidden curse washed off in the handover');
 });
+
+test('a follower never stands inside the widow', () => {
+  /* Reported: "Maren doesn't activate." The van's marching station landed
+   * on her tile — the follower step search excluded members and monsters
+   * but not townsfolk — and every bump after that greeted the follower. */
+  const g = newGame('t-maren-solid', 'mage');
+  let opened = null;
+  g.ui.openDialogue = (npc) => { opened = npc.tpl.id; };
+  g.enterTown('temple');
+  const maren = g.currentFloor.npcs.find((n) => n.tpl.id === 'maren');
+  const p = g.state.player;
+  const van = makePlayer('Point', 'fighter', initialStats('fighter'));
+  van.dungeonId = p.dungeonId; van.floorIdx = p.floorIdx;
+  g.state.party.members.push(van);
+  p.x = maren.x; p.y = maren.y + 3;
+  van.x = p.x; van.y = p.y + 1;
+  g.handleKey('w');
+  g.handleKey('w');   /* the van's station is now her tile — it must refuse */
+  assert.ok(!(van.x === maren.x && van.y === maren.y), 'the van is standing inside Maren');
+  g.tryMove(0, -1);
+  assert.equal(opened, 'maren', 'the widow did not answer her own door');
+});
