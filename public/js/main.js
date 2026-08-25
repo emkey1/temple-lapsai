@@ -828,8 +828,8 @@ function tileFromEvent(e) {
    * back to bitmap pixels. Robust against any zoom or stretching. */
   const rect = els.canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
-  const ox = (e.clientX - rect.left) * (els.canvas.width / rect.width);
-  const oy = (e.clientY - rect.top) * (els.canvas.height / rect.height);
+  const ox = (e.clientX - rect.left) * (els.canvas.width / rect.width) / pixelScale;
+  const oy = (e.clientY - rect.top) * (els.canvas.height / rect.height) / pixelScale;
   let x, y;
   if (viewMode === 'iso') {
     ({ x, y } = screenToIso(ox / isoZoom + isoCamX, oy / isoZoom + isoCamY));
@@ -1114,6 +1114,14 @@ let lastTiles = '';
 const TARGET_COLS = 42;
 const TARGET_ROWS = 27;
 
+/* How many device pixels stand behind one CSS pixel of the canvas: the
+ * page's own zoom times the display's density. The bitmap is allocated at
+ * this scale and every renderer draws through it as a base transform, so
+ * the artwork reaches the glass at true resolution instead of being
+ * painted small and stretched blurry — which is what "the game looks very
+ * low resolution" was. */
+let pixelScale = 1;
+
 function fitCanvas() {
   const vp = els.viewport;
   /* clientWidth/Height are in the same unzoomed CSS pixels that the canvas's
@@ -1124,10 +1132,15 @@ function fitCanvas() {
   ts = Math.max(8, Math.min(24, Math.floor(Math.min(w / TARGET_COLS, h / TARGET_ROWS))));
   viewW = Math.max(12, Math.min(W, Math.floor(w / ts)));
   viewH = Math.max(9, Math.min(H, Math.floor(h / ts)));
-  els.canvas.width = viewW * ts;
-  els.canvas.height = viewH * ts;
-  els.canvas.style.width = (viewW * ts) + 'px';
-  els.canvas.style.height = (viewH * ts) + 'px';
+  const zRaw = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+  const zoomF = zRaw > 10 ? zRaw / 100 : zRaw;   /* some engines answer in percent */
+  pixelScale = (window.devicePixelRatio || 1) * zoomF;
+  const cssW = viewW * ts, cssH = viewH * ts;
+  els.canvas.width = Math.round(cssW * pixelScale);
+  els.canvas.height = Math.round(cssH * pixelScale);
+  els.canvas.style.width = cssW + 'px';
+  els.canvas.style.height = cssH + 'px';
+  els.ctx.imageSmoothingQuality = 'high';   /* reset with the bitmap, so re-set with it */
   vp.style.display = 'flex';
   vp.style.alignItems = 'center';
   vp.style.justifyContent = 'center';
@@ -1172,6 +1185,7 @@ function renderClassic(g, sa) {
   const theme = getTheme((g.dungeonById(p.dungeonId) || {}).theme);
   updateCamera(p);
 
+  ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
   ctx.fillStyle = '#050705';
   ctx.fillRect(0, 0, viewW * s, viewH * s);
   ctx.font = 'bold ' + Math.max(12, Math.round(s * 0.75)) + 'px "Courier New", monospace';
@@ -1300,7 +1314,7 @@ let viewMode = 'iso';
 try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
 let isoCamX = 0, isoCamY = 0;
 let isoZoom = 1;
-try { isoZoom = Math.min(1.4, Math.max(0.5, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
+try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
 
 /* Whether walls stand at their carved height ('up') or kneel to stubs
  * everywhere ('down') — ToEE's wall button, asked for by name in the
@@ -1310,7 +1324,7 @@ let wallMode = 'up';
 try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'; } catch { /* private mode */ }
 
 function setIsoZoom(z) {
-  isoZoom = Math.min(1.4, Math.max(0.5, Math.round(z * 100) / 100));
+  isoZoom = Math.min(1.4, Math.max(0.4, Math.round(z * 100) / 100));
   try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
   lastTiles = '';
   if (game) renderGame(game);
@@ -1524,9 +1538,11 @@ function renderIsoScene(g, sa) {
   const p = g.state.player;
   const dungeon = g.dungeonById(p.dungeonId) || {};
   const theme = getTheme(dungeon.theme);
-  /* The scene is drawn in its own pixels and the zoom is a transform over
-   * the lot — the viewport just covers more or less of it. */
-  const cw = els.canvas.width / isoZoom, ch = els.canvas.height / isoZoom;
+  /* The scene is drawn in its own pixels; the zoom and the device's pixel
+   * density are one transform over the lot — the viewport just covers more
+   * or less of it, and every source pixel of the art reaches the glass. */
+  const view = pixelScale * isoZoom;
+  const cw = els.canvas.width / view, ch = els.canvas.height / view;
   const centre = isoToScreen(p.x, p.y);
   isoCamX = centre.sx - cw / 2;
   isoCamY = centre.sy - ch / 2;
@@ -1535,7 +1551,7 @@ function renderIsoScene(g, sa) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#050705';
   ctx.fillRect(0, 0, els.canvas.width, els.canvas.height);
-  ctx.setTransform(isoZoom, 0, 0, isoZoom, 0, 0);
+  ctx.setTransform(view, 0, 0, view, 0, 0);
   ctx.font = 'bold 15px "Courier New", monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
