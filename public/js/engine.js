@@ -978,6 +978,9 @@ export class Game {
     const p = this.state.player;
     const floor = this.currentFloor;
     const nx = p.x + dx, ny = p.y + dy;
+    /* You turn the way you push, whether or not the push goes anywhere —
+     * the renderer reads this to face the body where it last meant to go. */
+    p.faceDx = dx; p.faceDy = dy;
     if (!this.inBounds(nx, ny)) { this.log('The dark walls give no ground.'); return false; }
     const tile = floor.tiles[ny][nx];
 
@@ -997,6 +1000,7 @@ export class Game {
         return false;
       }
       ally.x = p.x; ally.y = p.y;
+      ally.faceDx = -dx; ally.faceDy = -dy;
       p.x = nx; p.y = ny;
       this.log('You trade places with ' + ally.name + '.');
       if (isSlowGoing(tile2)) this.wadeInto(nx, ny);
@@ -1483,6 +1487,7 @@ export class Game {
         /* Followers step quietly: no wading surcharge and no pickups — the
          * splash and the loot belong to whoever holds the reins. */
         if (!best) break;
+        m.faceDx = best[0] - m.x; m.faceDy = best[1] - m.y;
         m.x = best[0]; m.y = best[1];
       }
     }

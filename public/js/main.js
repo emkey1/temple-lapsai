@@ -768,6 +768,9 @@ function heroSex(m) {
 function drawMemberAt(ax, ay, unit, rx, ry, m, tint, acting) {
   const sex = heroSex(m);
   const dead = m.hp <= 0;
+  /* Facing where they last meant to go; a body with no history faces the
+   * camera, because flareDir answers 6 for a zero delta. */
+  const dir = flareDir(m.faceDx || 0, m.faceDy || 0);
   drawRingAt(ax, ay, rx, ry, dead ? '#7a3a30' : tint, {
     bold: acting,
     fill: acting ? 'rgba(255,255,255,0.10)' : undefined,
@@ -778,7 +781,7 @@ function drawMemberAt(ax, ay, unit, rx, ry, m, tint, acting) {
   let drew = false;
   for (const layer of layers) {
     const entry = getSheet('hero', layer, sex);
-    if (entry && drawFrameAt(ax, ay, unit, entry, dead ? 'die' : 'stance', 6, { dim: dead, hold: dead })) drew = true;
+    if (entry && drawFrameAt(ax, ay, unit, entry, dead ? 'die' : 'stance', dir, { dim: dead, hold: dead })) drew = true;
   }
   return drew;
 }
@@ -1314,8 +1317,8 @@ function drawIsoGround(g, t, tset, theme, sa) {
  * over; the caves stand in crags, which is why their cutaway cone reaches
  * deeper. */
 const WALL_VOCAB = {
-  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, cone: 4 },
-  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, cone: 8 },
+  tileset_dungeon: { x: [83, 81], y: [82], corner: 91, rise: 128, stairs: { x: 193, y: 192 } },
+  tileset_cave: { x: [67, 71], y: [66, 70], corner: 72, rise: 300 },
 };
 
 /* Which piece a wall tile wears — or null, and null is the ToEE cutaway
@@ -1353,7 +1356,9 @@ function drawIsoWall(g, t, tile, theme, sa, tset) {
       const r = tset.def.tiles[id];
       if (r) {
         const ga = ctx.globalAlpha;   /* the ghost cutaway may already hold it */
-        ctx.globalAlpha = ga * (vis ? 1 : 0.45);
+        /* Unlit stone fades well down: a dim wall must read as a faint
+         * memory, never as a solid black slab over a passage. */
+        ctx.globalAlpha = ga * (vis ? 1 : 0.30);
         ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
         ctx.globalAlpha = ga;
         if (tile === T.SECRET && vis && sa === 0) {
@@ -1447,15 +1452,55 @@ function renderIsoScene(g, sa) {
   /* Walls that would hide a member of the company turn to glass instead —
    * the ToEE cutaway. The cone: anything standing up to four rows in front
    * of a body and within two files of it. */
-  const bodies = g.state.party.members.filter((m) =>
-    m && m.floorIdx === p.floorIdx && m.dungeonId === p.dungeonId);
-  const cone = (tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].cone) || 4;
-  const ghosts = (wx, wy) => bodies.some((b) => {
-    const ahead = (wx + wy) - (b.x + b.y);
-    return ahead > 0 && ahead <= cone && Math.abs((wx - wy) - (b.x - b.y)) <= 2;
-  });
+  /* The cutaway, computed as occlusion rather than guessed as a cone: every
+   * wall piece tall enough to stand between the camera and any floor the
+   * party can currently SEE turns to glass. The depth of that shadow comes
+   * from the art itself — how many screen rows a piece's height reaches
+   * back over. Lit passages and the company on them stay in view; the
+   * remembered-but-dark parts of the map keep their solid walls, because
+   * nothing is happening there. */
+  const rise = (tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].rise) || ISO.WALL_H;
+  const depth = Math.ceil(rise / (ISO.TH / 2));
+  const shadow = new Set();
+  for (const t of seenTiles) {
+    if (!(g.vis[t.y] && g.vis[t.y][t.x])) continue;
+    const tt = floor.tiles[t.y][t.x];
+    if (tt === T.WALL || tt === T.SECRET) continue;
+    const sum = t.x + t.y, diff = t.x - t.y;
+    for (let s = 1; s <= depth; s++) {
+      for (let d = -2; d <= 2; d++) shadow.add((sum + s) * 512 + (diff + d));
+    }
+  }
+  const ghosts = (wx, wy) => shadow.has((wx + wy) * 512 + (wx - wy));
   for (const t of seenTiles) {
     const tile = floor.tiles[t.y][t.x];
+    /* Stairs stand up as furniture where the atlas offers them — rising
+     * against whichever wall they lean on. The glyph rides the steps, so
+     * up and down still read at a glance. */
+    if ((tile === T.UP || tile === T.DOWN) && tset && WALL_VOCAB[tset.name] && WALL_VOCAB[tset.name].stairs) {
+      const st = WALL_VOCAB[tset.name].stairs;
+      const wallAt = (x, y) => x >= 0 && y >= 0 && x < W && y < H &&
+        (floor.tiles[y][x] === T.WALL || floor.tiles[y][x] === T.SECRET);
+      const r = tset.def.tiles[wallAt(t.x, t.y - 1) ? st.x : st.y];
+      if (r) {
+        const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+        /* The atlas stairs are monumental — half scale suits a stairwell
+         * one tile wide, and like any wall they turn to glass when they
+         * stand between the camera and lit ground. */
+        const sc = 0.55;
+        standers.push({ x: t.x, y: t.y, draw: () => {
+          const a = isoToScreen(t.x, t.y);
+          const ga = ctx.globalAlpha;
+          ctx.globalAlpha = ga * (vis ? 1 : 0.30) * (ghosts(t.x, t.y) ? 0.35 : 1);
+          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
+            a.sx - isoCamX - r.ox * sc, a.sy - isoCamY - r.oy * sc, r.w * sc, r.h * sc);
+          ctx.globalAlpha = ga;
+          ctx.fillStyle = theme.accent;
+          ctx.fillText(tile === T.DOWN ? '>' : '<', a.sx - isoCamX, a.sy - isoCamY - 26);
+        } });
+      }
+      continue;
+    }
     if (tile !== T.WALL && tile !== T.SECRET && tile !== T.DOOR_C) continue;
     /* Only the shell: a wall with no walkable neighbour in the light is the
      * void, and the void is already the colour of the background. */
