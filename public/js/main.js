@@ -795,32 +795,6 @@ function getTileset(name) {
   return null;
 }
 
-/* A TINTED copy of a tileset, built once and cached: the same hand-painted
- * rock, washed toward a theme's own colour. This is how cave themes get
- * wall art at all — the cave set's walls are shadow-bodied slabs (audited:
- * one lit facet on pure black), while the grassland's cliff bluffs are
- * fully textured. Bluffs + the theme's wash = the reasonable facsimile. */
-function getTintedTileset(name, tint) {
-  const key = 'tileset-tinted:' + name + ':' + tint;
-  if (sheetCache.has(key)) {
-    const v = sheetCache.get(key);
-    return v === 'pending' ? null : v;
-  }
-  const base = getTileset(name);
-  if (!base) return null;   /* base still loading; try again next frame */
-  const c = document.createElement('canvas');
-  c.width = base.img.width; c.height = base.img.height;
-  const cx = c.getContext('2d');
-  cx.drawImage(base.img, 0, 0);
-  cx.globalCompositeOperation = 'source-atop';
-  cx.globalAlpha = 0.5;
-  cx.fillStyle = tint;
-  cx.fillRect(0, 0, c.width, c.height);
-  const made = { name: base.name, img: c, def: base.def };
-  sheetCache.set(key, made);
-  return made;
-}
-
 /* Which atlas dresses which theme: the masonry sets for built places, the
  * rough stone for grown ones. */
 const THEME_TILESET = {
@@ -1856,12 +1830,14 @@ const WALL_VOCAB = {
    * slab where a wall should be" report since the masonry landed. A
    * corner shows BOTH textured faces, one piece over the other. */
   tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
-  /* tileset_cave is deliberately ABSENT: audited on the rig, every wall
-   * piece in the set (64-80) is a shadow-bodied mass — one lit rock facet
-   * on a slab of pure black ("what is the point of having a wall there if
-   * it's just black?"). Cave themes wall themselves with the grassland's
-   * cliff bluffs instead, washed toward the theme's own colour by
-   * getTintedTileset — the cave atlas still lays the FLOORS. */
+  /* tileset_cave is deliberately ABSENT, and cave themes draw NO wall art
+   * at all — the painted prisms in the theme's own colours are the walls.
+   * Every art route was tried and audited first: the cave set's walls are
+   * shadow-bodied slabs (one lit facet on pure black), and standing the
+   * grassland's four clean bluffs one-per-tile made a forest of giant
+   * monuments ("distractingly bad" — the playtest, correctly). Flare's
+   * cliff art is authored for continuous composition this renderer does
+   * not do. Clean geometry beats wrong art; the cave atlas lays FLOORS. */
   /* The town's treeline: the grassland set's natural rock bluffs, so the
    * clearing's edge reads as valley rim rather than dwarven rampart.
    *
@@ -2138,10 +2114,7 @@ function renderIsoScene(g, sa) {
    * their full carved height, because they hide nothing. */
   /* The hamlet builds in timber and tile: houses draw from the medieval
    * building set; the treeline keeps the grassland's rock. */
-  const caveWalls = !town && THEME_TILESET[dungeon.theme] === 'tileset_cave';
-  const wtset = town ? getTileset('medieval_building_tiles')
-    : caveWalls ? (getTintedTileset('tileset_grassland', theme.wall) || tset)
-    : tset;
+  const wtset = town ? getTileset('medieval_building_tiles') : tset;
   const rise = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   const shadow = new Set();
