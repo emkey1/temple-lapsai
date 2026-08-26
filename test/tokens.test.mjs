@@ -262,7 +262,9 @@ test('time passes for companions too', () => {
   b.cooldowns = { backstab: 3 };
   b.buffs = { might: 2 };
   p.hp = p.maxhp;
-  for (let i = 0; i < 6; i++) g.handleKey(' ', {});
+  /* Twelve waits, not six: calm healing lands on every tenth tick now, and
+   * the point of this test is that companions tick AT ALL. */
+  for (let i = 0; i < 12; i++) g.handleKey(' ', {});
   assert.ok(b.hp > 1, 'the companion never regenerated a point');
   assert.ok(b.cooldowns.backstab < 3, 'the companion\'s cooldown never counted down');
   assert.ok(!(b.buffs.might > 0), 'the companion wore a buff for ever');

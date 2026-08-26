@@ -70,8 +70,10 @@ test('a sleeping monster is not a fight', () => {
   const p = g.state.player;
   floor.monsters.push(beast(p.x + 2, p.y, { aggro: false }));
   p.hp = 5;
-  g.turn = 1;
-  g.tickStatus();
+  /* Ten ticks, not one: calm healing lands on every tenth tick now. The
+   * claim under test is unchanged — a monster that has not noticed you is
+   * scenery, not a fight. */
+  for (let t = 0; t < 10; t++) { g.turn = t; g.tickStatus(); }
   assert.ok(p.hp > 5, 'a monster that has not noticed you blocked recovery');
 });
 

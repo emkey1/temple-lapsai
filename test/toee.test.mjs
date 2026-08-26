@@ -318,6 +318,11 @@ test('a member who falls to the opening does not bill the turn to the next in li
   const a = g.state.player;                       /* the one who inherits the reins */
   const doomed = companion(g, 'mage', 'Doomed');  /* at a.x+1 — beside the beast */
   doomed.hp = 1;
+  /* Out of the line's reach: when calm breaks, an adjacent van member now
+   * trades places with a rear member standing nearer the foe — which is
+   * exactly the doom this scenario needs to keep. Two tiles back, the
+   * fighter cannot shoulder in, and the mage keeps her appointment. */
+  a.x = doomed.x - 2;
   f.monsters.push(beast(doomed.x + 1, doomed.y, { toHit: 100 }));  /* every blow lands */
   a.ini = 20; doomed.ini = 30;
   g._round = null;

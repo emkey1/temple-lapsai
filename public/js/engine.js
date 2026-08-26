@@ -52,6 +52,10 @@ export const TOWN_ID = 'the-whetstone';   /* the town is a place, not a dungeon 
  * small maximum the floor already dominated the fraction, so the halving only
  * bites once a character is big. */
 const HP_REGEN_FRACTION = 0.01;
+/* Out-of-combat health comes back a tenth as fast as it once did: the grant
+ * below lands on every Nth calm tick. See the comment at the grant for why
+ * spacing the ticks is the only lever that actually works. */
+const HP_REGEN_EVERY = 10;
 const WOUND_SHARE = RECOVERY.woundShare;
 const WOUND_FLOOR = RECOVERY.woundFloor;
 const HEAL_MENDS = RECOVERY.healMends;
@@ -1133,11 +1137,20 @@ export class Game {
       return false;
     }
     let turns = 0;
-    while (turns < maxTurns && !this.dying) {
-      if (allRested()) break;
-      if (!this.outOfCombat()) { this.log('Something stirs — you are on your feet again.'); break; }
-      this.endPlayerTurn();
-      turns++;
+    /* Sitting down mends at the OLD pace — every tick, not every tenth.
+     * The slow trickle is for walking wounded; rest is the deliberate act,
+     * and it would otherwise take two hundred turns to close what one
+     * keypress promises. */
+    this._resting = true;
+    try {
+      while (turns < maxTurns && !this.dying) {
+        if (allRested()) break;
+        if (!this.outOfCombat()) { this.log('Something stirs — you are on your feet again.'); break; }
+        this.endPlayerTurn();
+        turns++;
+      }
+    } finally {
+      this._resting = false;
     }
     if (turns) this.log('You sit against the stone for a while. (' + turns + ' turns)');
     /* Mending: the best mender in the company closes wounds nothing else
@@ -1977,6 +1990,51 @@ export class Game {
     }
   }
 
+  /* THE LINE FORMS. Marching keeps the steel ahead of the robes, but a
+   * one-wide corridor lets nobody pass: whoever holds the reins is point no
+   * matter their stance, and when the reins are a mage the fight opens on
+   * the party's softest member — reported from play, twice. Stance cannot
+   * beat geometry while the party is walking; it can at the moment the
+   * fight starts. So when calm breaks into initiative, adjacent members
+   * exchange places until no rear-stance member stands nearer the woken
+   * foes than a van-stance member beside them: the fighter shoulders past
+   * the mage, and nobody moves further than the width of that swap. */
+  formUp() {
+    const floor = this.currentFloor;
+    const foes = ((floor && floor.monsters) || [])
+      .filter((mo) => mo.hp > 0 && mo.aggro && !mo.submerged);
+    if (!foes.length) return false;
+    const field = this.distanceFieldFrom(foes);
+    const at = (m) => (field[m.y] ? field[m.y][m.x] : -1);
+    let swapped = false;
+    /* Bubble until stable: one exchange can expose the next (mage, fighter,
+     * fighter in single file needs two). Bounded for form's sake; a party
+     * is four members and settles in two or three passes. */
+    for (let pass = 0; pass < 8; pass++) {
+      let changed = false;
+      const ms = this.livingMembers();
+      for (const robe of ms) {
+        if (this.memberStance(robe) !== 'rear') continue;
+        for (const steel of ms) {
+          if (this.memberStance(steel) !== 'van') continue;
+          const dx = steel.x - robe.x, dy = steel.y - robe.y;
+          if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) continue;
+          /* No trading places through a wall's corner. */
+          if (dx && dy && !this.canCorner(robe.x, robe.y, steel.x, steel.y)) continue;
+          const dr = at(robe), ds = at(steel);
+          if (dr < 0 || ds < 0 || dr >= ds) continue;
+          const rx = robe.x, ry = robe.y;
+          robe.x = steel.x; robe.y = steel.y;
+          steel.x = rx; steel.y = ry;
+          changed = true; swapped = true;
+        }
+      }
+      if (!changed) break;
+    }
+    if (swapped) this.log('The line forms: steel steps ahead of the robes.');
+    return swapped;
+  }
+
   /* One pass through the round in INITIATIVE ORDER — members and monsters
    * interleaved, so a quick thing genuinely goes before the slow half of the
    * party and after the fast half. Control rests wherever the next unacted
@@ -1986,6 +2044,12 @@ export class Game {
    * The queue itself is runtime state, never saved: a reload starts a fresh
    * round, which is the least surprising thing a reload can do. */
   buildRound() {
+    /* Only combat's OPENING round forms the line — mid-fight repositioning
+     * is what turns are for. `undefined` on the first round after a load
+     * counts as "was calm", so loading into an ambush still forms up. */
+    const calm = this.outOfCombat();
+    if (!calm && this._lastRoundCalm !== false) this.formUp();
+    this._lastRoundCalm = calm;
     const order = [];
     for (const m of this.livingMembers()) {
       if (!(m.ini > 0)) this.rollInitiative(m, true);
@@ -2171,7 +2235,17 @@ export class Game {
       if (p.counters.regenTick % 2 === 0) p.hp = Math.max(p.hp, Math.min(cap, p.hp + der.regen));
     }
     if (calm) {
-      p.hp = Math.max(p.hp, Math.min(cap, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION))));
+      /* One grant every tenth calm tick, not a smaller number every tick:
+       * the max(1, ...) floor IS the rate for any character under ~100 max
+       * health (the fraction rounds up to it), so shrinking the fraction
+       * changed nothing and a stroll healed a level-1 party to full in two
+       * dozen steps ("just absurd" — the playtest). Spacing the grants
+       * divides the floor too, for every size of character alike. */
+      if (!p.counters) p.counters = {};
+      p.counters.calmTick = (p.counters.calmTick || 0) + 1;
+      if (this._resting || p.counters.calmTick % HP_REGEN_EVERY === 0) {
+        p.hp = Math.max(p.hp, Math.min(cap, p.hp + Math.max(1, Math.ceil(p.maxhp * HP_REGEN_FRACTION))));
+      }
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.ceil(der.maxpower * PWR_REGEN_FRACTION)));
       /* A half point never carries from one fight into the next. */
       if (p.counters) p.counters.mote = 0;
