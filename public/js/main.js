@@ -1114,8 +1114,12 @@ function onCanvasClick(e) {
   const p = g.state.player;
   if (t.x === p.x && t.y === p.y) {
     /* your own feet: loot them (into the focused character's pack), or
-     * hear what is here */
+     * hear what is here. Repaint the pack: this was the ONE loot path
+     * that left an open gear tab stale, and a Battle Axe "vanished" into
+     * an inventory the screen refused to re-read. */
     g.handleKey('g', { lootTo: viewedIdx === null ? undefined : viewedIdx });
+    if (currentTab === 'gear') renderGear(g);
+    renderStats(g);
     saveGame();
     return;
   }
