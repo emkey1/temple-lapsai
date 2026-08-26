@@ -1760,8 +1760,17 @@ const WALL_VOCAB = {
    * left, lit right), 49/53 their true mirrors. 56/60 are the broad
    * frontal masses and read fine from either side; 64/68 stand lit on
    * both faces, which is what a corner needs (one piece only — this list
-   * is drawn stacked, unlike the dungeon's two half-faces). */
-  tileset_grassland: { x: [49, 53, 56], y: [48, 52, 60], corner: [64], rise: 245 },
+   * is drawn stacked, unlike the dungeon's two half-faces).
+   *
+   * Flare drew these crags as multi-tile OBJECTS: each piece's base runs a
+   * further ~23px below its anchor tile's front corner, because in Flare
+   * the tile in front belongs to the same crag's footprint. Worn per-tile
+   * that spill lands on open corridor — a two-wide passage read as one —
+   * so `grounded` lifts each piece until its base sits on the tile's front
+   * vertex. `twoFaced` layers both facings where a thin wall shows the
+   * camera its unpainted west flank. */
+  tileset_grassland: { x: [49, 53, 56], y: [48, 52, 60], corner: [64], rise: 245,
+                       grounded: true, twoFaced: true },
   /* The houses: Clint Bellanger's medieval building tiles — timber frame,
    * wattle, red tile roofs — made for OSARE on this exact 64x32 grid,
    * under the same CC-BY-SA as the rest of the Flare art. */
@@ -1784,6 +1793,16 @@ function wallPieceId(vocab, g, t) {
   const openE = openAt(t.x + 1, t.y);
   const h = ((t.x * 40503) ^ (t.y * 44417)) >>> 0;
   if (openS && openE) return vocab.corner;
+  /* A thin wall between two north-south corridors is seen from BOTH sides:
+   * its east face gets the lit piece, but the camera also sees its west
+   * flank, which on a one-face piece is the artist's unpainted back — a
+   * flat wash-coloured slab ("the unfinished sides of the artwork"). Layer
+   * the two facings, the dungeon corner's own trick, so both flanks wear
+   * rock. Only the west side can leak this way: a north back faces away
+   * from this camera entirely. */
+  if (openE && vocab.twoFaced && openAt(t.x - 1, t.y)) {
+    return [vocab.x[h % vocab.x.length], vocab.y[h % vocab.y.length]];
+  }
   if (openS) return [vocab.x[h % vocab.x.length]];
   if (openE) return [vocab.y[h % vocab.y.length]];
   /* A tile with no visible face: for building sets, the roof over the
@@ -1831,7 +1850,10 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
         for (const id of ids) {
           const r = tset.def.tiles[id];
           if (!r) continue;
-          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy, r.w, r.h);
+          /* grounded: the piece's base may not cross its tile's front
+           * vertex (ay + TH/2) — see the vocab comment. Lift, never sink. */
+          const lift = vocab.grounded ? Math.max(0, (r.h - r.oy) - ISO.TH / 2) : 0;
+          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy - lift, r.w, r.h);
           drew = true;
         }
         ctx.globalAlpha = ga;
