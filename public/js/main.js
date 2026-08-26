@@ -1634,6 +1634,120 @@ function drawIsoGlyph(x, y, ch, color, lift) {
   els.ctx.fillText(ch, sx - isoCamX, sy - isoCamY + (lift || 0));
 }
 
+/* GROUND ITEMS wear Flare's own icon art (assets/icons/icons.png, a 64px
+ * grid, 8 icons per row) instead of a catalogue letter. The map is by item
+ * id where the sheet has the exact thing — the potion row's colours happen
+ * to match the catalogue's almost one for one — and by kind for anything
+ * new. An id absent from both falls back to the letter, which is also the
+ * safety net while the sheet is still loading. The Tarnished Crown keeps
+ * its C: the sheet has no crown, and a wrong picture is worse than a
+ * letter. */
+const ITEM_ICONS = {
+  dagger: 96, 'short-sword': 98, broadsword: 99, 'two-handed-sword': 100,
+  mace: 111, staff: 104, 'hand-axe': 117, 'battle-axe': 119,
+  'war-hammer': 102,
+  /* No 107 for frost: that icon's starburst bleeds to the slab's edge, so
+   * keyed onto the floor it stays a square block. The plain wand reads
+   * better than the right wand read badly. */
+  'wand-of-fire': 105, 'wand-of-healing': 106, 'wand-of-frost': 104,
+  'padded-armor': 129, 'leather-armor': 137, 'studded-armor': 145,
+  chainmail: 153, 'scale-armor': 145, plate: 161,
+  'small-shield': 120, 'large-shield': 121, 'tower-shield': 123,
+  'ring-protection': 202, 'ring-strength': 199, 'ring-regeneration': 205,
+  'ring-arcana': 204,
+  'amulet-ward': 214, 'amulet-seeing': 215, 'amulet-luck': 88,
+  'potion-heal': 84, 'potion-major-heal': 85, 'potion-power': 81,
+  'potion-strength': 82, 'potion-remove-curse': 83,
+  'scroll-identify': 72, 'scroll-remove-curse': 73, 'scroll-teleport': 74,
+  'scroll-recall': 75, 'scroll-reveal': 76, 'scroll-flame': 77,
+  'scroll-sanctuary': 78,
+  'gold-pile': 88, gem: 68, statuette: 216,
+  'kind:weapon': 98, 'kind:wand': 104, 'kind:armor': 137,
+  'kind:shield': 121, 'kind:ring': 199, 'kind:amulet': 214,
+  'kind:potion': 84, 'kind:scroll': 72, 'kind:special': 88,
+};
+
+function itemIconIndex(i) {
+  if (!i) return ITEM_ICONS['gold-pile'];   // bare gold drops
+  const byId = ITEM_ICONS[i.id];
+  if (byId !== undefined) return byId;
+  const byKind = ITEM_ICONS['kind:' + i.kind];
+  return byKind !== undefined ? byKind : null;
+}
+
+function getIconSheet() {
+  const key = 'icons';
+  if (sheetCache.has(key)) {
+    const v = sheetCache.get(key);
+    return v === 'pending' ? null : v;
+  }
+  sheetCache.set(key, 'pending');
+  loadImage('assets/icons/icons.png').then((img) => {
+    sheetCache.set(key, img || null);
+    lastTiles = '';
+  });
+  return null;
+}
+
+/* The sheet's icons are INVENTORY art: each sits on an opaque pure-black
+ * slot slab with only the corners transparent. On the floor that slab is a
+ * black box stamped over the tiles, so the slab is keyed out once per icon:
+ * a flood fill from the border erases connected near-black, and stops at
+ * the art. Dark pixels INSIDE the art (outlines, a ring's shadowed hole)
+ * are not border-connected and survive. */
+const itemIconCache = new Map();
+
+function keyedIcon(img, icon) {
+  const hit = itemIconCache.get(icon);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const g = c.getContext('2d');
+  g.drawImage(img, (icon % 8) * 64, Math.floor(icon / 8) * 64, 64, 64, 0, 0, 64, 64);
+  const id = g.getImageData(0, 0, 64, 64);
+  const d = id.data;
+  const seen = new Uint8Array(64 * 64);
+  const q = [];
+  for (let x = 0; x < 64; x++) q.push(x, 63 * 64 + x);
+  for (let y = 0; y < 64; y++) q.push(y * 64, y * 64 + 63);
+  while (q.length) {
+    const p = q.pop();
+    if (seen[p]) continue;
+    seen[p] = 1;
+    const i = p * 4;
+    /* The slab is pure black, so anything above near-zero is art; a tight
+     * threshold keeps dark art (staff shafts, pendant cords) while the
+     * slab and its anti-aliased edge still go. */
+    if (d[i + 3] !== 0 && d[i] + d[i + 1] + d[i + 2] >= 10) continue;
+    d[i + 3] = 0;
+    const x = p % 64, y = (p / 64) | 0;
+    if (x > 0) q.push(p - 1);
+    if (x < 63) q.push(p + 1);
+    if (y > 0) q.push(p - 64);
+    if (y < 63) q.push(p + 64);
+  }
+  g.putImageData(id, 0, 0);
+  itemIconCache.set(icon, c);
+  return c;
+}
+
+/* An item lies ON its tile: the icon is drawn a whisker above the diamond's
+ * centre, small enough that two adjacent drops never merge into a heap. */
+const ITEM_ICON_SIZE = 40;
+
+function drawIsoItem(it) {
+  const icon = itemIconIndex(it.i);
+  const img = icon === null ? null : getIconSheet();
+  if (icon === null || !img) {
+    drawIsoGlyph(it.x, it.y, (it.i && it.i.glyph) || '$', cls((it.i && it.i.color) || 'gold'), 0);
+    return;
+  }
+  const { sx, sy } = isoToScreen(it.x, it.y);
+  const ax = sx - isoCamX, ay = sy - isoCamY;
+  const S = ITEM_ICON_SIZE;
+  els.ctx.drawImage(keyedIcon(img, icon), ax - S / 2, ay - S + 12, S, S);
+}
+
 /* STAIRS, drawn by hand in the scene's own prism language. The atlas
  * offered chains where the map statistics promised stairs, and a dais
  * where the eye wanted steps — so the steps are built here instead, from
@@ -2147,7 +2261,7 @@ function renderIsoScene(g, sa) {
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;
-    standers.push({ x: it.x, y: it.y, draw: () => drawIsoGlyph(it.x, it.y, (it.i && it.i.glyph) || '$', cls((it.i && it.i.color) || 'gold'), 0) });
+    standers.push({ x: it.x, y: it.y, draw: () => drawIsoItem(it) });
   }
   for (const n of floor.npcs || []) {
     if (!inView(n.x, n.y)) continue;
