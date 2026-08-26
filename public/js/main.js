@@ -1749,8 +1749,19 @@ const WALL_VOCAB = {
    * cliff bluffs instead, washed toward the theme's own colour by
    * getTintedTileset — the cave atlas still lays the FLOORS. */
   /* The town's treeline: the grassland set's natural rock bluffs, so the
-   * clearing's edge reads as valley rim rather than dwarven rampart. */
-  tileset_grassland: { x: [48, 56, 64], y: [52, 60, 68], corner: [64], rise: 245 },
+   * clearing's edge reads as valley rim rather than dwarven rampart.
+   *
+   * The bluffs come in four-view GROUPS — the same crag seen from each
+   * side: 48 lit-right / 49 lit-left / 50-51 shadow backs, then 52/53/54-55
+   * the same. The first pick here took 48 and 52 for a mirror pair; they
+   * are the SAME facing from two different crags, so every x wall (south
+   * face to the camera) wore rock lit the other way, black flank to the
+   * corridor — measured on the atlas: 48/52 are twins (opaque near-black
+   * left, lit right), 49/53 their true mirrors. 56/60 are the broad
+   * frontal masses and read fine from either side; 64/68 stand lit on
+   * both faces, which is what a corner needs (one piece only — this list
+   * is drawn stacked, unlike the dungeon's two half-faces). */
+  tileset_grassland: { x: [49, 53, 56], y: [48, 52, 60], corner: [64], rise: 245 },
   /* The houses: Clint Bellanger's medieval building tiles — timber frame,
    * wattle, red tile roofs — made for OSARE on this exact 64x32 grid,
    * under the same CC-BY-SA as the rest of the Flare art. */
