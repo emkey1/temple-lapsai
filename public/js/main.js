@@ -1883,7 +1883,14 @@ const WALL_VOCAB = {
    * so `grounded` lifts each piece until its base sits on the tile's front
    * vertex. `twoFaced` layers both facings where a thin wall shows the
    * camera its unpainted west flank. */
-  tileset_grassland: { x: [49, 53, 56], y: [48, 52, 60], corner: [64], rise: 245,
+  /* Audited on the rig against magenta: of the whole bluff range 48-75,
+   * only FOUR pieces are painted on every visible face — 56 and 60 (broad
+   * caps) and 64 and 68 (freestanding spires). The rest carry a baked
+   * BLACK body meant to be buried under the next piece of a continuous
+   * Flare cliff, and showed as dead black slabs when placed singly
+   * ("what is the point of having a wall there if it's just black?").
+   * Both axes share the clean four; the hash keeps the variety. */
+  tileset_grassland: { x: [56, 64, 60, 68], y: [60, 68, 56, 64], corner: [56, 60], rise: 245,
                        grounded: true, twoFaced: true },
   /* The houses: Clint Bellanger's medieval building tiles — timber frame,
    * wattle, red tile roofs — made for OSARE on this exact 64x32 grid,
