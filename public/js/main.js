@@ -1987,14 +1987,19 @@ const WALL_VOCAB = {
    * slab where a wall should be" report since the masonry landed. A
    * corner shows BOTH textured faces, one piece over the other. */
   tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
-  /* The caverns, at last — and the reason two attempts failed was SCALE,
-   * not the art: every wall sprite is ~176px against a 64px tile, so each
-   * crag was drawn three times life and sprawled over its neighbours,
-   * black backside and all. The pieces here are the LIT halves (measured:
-   * 64/65/68/69 at 45-58% black against 97-99% for the shadow twins
-   * 66/67/70/71 the first attempt picked), each turned so its dark side
-   * faces into the rock. */
-  tileset_cave: { x: [72], y: [64], corner: [72], rise: 300, grounded: true },
+  /* The caverns, from Flare's OWN GUIDE rather than from guessing.
+   *
+   * A tilesetdef carries no names, but the project ships Tiled
+   * AUTOMAPPING rules — tiled/cave/rules/cave_ruleset1.tmx — whose
+   * output layers say which piece answers which wall configuration.
+   * Decoded (Tiled grid index + 16 = the def's id), the straight walls
+   * come in two varieties of four directions each: 64/65/66/67 and
+   * 68/69/70/71. That is also why half of them measured 97-99% black —
+   * they are the two directions seen FROM BEHIND, which this camera
+   * never shows and this renderer never asks for. The near pair of each
+   * variety is what belongs here, and having two varieties is what stops
+   * a long wall repeating one silhouette down its length. */
+  tileset_cave: { x: [65, 69], y: [64, 68], corner: [64, 65], rise: 300, grounded: true },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
