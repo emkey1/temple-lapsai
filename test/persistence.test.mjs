@@ -6,6 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { T, isTravelable } from '../public/js/mapgen.js';
 import { newGame, savedPlayer } from './helpers.mjs';
+import { getItemTemplate } from '../public/js/base.js';
+import { deepItem } from '../public/js/dice.js';
 
 test('a floor regenerates identically from its seed', () => {
   const a = newGame('same');
@@ -195,4 +197,47 @@ test('a remembered spot that is no longer walkable falls back to the stairs', ()
   g.loadFloor(1, 'keep');
   assert.deepEqual({ x: p.x, y: p.y }, { x: g.currentFloor.up.x, y: g.currentFloor.up.y },
     'the player was left standing inside a wall');
+});
+
+/* ---- the chart that charted nothing ----
+ *
+ * Reported: "I used a Scroll of Cartography and nothing happened other than
+ * 'you note 1 hidden door'." True — `mapRevealed` was set by the scroll and
+ * read by NOTHING, so the only visible effect was the secret doors it also
+ * turned up. The map the renderer draws is `seen`, so that is what a chart
+ * fills in. */
+test('a scroll of cartography draws the floor', () => {
+  const g = newGame('chart');
+  g.loadFloor(1);
+  g.currentFloor.monsters.length = 0;
+  const count = () => g.seen.flat().filter(Boolean).length;
+  const before = count();
+  const scroll = deepItem(getItemTemplate('scroll-reveal'));
+  g.state.player.inventory.push(scroll);
+  g.useItem(scroll);
+  assert.ok(count() > before + 50, `the chart drew ${count() - before} tiles`);
+  assert.ok(!g.state.player.inventory.includes(scroll), 'the scroll survived its own reading');
+});
+
+test('the drawn map survives the stairs', () => {
+  const g = newGame('chart-keeps');
+  g.loadFloor(1);
+  g.currentFloor.monsters.length = 0;
+  const scroll = deepItem(getItemTemplate('scroll-reveal'));
+  g.state.player.inventory.push(scroll);
+  g.useItem(scroll);
+  const drawn = g.seen.flat().filter(Boolean).length;
+  g.loadFloor(2);
+  g.loadFloor(1);
+  assert.equal(g.seen.flat().filter(Boolean).length, drawn, 'the chart was forgotten on the stairs');
+});
+
+test('a chart of ground already walked is not spent', () => {
+  const g = newGame('chart-known');
+  g.loadFloor(1);
+  for (let y = 0; y < g.seen.length; y++) for (let x = 0; x < g.seen[y].length; x++) g.seen[y][x] = true;
+  const scroll = deepItem(getItemTemplate('scroll-reveal'));
+  g.state.player.inventory.push(scroll);
+  g.useItem(scroll);
+  assert.ok(g.state.player.inventory.includes(scroll), 'the scroll was spent charting a known floor');
 });

@@ -1067,6 +1067,47 @@ export class Game {
     return (side !== undefined && isTravelable(side)) || (over !== undefined && isTravelable(over));
   }
 
+  /* THE WHOLE FLOOR, DRAWN.
+   *
+   * `mapRevealed` was set here and read by NOTHING — the scroll turned up
+   * the secret doors, said its line about ghost-lines, and left the map
+   * exactly as dark as it found it. The map the renderer draws is `seen`,
+   * so that is what a chart fills in: every tile remembered, none of it
+   * lit, which is the difference between having walked a place and having
+   * a map of it. Snapshotted like any other exploring, so it survives the
+   * stairs and the save. */
+  revealMap() {
+    const floor = this.currentFloor;
+    if (!floor || !this.seen) { this.log('There is no ground here to chart.'); return false; }
+    let drawn = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (this.seen[y][x]) continue;
+        /* Only ground worth drawing, and the walls that shape it — the
+         * solid rock beyond is not a room anybody charts. */
+        const t = floor.tiles[y][x];
+        const near = (isTravelable(t) || isDoor(t));
+        const edge = !near && [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+          .some(([dx, dy]) => {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) return false;
+            const q = floor.tiles[ny][nx];
+            return isTravelable(q) || isDoor(q);
+          });
+        if (!near && !edge) continue;
+        this.seen[y][x] = true;
+        drawn++;
+      }
+    }
+    this.revealSecrets();
+    if (!drawn) { this.log('The chart shows you nothing you had not already walked.'); return false; }
+    this.log('Ghost-lines crawl across the floor map: ' + drawn + ' tiles you had not seen.');
+    this.snapshotFloor();   /* the drawing keeps, across the stairs and the save */
+    this.computeVisibility();
+    if (this.ui.render) this.ui.render(this);
+    return true;
+  }
+
   revealSecrets() {
     if (this.secretsRevealed) return;
     const floor = this.currentFloor;
@@ -3285,7 +3326,7 @@ export class Game {
     else if (fx.removeCurse) { this.removeAllCurses(); }
     else if (fx.identify) { this.identifyAll(); }
     else if (fx.teleport) { this.teleportRandom(); }
-    else if (fx.map) { this.revealSecrets(); this.mapRevealed = true; this.log('Ghost-lines crawl across the floor map.'); }
+    else if (fx.map) { if (this.revealMap() === false) return false; }
     else if (fx.flame) { if (this.scrollFlame(fx.flame) === false) return false; }
     else if (fx.sanctuary) { p.buffs.sanctuary = fx.sanctuary; this.log('For a while, the dark forgets your name.'); }
     else if (fx.recall) { if (!this.scrollRecall()) return false; }
