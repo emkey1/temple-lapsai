@@ -776,3 +776,59 @@ test('goods bought land in the pack that is on the counter', () => {
   assert.equal(buddy.inventory.length, before + 1, 'the potion went to the wrong pack');
   assert.ok(!p.inventory.some((it) => it && it.id === 'potion-heal' && p.inventory.length > 0 && false));
 });
+
+test('a company stranded by the old split is paid its back wages on load', () => {
+  /* Fixing the rule going forward rescues nobody already stuck: the
+   * monsters that would pay for the levels cannot be beaten at the level
+   * the split delivered. The refund runs once, on load. */
+  const { g, p } = rig('t-backpay', 0);
+  for (const [n, c] of [['Blade', 'thief'], ['Ash', 'mage'], ['Vera', 'cleric']]) {
+    const m = makePlayer(n, c, initialStats(c));
+    m.dungeonId = p.dungeonId; m.floorIdx = p.floorIdx; m.gold = 0;
+    g.state.party.members.push(m);
+  }
+  for (const m of g.state.party.members) { while (m.level < 6) g.levelUp(m); m.hp = 1; }
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  delete raw.xpUnsplit;                       /* as a save written under the split */
+
+  const g2 = newGame('t-backpay-2', 'fighter');
+  g2.restore(raw);
+  for (const m of g2.state.party.members) {
+    assert.ok(m.level > 6, `${m.name} is still level ${m.level}`);
+    assert.equal(m.hp, m.maxhp, `${m.name} was handed levels and left at 1 hp`);
+  }
+  const levels = g2.state.party.members.map((m) => m.level);
+  assert.equal(new Set(levels).size, 1, 'the company came out uneven: ' + levels.join(','));
+
+  /* And never twice: a second load must change nothing. */
+  const again = JSON.parse(JSON.stringify(g2.save()));
+  const g3 = newGame('t-backpay-3', 'fighter');
+  g3.restore(again);
+  assert.deepEqual(g3.state.party.members.map((m) => m.level), levels, 'the refund paid out twice');
+});
+
+test('a soloist is owed nothing, because nothing was divided', () => {
+  const { g, p } = rig('t-backpay-solo', 0);
+  while (p.level < 5) g.levelUp(p);
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  delete raw.xpUnsplit;
+  const g2 = newGame('t-backpay-solo-2', 'fighter');
+  g2.restore(raw);
+  assert.equal(g2.state.player.level, 5, 'a lone adventurer was handed levels they had not earned');
+});
+
+test('the refund is measured by the best-travelled, not by whoever holds the reins', () => {
+  /* A company can be led by a fresh face with veterans behind them —
+   * keying the refund off the leader would pay that company nothing. */
+  const { g, p } = rig('t-backpay-leader', 0);
+  const vet = makePlayer('Vet', 'fighter', initialStats('fighter'));
+  vet.dungeonId = p.dungeonId; vet.floorIdx = p.floorIdx; vet.gold = 0;
+  g.state.party.members.push(vet);
+  while (vet.level < 8) g.levelUp(vet);      /* the veteran did the walking */
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  delete raw.xpUnsplit;
+  const g2 = newGame('t-backpay-leader-2', 'fighter');
+  g2.restore(raw);
+  const levels = g2.state.party.members.map((m) => m.level);
+  assert.ok(levels.every((l) => l > 8), 'the fresh-faced leader capped the refund: ' + levels.join(','));
+});

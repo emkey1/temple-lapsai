@@ -3778,6 +3778,54 @@ export class Game {
          * free step) skips them for a phantom round. */
         m.turnState = {};
       }
+      /* THE BACK PAY.
+       *
+       * Experience used to be divided by the size of the company, and the
+       * tier bands were never fitted for that — so every save written
+       * under the old rule holds a party stranded below the ground it is
+       * standing on, with no way out: the monsters that would pay for the
+       * levels cannot be beaten at the level the split delivered. Fixing
+       * the rule going forward does not rescue a character already stuck.
+       *
+       * So the split is refunded, once, on load. The leader's lifetime
+       * earnings are multiplied by the company they were divided among,
+       * and the whole company is brought to the level that buys — the
+       * muster's own rule, that a companion stands at the leader's
+       * measure. Marked on the state so it can never run twice. */
+      if (!this.state.xpUnsplit) {
+        this.state.xpUnsplit = true;
+        const party3 = this.state.party;
+        const roster = ((party3 && party3.members) || []).filter(Boolean);
+        const lifetime = (m) => {
+          let sum = m.xp || 0;
+          for (let l = 1; l < (m.level || 1); l++) sum += XP_FOR_LEVEL(l);
+          return sum;
+        };
+        if (roster.length > 1) {
+          const leader = this.state.player || roster[0];
+          /* The BEST-TRAVELLED member sets the mark, not whoever happens
+           * to hold the reins: a company can be led by a fresh face with
+           * veterans behind them, and keying off the leader would refund
+           * that company nothing at all. */
+          const owed = Math.max(...roster.map(lifetime)) * roster.length;
+          /* What that buys, walked up the same ladder gainXP climbs. */
+          let target = 1, left = owed;
+          while (left >= XP_FOR_LEVEL(target)) { left -= XP_FOR_LEVEL(target); target++; }
+          let raised = 0;
+          for (const m of roster) {
+            while ((m.level || 1) < target) { this.levelUp(m); raised++; }
+            if (m === leader) m.xp = left;
+            /* A raised character stands up whole: being handed levels at
+             * the bottom of a dungeon you cannot leave is no favour if
+             * you are still at two hit points. */
+            if (m.hp > 0) { m.hp = m.maxhp; m.power = m.maxpower; }
+          }
+          if (raised) {
+            this.log('The ledger is corrected: experience was never meant to be divided by the size of the company. The expedition stands at level ' + target + '.');
+            this.journal('The reckoning was recounted — the company came into the levels its work had already earned.');
+          }
+        }
+      }
       /* Expedition knowledge recorded before it was company-wide sits on
        * whichever sheet was active at the time — the demon fell to the
        * fighter and the town never heard. Pool it, and deal it back out. */
