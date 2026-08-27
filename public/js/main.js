@@ -3398,7 +3398,20 @@ async function boot() {
     const b = e.target.closest('[data-view]');
     if (!b || !game) return;
     const i = Number(b.dataset.view);
-    viewedIdx = game.state.party.members[i] === game.state.player ? null : i;
+    const m = game.state.party.members[i];
+    /* Between fights, focusing a member HANDS THEM THE REINS — you steer
+     * who you are looking at, which is what "I put the focus on the
+     * fighter before moving" was always meant to do. Mid-fight the round
+     * decides who acts, and a chip click only picks whose sheet shows. */
+    if (m && m.hp > 0 && m !== game.state.player && game.outOfCombat()) {
+      game.state.party.active = i;
+      viewedIdx = null;   /* the sheets follow the reins */
+      game.log(m.name + ' takes the reins.');
+      game.computeVisibility();
+      renderGame(game); renderHud(game);
+    } else {
+      viewedIdx = m === game.state.player ? null : i;
+    }
     givingUid = null;
     renderStats(game); renderGear(game);
   });

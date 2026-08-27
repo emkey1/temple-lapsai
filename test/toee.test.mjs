@@ -317,12 +317,13 @@ test('a member who falls to the opening does not bill the turn to the next in li
   const f = arena(g);
   const a = g.state.player;                       /* the one who inherits the reins */
   const doomed = companion(g, 'mage', 'Doomed');  /* at a.x+1 — beside the beast */
+  /* Out of the form-up's reach: van stance means no rear/van exchange can
+   * trade her to safety, and holding the REINS means the column-closing
+   * march — which pulls followers about as calm breaks — never moves her.
+   * The mage keeps her appointment with the opening. */
+  doomed.stance = 'van';
   doomed.hp = 1;
-  /* Out of the line's reach: when calm breaks, an adjacent van member now
-   * trades places with a rear member standing nearer the foe — which is
-   * exactly the doom this scenario needs to keep. Two tiles back, the
-   * fighter cannot shoulder in, and the mage keeps her appointment. */
-  a.x = doomed.x - 2;
+  g.state.party.active = 1;
   f.monsters.push(beast(doomed.x + 1, doomed.y, { toHit: 100 }));  /* every blow lands */
   a.ini = 20; doomed.ini = 30;
   g._round = null;
@@ -611,4 +612,60 @@ test('mid-fight the standing swig defers to the round', () => {
   begin(g);
   assert.equal(g.useItemAs(reader, scroll), false, 'a companion drank out of turn mid-fight');
   assert.ok(reader.inventory.includes(scroll), 'the refused reading still spent the scroll');
+});
+
+/* ---- the reins, and the line ----
+ *
+ * "Mage in front as combat is entered... I even put the focus on a
+ * different character before moving." Focus never steered — the reins
+ * snapped back to the first member every round — and the van, gaining one
+ * tile a step on a moving leader, could still be mid-column when the
+ * fight woke. Now the reins stay where the player put them, and the line
+ * FORMS as calm breaks: adjacent van/rear pairs trade places until no
+ * robe stands nearer the fight than the steel beside it. */
+test('the reins stay where the player put them between fights', () => {
+  const g = newGame('t3-reins-stay', 'mage');
+  arena(g);
+  const p = g.state.player;
+  const guard = companion(g, 'fighter', 'Point');
+  guard.x = p.x + 1; guard.y = p.y;
+  g.state.party.active = 1;   /* the player hands the fighter the reins */
+  g.handleKey('x');           /* a calm round passes */
+  assert.equal(g.state.party.active, 1, 'the round snatched the reins back');
+});
+
+test('the line forms as calm breaks', () => {
+  const g = newGame('t3-form-up', 'mage');
+  const f = arena(g);
+  const p = g.state.player;                    /* rear-stance, at 10,10 */
+  const guard = companion(g, 'fighter', 'Point');
+  guard.x = p.x + 1; guard.y = p.y;            /* the van, BEHIND the mage */
+  const mo = beast(p.x - 2, p.y, {});          /* the fight is WEST, mage-side */
+  mo.aggro = true;
+  f.monsters.push(mo);
+  g._round = null;
+  g.advanceQueue();                            /* calm breaks; the round builds */
+  assert.ok(guard.x < p.x, 'the mage still stands nearer the fight than the fighter');
+  assert.ok(g.logs.some((l) => /line forms/.test(l)), 'the form-up went unannounced');
+});
+
+test('the line forms across a strung-out column, not just an adjacent one', () => {
+  /* The third report from play: the van, gaining one net tile a step on a
+   * moving leader, was still strung out behind when the fight woke — and
+   * an adjacent-only exchange had nobody beside the mage to swap with.
+   * The form-up closes the column first (a free march, spending no turns),
+   * THEN trades places. */
+  const g = newGame('t3-line-strung', 'mage');
+  const f = arena(g);
+  const p = g.state.player;                      /* rear, at the reins */
+  const van = companion(g, 'fighter', 'Point');
+  van.x = p.x + 4; van.y = p.y;                  /* four tiles back */
+  const mo = beast(p.x - 3, p.y, {});            /* the fight is ahead, mage-side */
+  mo.aggro = true;
+  f.monsters.push(mo);
+  g._round = null;
+  g.handleKey('x');                              /* the round builds; calm breaks; the line forms */
+  const d = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  assert.ok(d(van, mo) < d(p, mo), 'the mage still stands nearer the fight than the fighter');
+  assert.ok(g.logs.some((l) => /line forms/.test(l)), 'the form-up went unannounced');
 });

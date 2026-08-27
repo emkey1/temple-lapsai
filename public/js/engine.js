@@ -1931,8 +1931,10 @@ export class Game {
     return (c && c.stance) || 'van';
   }
 
-  followTheLeader(leader) {
-    const followers = this.livingMembers().filter((m) => m !== leader && !this.actorTurn(m).acted);
+  followTheLeader(leader, free) {
+    /* The FREE march (the form-up's column-closing) positions everyone,
+     * acted or not — it spends no turns, so it owes the flag nothing. */
+    const followers = this.livingMembers().filter((m) => m !== leader && (free || !this.actorTurn(m).acted));
     if (!followers.length) return;
     const floor = this.currentFloor;
     const field = this.distanceFieldFrom([leader]);
@@ -1954,7 +1956,9 @@ export class Game {
      * the second in line blocking on the first for a round. */
     followers.sort((a, b) => (field[a.y][a.x] ?? 99) - (field[b.y][b.x] ?? 99));
     for (const m of followers) {
-      this.actorTurn(m).acted = true;
+      /* A FREE march — the form-up's closing of the column as calm breaks
+       * — spends nobody's turn; the ordinary march spends the round. */
+      if (!free) this.actorTurn(m).acted = true;
       const mine = fields[this.memberStance(m)] || field;
       /* A straggler hurries: two steps to the leader's one, so a column that
        * fell behind — a fight, a doorway, the stairs — closes up again instead
@@ -2004,6 +2008,23 @@ export class Game {
     const foes = ((floor && floor.monsters) || [])
       .filter((mo) => mo.hp > 0 && mo.aggro && !mo.submerged);
     if (!foes.length) return false;
+    /* CLOSE THE COLUMN FIRST. A march strung out behind a leader — fresh
+     * off the stairs, say — leaves gaps no adjacent swap can cross, and
+     * the fight opened on the mage anyway; reported from play a third
+     * time, with the focus dutifully on the fighter. One free march step
+     * pulls the van to its station beside the reins before the exchanges
+     * begin; it spends nobody's turn. */
+    const leader = this.state.player;
+    if (leader && leader.hp > 0) {
+      /* Marched to a fixpoint, not once: one free march moves each member
+       * at most two tiles, and a column strung four back needs the second
+       * wind. Bounded, and it stops the moment nobody moves. */
+      for (let closeUp = 0; closeUp < 4; closeUp++) {
+        const before = this.livingMembers().map((m) => m.x + ',' + m.y).join(';');
+        this.followTheLeader(leader, true);
+        if (this.livingMembers().map((m) => m.x + ',' + m.y).join(';') === before) break;
+      }
+    }
     const field = this.distanceFieldFrom(foes);
     const at = (m) => (field[m.y] ? field[m.y][m.x] : -1);
     let swapped = false;
@@ -2068,7 +2089,12 @@ export class Game {
      * steers and the company follows, so the reins never land on a companion
      * between fights. */
     if (this.outOfCombat()) {
-      order.sort((a, b) => (a.member ? 0 : 1) - (b.member ? 0 : 1));
+      /* The marching order starts at whoever HOLDS THE REINS — sorting by
+       * roster order silently handed them back to the first member every
+       * calm round, undoing the player's chip click one step later. */
+      const leader = this.state.player;
+      const rank = (e) => (e.member ? (e.ref === leader ? 0 : 1) : 2);
+      order.sort((a, b) => rank(a) - rank(b));
     } else {
       order.sort((a, b) => (b.ref.ini || 0) - (a.ref.ini || 0) || (b.member ? 1 : 0) - (a.member ? 1 : 0));
     }
@@ -2197,7 +2223,11 @@ export class Game {
       }
     }
     for (const m of party.members) if (m) this.clearActorTurn(m);
-    party.active = this.firstLivingMember();
+    /* The reins STAY where the player put them — clicking a chip between
+     * fights hands a member the lead, and a round ending must not snatch
+     * it back. Only death moves them now. */
+    const heldBy = party.members[party.active];
+    if (!heldBy || heldBy.hp <= 0) party.active = this.firstLivingMember();
     this.computeVisibility();
     this.turn++;
     if (this.ui.render) this.ui.render(this);
@@ -3577,6 +3607,10 @@ export class Game {
         for (const it of m.inventory || []) {
           if (it && it.id === 'scroll-teleport' && it.name === 'Scroll of Recall') it.name = 'Scroll of Blinking';
         }
+        /* Turn state is runtime-only — a save written mid-round restores
+         * members already "acted", and the first march (and the form-up's
+         * free step) skips them for a phantom round. */
+        m.turnState = {};
       }
       /* Expedition knowledge recorded before it was company-wide sits on
        * whichever sheet was active at the time — the demon fell to the
