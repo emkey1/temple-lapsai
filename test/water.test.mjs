@@ -286,3 +286,94 @@ test('magic that shows every monster shows the ones under the water', () => {
    * surfaced, so it keeps waiting. */
   assert.equal(hidden.submerged, true, 'being detected dragged it out of the water');
 });
+
+/* ---- what the water costs in a fight ----
+ *
+ * Reported: "water does not seem to halve the speed of the characters...
+ * this should only impact movement, not attacks." It halved nothing in
+ * combat: the wading surcharge was written as an out-of-combat rule (every
+ * monster moves twice), and a member's GROUND was never touched. A step
+ * into water now spends two tiles of speed and nothing else. */
+import { makePlayer, initialStats } from '../public/js/engine.js';
+
+function drownedArena(g) {
+  const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
+  for (let y = 8; y < 16; y++) for (let x = 8; x < 30; x++) tiles[y][x] = T.FLOOR;
+  for (let y = 8; y < 16; y++) for (let x = 14; x <= 18; x++) tiles[y][x] = T.WATER;
+  g.currentFloor = {
+    w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs: [],
+    up: { x: 9, y: 9 }, down: null, isLast: false, den: null,
+  };
+  g.seen = Array.from({ length: H }, () => Array(W).fill(true));
+  g.vis = Array.from({ length: H }, () => Array(W).fill(true));
+  const p = g.state.player;
+  p.x = 12; p.y = 12;
+  return g.currentFloor;
+}
+
+function woken(g, x, y) {
+  const mo = {
+    t: { id: 'w', name: 'Watcher', glyph: 'w', color: 'red', hpMax: 90, ac: 30, toHit: 0, damage: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0, props: [], speed: 1, aggroRange: 20 },
+    x, y, hp: 90, maxhp: 90, boss: false, aggro: true, acted: false,
+    toHit: 0, dmg: { dice: 1, sides: 2, bonus: 0 }, xp: 1, goldMin: 0, goldMax: 0, ini: 1,
+  };
+  g.currentFloor.monsters.push(mo);
+  return mo;
+}
+
+test('a step into water costs two tiles of ground, not one', () => {
+  /* A thief, whose five tiles leave the counter still open to read after
+   * the wade — a fighter's three are entirely spent by it, which is the
+   * same rule seen from the other end. */
+  const g = newGame('wade-ground', 'thief');   /* speed 5 */
+  drownedArena(g);
+  const p = g.state.player;
+  woken(g, 12, 15);                 /* the fight is on, and out of reach */
+  p.ini = 30; g._round = null; g.advanceQueue();
+  g.handleKey('d');                 /* dry stride: one tile of five */
+  assert.equal(g.actorTurn(p).moved, 1, 'a dry step should cost one');
+  g.handleKey('d');                 /* into the water at x=14 */
+  assert.equal(g.actorTurn(p).moved, 3, 'the wade should have cost two');
+});
+
+test('the drains halve a fighter’s march: three tiles carry two', () => {
+  const g = newGame('wade-halve', 'fighter');   /* speed 3 */
+  drownedArena(g);
+  const p = g.state.player;
+  p.x = 13; p.y = 12;               /* one dry stride from the water */
+  woken(g, 13, 15);
+  p.ini = 30; g._round = null; g.advanceQueue();
+  const acts = [];
+  const real = g.monsterTakeTurn.bind(g);
+  g.monsterTakeTurn = (m, f) => { acts.push(m); real(m, f); };
+  g.handleKey('d');                 /* into the water: two of three */
+  assert.equal(acts.length, 0, 'the wade ended the turn outright');
+  g.handleKey('d');                 /* the third tile, still wading */
+  assert.ok(acts.length > 0, 'two water tiles should exhaust three ground');
+  assert.equal(p.x, 15, 'the fighter crossed more water than their legs allow');
+});
+
+test('the water slows the legs and never the arm', () => {
+  const g = newGame('wade-arm', 'fighter');
+  drownedArena(g);
+  const p = g.state.player;
+  p.x = 13; p.y = 12;
+  const mo = woken(g, 15, 12);      /* standing IN the water, beside the shallows */
+  p.ini = 30; g._round = null; g.advanceQueue();
+  g.handleKey('d');                 /* wade in beside it: two tiles of three */
+  assert.equal(g.actorTurn(p).moved, 2);
+  const before = mo.hp;
+  g.handleKey('d');                 /* and swing from the water */
+  assert.ok(mo.hp < before, 'the blow from the water never landed');
+});
+
+test('out of the water, the ground is ordinary again', () => {
+  const g = newGame('wade-out', 'fighter');
+  drownedArena(g);
+  const p = g.state.player;
+  p.x = 18; p.y = 12;               /* in the water at the far bank */
+  woken(g, 18, 15);
+  p.ini = 30; g._round = null; g.advanceQueue();
+  g.handleKey('d');                 /* onto dry stone at 19 */
+  assert.equal(g.actorTurn(p).moved, 1, 'leaving the water cost more than a stride');
+});

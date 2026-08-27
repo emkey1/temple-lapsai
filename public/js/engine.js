@@ -1391,7 +1391,18 @@ export class Game {
    * carries. Making it impassable was severing whole sewer floors. */
   wadeInto(x, y) {
     this.log('You wade into black water — slow going, and loud.');
-    this.actorTurn().wading = true;
+    /* MID-FIGHT the cost is GROUND, not the turn: a step into water eats a
+     * second tile of the mover's speed, so a fighter's three tiles carry
+     * them two through the drains and a thief's five carry two and a half.
+     * Nothing here touches the standard action — you may still swing from
+     * the water at no penalty. Out of combat the old surcharge stands:
+     * everything hostile moves twice while you flounder. */
+    if (!this.outOfCombat()) {
+      const at = this.actorTurn();
+      at.moved = (at.moved || 0) + 1;
+    } else {
+      this.actorTurn().wading = true;
+    }
     let roused = 0;
     for (const m of (this.currentFloor.monsters || [])) {
       if (m.hp <= 0) continue;
