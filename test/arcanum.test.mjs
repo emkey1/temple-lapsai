@@ -109,3 +109,35 @@ test('an old save is owed the learning its levels earned', () => {
   g2.restore(save);
   assert.equal(g2.state.player.skillPoints, 3, 'three levels, three points owed');
 });
+
+/* ---- the caster's second curve ----
+ *
+ * A fighter's damage grows twice: the level step, and a better weapon off
+ * the floor. A staff is a staff for ever, so at level six the mage's PAID
+ * Firebolt matched the fighter's FREE swing. An INT-scaling attack gains a
+ * die with practice — the mage's answer to the fighter's loot. */
+import { newGame as freshGame } from './helpers.mjs';
+
+test('a mage’s attack spells grow a die with practice', () => {
+  const g = freshGame('caster-curve', 'mage');
+  g.loadFloor(0);
+  const p = g.state.player;
+  const fb = g.allAbilities(p).find((a) => a.id === 'firebolt');
+  assert.ok(fb, 'the mage has no Firebolt');
+  assert.equal(g.casterDice(fb.damage).dice, 1, 'a novice should roll the printed die');
+  while (p.level < 5) g.levelUp(p);
+  assert.equal(g.casterDice(fb.damage).dice, 2, 'five levels of practice bought no second die');
+  while (p.level < 10) g.levelUp(p);
+  assert.equal(g.casterDice(fb.damage).dice, 3, 'ten levels bought no third');
+});
+
+test('practice does not swell a fighter’s dice — that is what weapons are for', () => {
+  const g = freshGame('caster-curve-fighter', 'fighter');
+  g.loadFloor(0);
+  const p = g.state.player;
+  while (p.level < 10) g.levelUp(p);
+  const bash = g.allAbilities(p).find((a) => a.id === 'shield-bash');
+  /* Shield Bash omits `dice` entirely — one die is the default — so
+   * normalise both sides rather than compare undefined to one. */
+  assert.equal(g.casterDice(bash.damage).dice || 1, bash.damage.dice || 1);
+});

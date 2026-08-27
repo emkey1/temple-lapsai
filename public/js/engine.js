@@ -3019,18 +3019,37 @@ export class Game {
       hit.unshift(target);
       for (const m of hit) {
         if (!m) continue;
-        const dmg = Math.max(1, this.rollDamage(a.damage) + bonus);
+        const dmg = Math.max(1, this.rollDamage(this.casterDice(a.damage)) + bonus);
         this.log(a.name + ' blasts the ' + m.t.name + ' for ' + dmg + '!');
         this.applyDamageToMonster(m, dmg, false, der);
         if (this.dying) return;
       }
     } else if (target) {
-      const dmg = Math.max(1, this.rollDamage(a.damage) + bonus);
+      const dmg = Math.max(1, this.rollDamage(this.casterDice(a.damage)) + bonus);
       this.log(a.name + ' strikes the ' + target.t.name + ' for ' + dmg + '!');
       this.applyDamageToMonster(target, dmg, false, der);
     } else {
       this.log(a.name + ' finds no target in the light.');
     }
+  }
+
+  /* THE CASTER'S DICE.
+   *
+   * A fighter's damage grows twice over — the level step every ability
+   * gets, and a better weapon off the floor — while a staff is a staff for
+   * ever. Measured at level six: the mage's PAID Firebolt (3-10) matched
+   * the fighter's FREE swing (3-10), which is the "kinda crap offensively"
+   * the playtest reported, and it is arithmetic, not taste. So an attack
+   * that scales on INT gains a die with practice, the way every edition of
+   * this game's ancestors scaled a caster: one more at level five, another
+   * at ten, another at fifteen. Loot is the fighter's second curve; this
+   * is the mage's. */
+  casterDice(dmg) {
+    if (!dmg || !dmg.int) return dmg;
+    const p = this.state.player;
+    const extra = Math.floor(((p && p.level) || 1) / 5);
+    if (!extra) return dmg;
+    return { ...dmg, dice: (dmg.dice || 1) + extra };
   }
 
   abilityBonus(dmg, der) {

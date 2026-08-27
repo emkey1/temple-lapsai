@@ -60,15 +60,23 @@ export function shopStock(game) {
     .map((t) => ({ id: t.id, name: t.name, price: Math.max(1, Math.round((t.value || 1) * PRICES.buyMarkup * buyCut(game))) }));
 }
 
-export function buyItem(game, id) {
-  const p = game.state.player;
+/* `who` is the pack the goods go into — the member on the counter's own
+ * picker, the same one whose things are being weighed. Buying always
+ * loaded the reins-holder's pack, so the character you were plainly
+ * shopping FOR could sell a sword and never receive the potion. */
+export function buyItem(game, id, who) {
+  const buyer = who || game.state.player;
   const row = shopStock(game).find((s) => s.id === id);
   if (!row) { game.log('The Provisioner does not carry that.'); return false; }
   if (game.purse() < row.price) { game.log('The Provisioner names ' + row.price + ' gold, and your purse says no.'); return false; }
-  if (p.inventory.length >= PACK_LIMIT) { game.log('Your pack has no room for it.'); return false; }
+  if (buyer.inventory.length >= PACK_LIMIT) {
+    game.log((buyer === game.state.player ? 'Your pack has' : buyer.name + '\u2019s pack has') + ' no room for it.');
+    return false;
+  }
   game.spendGold(row.price);
-  p.inventory.push(deepItem(getItemTemplate(id)));
-  game.log('Bought: ' + row.name + ', for ' + row.price + ' gold.');
+  buyer.inventory.push(deepItem(getItemTemplate(id)));
+  game.log('Bought: ' + row.name + ', for ' + row.price + ' gold.' +
+    (buyer === game.state.player ? '' : ' It goes in ' + buyer.name + '\u2019s pack.'));
   return true;
 }
 
@@ -137,6 +145,43 @@ export function takeRoom(game) {
   }
   game.log('A night at the Drowned Lantern: beds, board, and the lamps kept lit. The company rises whole. (' + cost + ' gold)');
   if (game.journal) game.journal('A night at the Drowned Lantern set the company right for ' + cost + ' gold.');
+  return true;
+}
+
+/* THE TEMPLE'S OTHER TRADE.
+ *
+ * A whole company going down still costs half the purse and the temple
+ * scribes haul everyone back — that has always worked. But ONE companion
+ * falling while the rest walk out had no answer at all: the inn only ever
+ * mended the living, and camp only exists when everybody dies. So a body
+ * could be carried around for the rest of the run with nothing in the
+ * world able to raise it. The vicar raises one, for coin, at a price that
+ * respects what they were: dearer for the seasoned, and never haggled —
+ * you do not barter with a priest over a friend. */
+export function raiseCost(member) {
+  const level = (member && member.level) || 1;
+  return 40 + 30 * level;
+}
+
+export function fallenMembers(game) {
+  const party = game.state.party;
+  return ((party && party.members) || []).filter((m) => m && m.hp <= 0);
+}
+
+export function raiseMember(game, member) {
+  if (!member) return false;
+  if (member.hp > 0) { game.log(member.name + ' is in no need of the bell.'); return false; }
+  const cost = raiseCost(member);
+  if (game.purse() < cost) { game.log('Raising ' + member.name + ' asks ' + cost + ' gold, and your purse says no.'); return false; }
+  game.spendGold(cost);
+  member.hp = Math.max(1, Math.round(member.maxhp * 0.5));
+  member.power = Math.round((member.maxpower || 0) * 0.5);
+  member.wounds = 0;
+  member.cooldowns = {};
+  if (member.counters) member.counters.woundMote = 0;
+  if (member.buffs) member.buffs = {};
+  game.log('The bell tolls over ' + member.name + ' and does not stop until they answer it. (' + cost + ' gold)');
+  if (game.journal) game.journal(member.name + ' was raised at the Little Temple for ' + cost + ' gold.');
   return true;
 }
 

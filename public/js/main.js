@@ -23,6 +23,7 @@ import { ISO, isoToScreen, screenToIso, diamondPath, paintOrder, makeViewTest } 
 import {
   PRICES, PARTY_LIMIT, shopStock, buyItem, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
+  raiseCost, fallenMembers, raiseMember,
   identifyCost, unbindCost, musterRoster, hireMember, innCost, takeRoom,
 } from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote, abilityDamageNote } from './describe.js';
@@ -497,7 +498,7 @@ function showShop(g, sellIdx) {
     'BACK TO THE STREET', npcPortrait('provisioner', 'female'));
   box.addEventListener('click', (e) => {
     const buy = e.target.closest('[data-buy]');
-    if (buy) { buyItem(g, buy.dataset.buy); saveGame(); renderHud(g); box.remove(); showShop(g, sellIdx); return; }
+    if (buy) { buyItem(g, buy.dataset.buy, seller); saveGame(); renderHud(g); renderStats(g); box.remove(); showShop(g, sellIdx); return; }
     const who = e.target.closest('[data-seller]');
     if (who) { box.remove(); showShop(g, Number(who.dataset.seller)); return; }
     const all = e.target.closest('[data-sell-all]');
@@ -605,16 +606,34 @@ function showSage(g) {
  * the same law as the Lector's ledger. */
 function showTemple(g) {
   const cursed = knownCurses(g);
+  /* The bell answers two kinds of trouble: what is bound, and who is
+   * beyond binding. A single companion falling used to have no answer at
+   * all — the inn mends only the living. */
+  const fallen = fallenMembers(g);
+  const raises = fallen.map((m, i) =>
+    '<div class="eq-row"><span class="i-name"><b>' + esc(m.name) + '</b> <span class="tiny">' +
+    esc((CLASSES[m.cls] || {}).name || m.cls) + ' ' + m.level + ' · fallen</span></span>' +
+    '<button data-raise="' + i + '"' + (g.purse() < raiseCost(m) ? ' disabled' : '') +
+    '>RAISE · ' + raiseCost(m) + ' gp</button></div>').join('');
   const rows = cursed.map((it, i) =>
     '<div class="eq-row"><span class="i-name cursed">' + esc(it.name) + '</span>' +
     '<button data-unbind="' + i + '">UNBIND · ' + unbindCost(g) + ' gp</button></div>').join('');
   const box = townCard('temple-card', 'THE LITTLE TEMPLE',
     'Candle-smoke and old stone. The vicar reads nothing and asks nothing; she rings the bell, and what has hold of a thing lets go.',
     purseLine(g) +
-    '<div class="scrolly" style="max-height:280px">' +
+    (raises ? '<h3 class="pane">THE FALLEN</h3><div class="scrolly" style="max-height:150px">' + raises + '</div>' : '') +
+    '<h3 class="pane">WHAT IS BOUND</h3>' +
+    '<div class="scrolly" style="max-height:200px">' +
       (rows || '<div class="tiny">Nothing the company carries is bound. The bell stays still.</div>') + '</div>',
     'BACK TO THE STREET', npcPortrait('vicar', 'female'));
   box.addEventListener('click', (e) => {
+    const up = e.target.closest('[data-raise]');
+    if (up) {
+      raiseMember(g, fallen[Number(up.dataset.raise)]);
+      saveGame(); renderHud(g); renderStats(g); renderGame(g);
+      box.remove(); showTemple(g);
+      return;
+    }
     const un = e.target.closest('[data-unbind]');
     if (un) { unbindCurse(g, cursed[Number(un.dataset.unbind)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showTemple(g); }
   });
@@ -2689,7 +2708,7 @@ function renderStats(g) {
     const effV = der.effValues || p.stats;
     const hits = abilityDamageNote(a, {
       intMod: abilityMod(effV.int), strMod: abilityMod(effV.str),
-      practice: Math.floor((p.level - 1) / 3),
+      practice: Math.floor((p.level - 1) / 3), level: p.level,
     });
     el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>'

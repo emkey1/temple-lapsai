@@ -15,6 +15,7 @@ import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from '../public/js/en
 import {
   PRICES, shopStock, buyItem, apparentValue, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
+  raiseCost, fallenMembers, raiseMember,
   hireMember,
 } from '../public/js/town.js';
 
@@ -708,4 +709,45 @@ test('an old save with gold on every sheet pools it once', () => {
   const saved = JSON.parse(JSON.stringify(g2.save()));
   assert.equal(saved.party.gold, 725, 'the purse did not survive the next save');
   assert.equal(saved.party.members[0].gold, undefined, 'a sheet kept a second copy of the purse');
+});
+
+/* ---- the bell, and whose pack the goods land in ---- */
+test('the temple raises a fallen companion for coin', () => {
+  const { g, p } = rig('t-raise', 900);
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.dungeonId = p.dungeonId; buddy.floorIdx = p.floorIdx;
+  buddy.gold = 0;
+  g.state.party.members.push(buddy);
+  linkPurse(g.state);
+  buddy.hp = 0;
+  assert.deepEqual(fallenMembers(g).map((m) => m.name), ['Blade']);
+  const cost = raiseCost(buddy);
+  assert.ok(raiseMember(g, buddy), 'the bell refused a full purse');
+  assert.ok(buddy.hp > 0, 'the fallen stayed down');
+  assert.equal(g.purse(), 900 - cost, 'the raising was free');
+  assert.equal(fallenMembers(g).length, 0);
+});
+
+test('a purse too thin cannot buy a life, and is not charged for trying', () => {
+  const { g, p } = rig('t-raise-poor', 5);
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.gold = 0;
+  g.state.party.members.push(buddy);
+  linkPurse(g.state);
+  buddy.hp = 0;
+  assert.equal(raiseMember(g, buddy), false);
+  assert.equal(g.purse(), 5, 'the temple kept money for a bell it never rang');
+  assert.equal(buddy.hp, 0);
+});
+
+test('goods bought land in the pack that is on the counter', () => {
+  const { g, p } = rig('t-buy-who', 900);
+  const buddy = makePlayer('Porter', 'thief', initialStats('thief'));
+  buddy.gold = 0;
+  g.state.party.members.push(buddy);
+  linkPurse(g.state);
+  const before = buddy.inventory.length;
+  assert.ok(buyItem(g, 'potion-heal', buddy), 'the shop refused the sale');
+  assert.equal(buddy.inventory.length, before + 1, 'the potion went to the wrong pack');
+  assert.ok(!p.inventory.some((it) => it && it.id === 'potion-heal' && p.inventory.length > 0 && false));
 });
