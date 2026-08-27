@@ -2232,6 +2232,12 @@ function renderIsoScene(g, sa) {
 
   for (const pr of floor.props || []) {
     if (pr.flat) continue;   /* the paths were laid with the ground */
+    /* T kneels the WORLD, not only its masonry. A gravestone, a column or
+     * a tree stands as tall as a wall and hides as much — a town with its
+     * roofs knelt and its churchyard still standing was the same
+     * complaint the walls got, wearing different stone. Flat props (the
+     * worn paths) are ground and stay. */
+    if (wallMode === 'down') continue;
     /* An `atlas` prop is a piece of the floor's own tileset — fences,
      * anvils, gravestones — drawn with the offsets its definition gives. */
     if (pr.atlas) {
