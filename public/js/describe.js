@@ -130,7 +130,7 @@ export function abilityDamageNote(a, ctx) {
   const d = a.damage;
   /* The caster's extra die rides here too, or the card would go on
    * quoting the level-one spell to a level-ten mage. */
-  const casterExtra = d.int ? Math.floor(((ctx && ctx.level) || 1) / 5) : 0;
+  const casterExtra = Math.floor(((ctx && ctx.level) || 1) / 5);
   const dice = Math.max(1, (d.dice || 1) + casterExtra);
   const sides = Math.max(2, d.sides || 6);
   let bonus = d.bonus || 0;

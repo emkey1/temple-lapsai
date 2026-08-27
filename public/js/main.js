@@ -1954,7 +1954,7 @@ const WALL_VOCAB = {
    * 64/65/68/69 at 45-58% black against 97-99% for the shadow twins
    * 66/67/70/71 the first attempt picked), each turned so its dark side
    * faces into the rock. */
-  tileset_cave: { x: [80], y: [80], corner: [80], rise: 300, grounded: true },
+  tileset_cave: { x: [72], y: [64], corner: null, rise: 300, grounded: true, runsOnly: true },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
@@ -2002,7 +2002,7 @@ function wallPieceId(vocab, g, t) {
   const openS = openAt(t.x, t.y + 1);
   const openE = openAt(t.x + 1, t.y);
   const h = ((t.x * 40503) ^ (t.y * 44417)) >>> 0;
-  if (openS && openE) return vocab.corner;
+  if (openS && openE) return vocab.corner || null;
   /* A thin wall between two north-south corridors is seen from BOTH sides:
    * its east face gets the lit piece, but the camera also sees its west
    * flank, which on a one-face piece is the artist's unpainted back — a
@@ -2013,8 +2013,26 @@ function wallPieceId(vocab, g, t) {
   if (openE && vocab.twoFaced && openAt(t.x - 1, t.y)) {
     return [vocab.x[h % vocab.x.length], vocab.y[h % vocab.y.length]];
   }
-  if (openS) return [vocab.x[h % vocab.x.length]];
-  if (openE) return [vocab.y[h % vocab.y.length]];
+  /* SOME ART ONLY COMPOSES IN A RUN. The cave crags are painted on one
+   * face with a dark margin the NEXT piece along the wall is meant to
+   * cover — proven on the composition rig, where a run of four reads as
+   * one continuous rock face and a single piece reads as a black slab
+   * with a rock stripe. So a lone wall tile, or the end of a run, wears
+   * the painted prism instead: honest geometry beats a black hole. */
+  const sameAxis = (dx, dy) => {
+    const nx = t.x + dx, ny = t.y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) return false;
+    const tt = floor.tiles[ny][nx];
+    return (tt === T.WALL || tt === T.SECRET) && g.seen[ny] && g.seen[ny][nx];
+  };
+  if (openS) {
+    if (vocab.runsOnly && !(sameAxis(1, 0) && sameAxis(-1, 0))) return null;
+    return [vocab.x[h % vocab.x.length]];
+  }
+  if (openE) {
+    if (vocab.runsOnly && !(sameAxis(0, 1) && sameAxis(0, -1))) return null;
+    return [vocab.y[h % vocab.y.length]];
+  }
   /* A tile with no visible face: for building sets, the roof over the
    * body of the house; for dungeon masonry, nothing (the stub answers). */
   if (vocab.filler) return [vocab.filler[h % vocab.filler.length]];

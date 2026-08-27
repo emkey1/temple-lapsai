@@ -1892,12 +1892,30 @@ export class Game {
   /* Experience is SPLIT among the living, the classic way — a party of four
    * levels at a quarter of a soloist's pace and covers four bodies for it. A
    * party of one takes the whole share, so nothing solo changes. */
+  /* EXPERIENCE IS NOT DIVIDED.
+   *
+   * It was split among the living — "the classic way" — and the classic
+   * way assumes a world tuned for a party. Ours is not: every tier band
+   * and every boss in this game was fitted against what a SINGLE
+   * character earns walking down, and the split was added when the party
+   * landed without refitting any of it. Measured: clearing the Temple and
+   * the Upper Reaches yields 17,059 XP, which takes a lone adventurer to
+   * level 10 and each of a company of four to level SIX — and the third
+   * dungeon opens with tier 9-11 monsters and a boss tuned for 14. That
+   * is the whole of "my level 6 fighter constantly misses a Gorgon": he
+   * is four levels below the ground he is standing on, because he brought
+   * friends.
+   *
+   * So the whole award goes to each of the living. Hiring a companion is
+   * a tactical choice about bodies on the board — it must never be a tax
+   * on levelling, which is exactly what it had become. The fallen earn
+   * nothing, which is still the classic rule and the one that matters. */
   gainXP(xp) {
     const members = this.livingMembers();
     if (!members.length) return;
-    const share = Math.max(1, Math.round(xp / members.length));
+    const award = Math.max(1, Math.round(xp));
     for (const m of members) {
-      m.xp += share;
+      m.xp += award;
       while (m.xp >= XP_FOR_LEVEL(m.level)) {
         m.xp -= XP_FOR_LEVEL(m.level);
         this.levelUp(m);
@@ -3084,9 +3102,16 @@ export class Game {
    * that scales on INT gains a die with practice, the way every edition of
    * this game's ancestors scaled a caster: one more at level five, another
    * at ten, another at fifteen. Loot is the fighter's second curve; this
-   * is the mage's. */
+   * is the mage's.
+   *
+   * And it is EVERY ability's, because the same measurement damns the
+   * lot: at level six a Backstab rolled 2-7 and a Shield Bash 2-7 while
+   * the same character's FREE swing rolled 3-8 and 3-10. An ability that
+   * costs power and a cooldown to do less than swinging is not a choice
+   * anyone should be asked to make, and no amount of flavour text fixes
+   * arithmetic. */
   casterDice(dmg) {
-    if (!dmg || !dmg.int) return dmg;
+    if (!dmg) return dmg;
     const p = this.state.player;
     const extra = Math.floor(((p && p.level) || 1) / 5);
     if (!extra) return dmg;

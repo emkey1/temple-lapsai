@@ -131,13 +131,26 @@ test('a mage’s attack spells grow a die with practice', () => {
   assert.equal(g.casterDice(fb.damage).dice, 3, 'ten levels bought no third');
 });
 
-test('practice does not swell a fighter’s dice — that is what weapons are for', () => {
-  const g = freshGame('caster-curve-fighter', 'fighter');
-  g.loadFloor(0);
-  const p = g.state.player;
-  while (p.level < 10) g.levelUp(p);
-  const bash = g.allAbilities(p).find((a) => a.id === 'shield-bash');
-  /* Shield Bash omits `dice` entirely — one die is the default — so
-   * normalise both sides rather than compare undefined to one. */
-  assert.equal(g.casterDice(bash.damage).dice || 1, bash.damage.dice || 1);
+test('an ability that costs power and a cooldown beats swinging for free', () => {
+  /* The measurement that widened practice-scaling to every ability: at
+   * level six a Backstab rolled 2-7 and a Shield Bash 2-7 while the same
+   * character's FREE swing rolled 3-8 and 3-10. Paying power and a
+   * cooldown to do LESS is not a choice worth offering. */
+  for (const [cls, id] of [['thief', 'backstab'], ['fighter', 'shield-bash'], ['mage', 'firebolt']]) {
+    for (const level of [6, 10]) {
+      const g = freshGame('ability-worth-' + cls + level, cls);
+      g.loadFloor(0);
+      const p = g.state.player;
+      while (p.level < level) g.levelUp(p);
+      const a = g.allAbilities(p).find((x) => x.id === id);
+      if (!a) continue;
+      const der = g.derived();
+      const d = g.casterDice(a.damage);
+      const bonus = g.abilityBonus(a.damage, der);
+      const best = (d.dice || 1) * (d.sides || 6) + bonus;
+      const swingBest = (der.dmg.dice || 1) * (der.dmg.sides || 6) + (der.dmg.bonus || 0);
+      assert.ok(best > swingBest,
+        `${cls} L${level} ${a.name} tops out at ${best} against a free swing's ${swingBest}`);
+    }
+  }
 });

@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
-import { getItemTemplate } from '../public/js/base.js';
+import { getItemTemplate, XP_FOR_LEVEL } from '../public/js/base.js';
 import { deepItem, applyMagic, applyCurse } from '../public/js/dice.js';
 import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from '../public/js/engine.js';
 import {
@@ -232,16 +232,41 @@ test('hirelings take different names', () => {
 
 /* ---- experience is split among the living ---- */
 
-test('a soloist keeps the whole share; a pair split it', () => {
+test('experience is not divided by the size of the company', () => {
+  /* It used to be split "the classic way", and the classic way assumes a
+   * world tuned for a party. Every tier band here was fitted against what
+   * ONE character earns walking down: measured, the Temple and the Upper
+   * Reaches together take a soloist to level 10 and each of a company of
+   * four to level SIX — against a third dungeon of tier 9-11 monsters.
+   * Bringing friends must cost gold and rations, never levels. */
+  /* Lifetime earnings, not the raw field: an award that crosses a
+   * threshold levels the character and subtracts the cost, so `xp` can
+   * fall while the member is plainly better off. */
+  const earned = (m) => {
+    let sum = m.xp;
+    for (let l = 1; l < m.level; l++) sum += XP_FOR_LEVEL(l);
+    return sum;
+  };
   const { g, p } = rig('t-xp', 100000);
   g.gainXP(50);
-  assert.equal(p.xp, 50, 'a party of one no longer gets everything');
+  assert.equal(earned(p), 50, 'a party of one no longer gets everything');
 
   const b = hireMember(g, 'thief');
-  const px = p.xp, bx = b.xp;
+  const px = earned(p), bx = earned(b);
   g.gainXP(50);
-  assert.equal(p.xp - px, 25);
-  assert.equal(b.xp - bx, 25);
+  assert.equal(earned(p) - px, 50, 'the leader was taxed for having company');
+  assert.equal(earned(b) - bx, 50, 'the hire earned a fraction of the kill');
+});
+
+test('the fallen still earn nothing', () => {
+  const { g, p } = rig('t-xp-fallen', 100000);
+  const b = hireMember(g, 'thief');
+  b.hp = 0;
+  const bx = b.xp, bl = b.level, px = p.xp;
+  g.gainXP(80);
+  assert.equal(p.xp - px, 80);
+  assert.equal(b.xp, bx, 'a body on the floor drew a share');
+  assert.equal(b.level, bl, 'a body on the floor levelled up');
 });
 
 test('the fallen earn nothing until they are up again', () => {
