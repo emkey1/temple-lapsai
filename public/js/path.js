@@ -46,7 +46,19 @@ const DIRS = [
  * destination — or null when no seen route exists. A closed door on the
  * route is fine (one bump opens it); everything else impassable is a wall.
  */
-export function findPath({ tiles, seen, from, to, blocked }) {
+export function findPath({ tiles, seen, from, to, blocked, soft }) {
+  /* `soft` marks tiles a route should AVOID but may cross when nothing
+   * else works — staircases, chiefly: crossing one mid-walk whisks the
+   * party to another floor, so they are destinations, never waypoints.
+   * Two passes: strict first (soft treated as walls), then the ordinary
+   * route, so a stair in a chokepoint cannot wall off half the floor. */
+  if (soft && soft.size) {
+    const hard = new Set(blocked || []);
+    for (const k of soft) hard.add(k);
+    const strict = findPath({ tiles, seen, from, to, blocked: hard });
+    if (strict) return strict;
+    return findPath({ tiles, seen, from, to, blocked });
+  }
   if (!tiles || !from || !to) return null;
   const H = tiles.length, W = tiles[0].length;
   const inGrid = (x, y) => x >= 0 && y >= 0 && x < W && y < H;

@@ -12,7 +12,7 @@ function world(picture) {
   const rows = picture.trim().split('\n').map((r) => r.trim());
   const tiles = [], seen = [];
   let from = null, to = null;
-  const MAP = { '#': T.WALL, '.': T.FLOOR, '~': T.WATER, '+': T.DOOR_C, '?': T.FLOOR };
+  const MAP = { '#': T.WALL, '.': T.FLOOR, '~': T.WATER, '+': T.DOOR_C, '?': T.FLOOR, '>': T.DOWN, '<': T.UP };
   rows.forEach((row, y) => {
     tiles.push([]); seen.push([]);
     [...row].forEach((ch, x) => {
@@ -143,4 +143,51 @@ test('clicking where you stand asks for nothing', () => {
     ###
   `);
   assert.deepEqual(findPath({ ...w, to: w.from }), []);
+});
+
+/* ---- stairs are destinations, not waypoints ----
+ *
+ * Reported: a party crossing a staircase on the way to somewhere else was
+ * whisked down a floor mid-walk. `soft` tiles are avoided while any other
+ * route exists, and crossed only when the stair is a chokepoint. */
+test('a route walks around the stairs when it can', () => {
+  const w = world(`
+    #######
+    #A.>.B#
+    #.....#
+    #######
+  `);
+  const soft = new Set();
+  w.tiles.forEach((row, y) => row.forEach((t, x) => { if (t === T.UP || t === T.DOWN) soft.add(x + ',' + y); }));
+  const path = findPath({ ...w, soft });
+  assert.ok(path, 'no route at all');
+  assert.ok(!path.some((s) => soft.has(s.x + ',' + s.y)), 'the route marched over the staircase');
+});
+
+test('a stair in a chokepoint is crossed rather than walling the floor off', () => {
+  const w = world(`
+    #######
+    #A.>.B#
+    #######
+  `);
+  const soft = new Set();
+  w.tiles.forEach((row, y) => row.forEach((t, x) => { if (t === T.UP || t === T.DOWN) soft.add(x + ',' + y); }));
+  const path = findPath({ ...w, soft });
+  assert.ok(path, 'the chokepoint stair walled off the east half');
+  assert.ok(path.some((s) => soft.has(s.x + ',' + s.y)), 'somehow crossed without the stair');
+});
+
+test('a stair can still be the destination itself', () => {
+  const w = world(`
+    #####
+    #A.>#
+    #####
+  `);
+  let stair = null;
+  w.tiles.forEach((row, y) => row.forEach((t, x) => { if (t === T.DOWN) stair = { x, y }; }));
+  const soft = new Set([stair.x + ',' + stair.y]);
+  const path = findPath({ ...w, to: stair, soft });
+  assert.ok(path && path.length, 'the stair refused its own click');
+  const last = path[path.length - 1];
+  assert.deepEqual({ x: last.x, y: last.y }, stair);
 });

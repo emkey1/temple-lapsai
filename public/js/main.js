@@ -1031,12 +1031,24 @@ function routeBlockers(g) {
 
 function routeTo(g, x, y) {
   const p = g.state.player;
+  /* Stairs are destinations, not waypoints: the route walks around them
+   * unless the click points AT one — a party crossing a staircase on the
+   * way to somewhere else was whisked down a floor mid-walk. */
+  const soft = new Set();
+  const f = g.currentFloor;
+  for (let ty = 0; ty < f.h; ty++) {
+    for (let tx = 0; tx < f.w; tx++) {
+      const t = f.tiles[ty][tx];
+      if (t === T.UP || t === T.DOWN) soft.add(tx + ',' + ty);
+    }
+  }
   return findPath({
-    tiles: g.currentFloor.tiles,
+    tiles: f.tiles,
     seen: g.seen,
     from: { x: p.x, y: p.y },
     to: { x, y },
     blocked: routeBlockers(g),
+    soft,
   });
 }
 
