@@ -7,7 +7,7 @@ import {
   CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon,
   BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
-import { T, W, H } from './mapgen.js';
+import { T, W, H, isTravelable } from './mapgen.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
@@ -25,7 +25,7 @@ import {
   unreadItems, knownCurses, identifyItem, unbindCurse,
   identifyCost, unbindCost, musterRoster, hireMember, innCost, takeRoom,
 } from './town.js';
-import { itemDescription, abilityHealNote, abilityPowerNote } from './describe.js';
+import { itemDescription, abilityHealNote, abilityPowerNote, abilityDamageNote } from './describe.js';
 import {
   LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
   forgetCharacter, markFallen, pickLast, playable, adoptLegacySave,
@@ -1052,7 +1052,7 @@ function routeBlockers(g) {
   return blocked;
 }
 
-function routeTo(g, x, y) {
+function routeTo(g, x, y, avoid) {
   const p = g.state.player;
   /* Stairs are destinations, not waypoints: the route walks around them
    * unless the click points AT one — a party crossing a staircase on the
@@ -1065,6 +1065,9 @@ function routeTo(g, x, y) {
       if (t === T.UP || t === T.DOWN) soft.add(tx + ',' + ty);
     }
   }
+  /* Callers may add their own reluctances — companions, when the point of
+   * the walk is to get somewhere WITHOUT shouldering anyone aside. */
+  for (const k of avoid || []) soft.add(k);
   return findPath({
     tiles: f.tiles,
     seen: g.seen,
@@ -1073,6 +1076,29 @@ function routeTo(g, x, y) {
     blocked: routeBlockers(g),
     soft,
   });
+}
+
+/* Where this member could stand and still swing at the target: the ring
+ * around it, minus anything already occupied, minus what cannot be walked
+ * on. Sorted by how far the walk is, so the nearest honest opening wins. */
+function attackStations(g, mo) {
+  const f = g.currentFloor;
+  const me = g.state.player;
+  const out = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const x = mo.x + dx, y = mo.y + dy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      if (!g.seen[y] || !g.seen[y][x]) continue;
+      if (!isTravelable(f.tiles[y][x]) && f.tiles[y][x] !== T.DOOR_C) continue;
+      if (g.memberAt(x, y) && !(x === me.x && y === me.y)) continue;
+      if ((f.monsters || []).some((m2) => m2.hp > 0 && m2.x === x && m2.y === y)) continue;
+      if ((f.npcs || []).some((n) => n.x === x && n.y === y)) continue;
+      out.push({ x, y });
+    }
+  }
+  return out;
 }
 
 /* One step of the route: the same keypress the keyboard would have made,
@@ -1173,17 +1199,50 @@ function onCanvasClick(e) {
      * Openings given along the way are given; the preview showed them red. */
     const me = p;
     const turn0 = g.turn;   /* one click never spends a second round */
+    /* CLICKING A MONSTER ASKS FOR A FIGHT, NOT A SHOVING MATCH. If a
+     * companion already holds the square in front of it, go round: any
+     * free tile touching the target will do, and the walk avoids the
+     * company while a way round exists. Only when nothing beside the
+     * target is both free and reachable does anyone get displaced —
+     * which is the difference between "take the flank" and "get out of
+     * my way". */
+    const target = monsterAtTile(g, t.x, t.y);
+    let dest = { x: t.x, y: t.y };
+    let avoid = null;
+    if (target) {
+      const allies = g.livingMembers().filter((m) => m !== me);
+      avoid = new Set(allies.map((m) => m.x + ',' + m.y));
+      if (Math.max(Math.abs(me.x - target.x), Math.abs(me.y - target.y)) > 1) {
+        let best = null;
+        for (const s of attackStations(g, target)) {
+          const r = routeTo(g, s.x, s.y, avoid);
+          if (!r) continue;
+          /* A station a companion is standing on is no station at all; a
+           * route that has to walk through one is a last resort. */
+          const throughAlly = r.some((st) => avoid.has(st.x + ',' + st.y));
+          const cost = r.length + (throughAlly ? 100 : 0);
+          if (!best || cost < best.cost) best = { cost, x: s.x, y: s.y };
+        }
+        if (best) dest = { x: best.x, y: best.y };
+      }
+    }
     let guard = 32;
     while (guard-- > 0) {
       if (g.dying || g.state.player !== me || g.outOfCombat() || g.turn !== turn0) break;
-      if (me.x === t.x && me.y === t.y) break;
-      const route = routeTo(g, t.x, t.y);
+      if (me.x === dest.x && me.y === dest.y) break;
+      const route = routeTo(g, dest.x, dest.y, avoid);
       if (!route || !route.length) break;
       const step = route[0];
       const hostile = monsterAtTile(g, step.x, step.y);
       if (!hostile && (g.actorTurn(me).moved || 0) >= g.memberSpeed(me)) break;
       if (!takeStep(step, route[1])) break;
       if (hostile) break;
+    }
+    /* Arrived beside it with the blow still owed: strike. */
+    if (target && target.hp > 0 && g.state.player === me && g.turn === turn0 &&
+        Math.max(Math.abs(me.x - target.x), Math.abs(me.y - target.y)) === 1) {
+      g.handleKey(null, { dx: Math.sign(target.x - me.x), dy: Math.sign(target.y - me.y) });
+      saveGame();
     }
   }
 }
@@ -2625,6 +2684,13 @@ function renderStats(g) {
      * the ones the Library writes as well as the four that shipped. */
     const heals = abilityHealNote(a, { maxhp: p.maxhp });
     const renews = abilityPowerNote(a, { maxpower: p.maxpower });
+    /* The range this character will actually roll, so no card has to be
+     * taken on faith about what "+INT" means. */
+    const effV = der.effValues || p.stats;
+    const hits = abilityDamageNote(a, {
+      intMod: abilityMod(effV.int), strMod: abilityMod(effV.str),
+      practice: Math.floor((p.level - 1) / 3),
+    });
     el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>'
         /* "0 pwr" reads as broken. A working that costs nothing is at will. */
@@ -2633,6 +2699,7 @@ function renderStats(g) {
       (a.level > 1 ? ' <span class="tiny">Lv' + a.level + '</span>' : '') +
       (cd > 0 ? ' <b style="color:var(--red-dim)">(' + cd + ')</b>' : '') +
       '<div class="desc">' + esc(a.description || '') +
+      (hits ? ' <span class="tiny">(' + esc(hits) + ')</span>' : '') +
       (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') +
       (renews ? ' <span class="tiny">(' + esc(renews) + ')</span>' : '') + '</div>';
     if ((!can || !usable) && a.kind !== 'passive') el.style.opacity = 0.55;

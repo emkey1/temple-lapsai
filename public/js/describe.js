@@ -116,6 +116,30 @@ export function itemDescription(it, ctx) {
  * promise a die roll they may well beat. The stat sheet appends this, so a
  * power the Library invented is as honest about its floor as the four that
  * shipped in the box — neither has to remember to say so. */
+/* WHAT THE BLOW ACTUALLY LANDS FOR.
+ *
+ * "Firebolt is broken — 1d8+INT, my mage has 18 INT, and I have seldom seen
+ * it do more than nine." The power was right and the sentence was wrong: the
+ * bonus is the INT MODIFIER (+4 at 18), plus the practice step every ability
+ * earns with level, so 1d8+INT reads as +18 and lands as +4. Rather than
+ * argue the convention on every card, each card now shows the range this
+ * character will actually roll — the same treatment healing already gets,
+ * for the same reason. */
+export function abilityDamageNote(a, ctx) {
+  if (!a || a.kind !== 'damage' || !a.damage) return '';
+  const d = a.damage;
+  const dice = Math.max(1, d.dice || 1);
+  const sides = Math.max(2, d.sides || 6);
+  let bonus = d.bonus || 0;
+  if (ctx) {
+    if (d.int) bonus += ctx.intMod || 0;
+    else if (d.n === 'str') bonus += ctx.strMod || 0;
+    bonus += ctx.practice || 0;
+  }
+  const low = Math.max(1, dice + bonus), high = Math.max(1, dice * sides + bonus);
+  return low === high ? String(low) : low + '–' + high + ' for you';
+}
+
 export function abilityHealNote(a, ctx) {
   if (!a || a.kind !== 'heal') return '';
   const fraction = healFractionForAbility(a);
