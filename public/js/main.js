@@ -837,6 +837,46 @@ function atlasScale(tset) {
   return s;
 }
 
+/* THE BLACK IS NOT ROCK, SO IT SHOULD NOT BE PAINT.
+ *
+ * Flare's cliff and cavern pieces carry a large near-black margin — the
+ * face that, in a continuous Flare cliff, the NEXT piece covers. This
+ * renderer sets one piece per tile, so that margin stays visible and the
+ * caverns read as slabs of void with a stripe of rock. Rather than hunt
+ * for pieces without margins (there are none) or restrict the art to
+ * unbroken runs (which leaves the ends bare), the margin is keyed OUT:
+ * one cached copy of the atlas with every near-black opaque pixel made
+ * transparent. The wall's own painted prism is drawn first, so what shows
+ * through the hole is the theme's stone — rock where the artist painted
+ * rock, and honest masonry everywhere they painted shadow. */
+function getKeyedTileset(name) {
+  const key = 'tileset-keyed:' + name;
+  if (sheetCache.has(key)) {
+    const v = sheetCache.get(key);
+    return v === 'pending' ? null : v;
+  }
+  const base = getTileset(name);
+  if (!base) return null;   /* still loading; try again next frame */
+  const c = document.createElement('canvas');
+  c.width = base.img.width; c.height = base.img.height;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(base.img, 0, 0);
+  const px = cx.getImageData(0, 0, c.width, c.height);
+  const d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 8) continue;
+    const sum = d[i] + d[i + 1] + d[i + 2];
+    /* Hard black goes entirely; the near-black shoulder fades, so a
+     * crevice the artist meant as depth does not turn into a hole. */
+    if (sum < 42) d[i + 3] = 0;
+    else if (sum < 96) d[i + 3] = Math.round(d[i + 3] * ((sum - 42) / 54));
+  }
+  cx.putImageData(px, 0, 0);
+  const made = { name: base.name, img: c, def: base.def };
+  sheetCache.set(key, made);
+  return made;
+}
+
 /* Which atlas dresses which theme: the masonry sets for built places, the
  * rough stone for grown ones. */
 const THEME_TILESET = {
@@ -1954,7 +1994,7 @@ const WALL_VOCAB = {
    * 64/65/68/69 at 45-58% black against 97-99% for the shadow twins
    * 66/67/70/71 the first attempt picked), each turned so its dark side
    * faces into the rock. */
-  tileset_cave: { x: [72], y: [64], corner: null, rise: 300, grounded: true, runsOnly: true },
+  tileset_cave: { x: [72], y: [64], corner: [72], rise: 300, grounded: true },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
@@ -2065,6 +2105,7 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
     }
     return;
   }
+  const f = vis ? 1 : 0.45;
   if (!door && tset) {
     const vocab = WALL_VOCAB[tset.name];
     if (vocab) {
@@ -2084,13 +2125,18 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
          * forest of monuments. The props were scaled to the grid; the
          * walls never were. */
         const s = atlasScale(tset);
+        /* The stone beneath the art: whatever the keyed sprite does not
+         * cover reads as this wall's own masonry rather than as a hole. */
+        drawPrism(ctx, ax, ay, ISO.WALL_H,
+          shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
+        const keyed = getKeyedTileset(tset.name) || tset;
         for (const id of ids) {
           const r = tset.def.tiles[id];
           if (!r) continue;
           /* grounded: the piece's base may not cross its tile's front
            * vertex (ay + TH/2) — see the vocab comment. Lift, never sink. */
           const lift = vocab.grounded ? Math.max(0, (r.h - r.oy) * s - ISO.TH / 2) : 0;
-          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
+          ctx.drawImage(keyed.img, r.x, r.y, r.w, r.h,
             ax - r.ox * s, ay - r.oy * s - lift, r.w * s, r.h * s);
           drew = true;
         }
@@ -2103,14 +2149,15 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
           return;
         }
       }
-      /* No visible face from this side: the stub again, never a void. */
-      const f = vis ? 1 : 0.7;
+      /* No visible face from this side: the stub again, never a void.
+       * (Its own shade, named apart from the wall's `f` above — a second
+       * `const f` in this block put the whole block in the dead zone.) */
+      const sf = vis ? 1 : 0.7;
       drawPrism(ctx, ax, ay, STUB_H,
-        shade(theme.wallHi, 1.1 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+        shade(theme.wallHi, 1.1 * sf), shade(theme.wall, 0.9 * sf), shade(theme.wall, 0.62 * sf));
       return;
     }
   }
-  const f = vis ? 1 : 0.45;
   if (door) { drawIsoDoor(ctx, ax, ay, theme, f); return; }
   drawPrism(ctx, ax, ay, ISO.WALL_H, shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
   if (tile === T.SECRET && vis && sa === 0) {
