@@ -68,14 +68,21 @@ test('monsters are scaled by depth, not by the player\'s level', () => {
  * so a player cleared the whole first floor of the game and finished it still
  * at level one, barely past halfway. Measure the content, not the formula. */
 function templeXp(floors) {
+  /* FORTY seeds, not twelve. A floor's worth swings from about 70 XP to
+   * about 150 depending on what the pool rolls, so a dozen samples put an
+   * error bar of tens of XP around a claim that turns on two — and the
+   * suite went red for a change to DOORS, which shifted the generator's
+   * stream without touching the bestiary. Measured over forty, floor one
+   * holds ~112 against the 100 that level two costs. */
+  const SEEDS = 40;
   let total = 0;
   for (let f = 0; f < floors; f++) {
-    for (let s = 0; s < 12; s++) {
+    for (let s = 0; s < SEEDS; s++) {
       const { floor } = floorOf('temple', f, `xp-${f}-${s}`);
       total += floor.monsters.reduce((a, m) => a + (m.xp || 0), 0);
     }
   }
-  return Math.round(total / 12);
+  return Math.round(total / SEEDS);
 }
 
 /* gainXP subtracts as it goes, so reaching level N costs every step below it. */

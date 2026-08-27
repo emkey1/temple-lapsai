@@ -46,18 +46,24 @@ test('loot taken on a floor is gone when you come back', () => {
 
 test('doors you opened stay open', () => {
   const g = newGame('doors');
-  g.loadFloor(0);
-  const floor = g.currentFloor;
-  let spot = null;
-  for (let y = 0; y < floor.tiles.length && !spot; y++) {
-    for (let x = 0; x < floor.tiles[y].length; x++) {
-      if (floor.tiles[y][x] === T.DOOR_C) { spot = { x, y }; break; }
+  /* A doorway must SEAL its passage now, which makes real doors far rarer
+   * than the one-per-pinch-tile scattering they replaced — so find a floor
+   * that has one rather than assuming the first floor does. */
+  let spot = null, home = 0;
+  for (let fi = 0; fi < 4 && !spot; fi++) {
+    g.loadFloor(fi);
+    const floor = g.currentFloor;
+    for (let y = 0; y < floor.tiles.length && !spot; y++) {
+      for (let x = 0; x < floor.tiles[y].length; x++) {
+        if (floor.tiles[y][x] === T.DOOR_C) { spot = { x, y }; home = fi; break; }
+      }
     }
   }
-  assert.ok(spot, 'need a closed door on the floor');
+  assert.ok(spot, 'need a closed door somewhere in the temple');
+  g.loadFloor(home);
   g.rememberDoor(spot.x, spot.y);
-  g.loadFloor(1);
-  g.loadFloor(0);
+  g.loadFloor(home === 0 ? 1 : 0);
+  g.loadFloor(home);
   assert.equal(g.currentFloor.tiles[spot.y][spot.x], T.DOOR_O, 'the door shut itself again');
 });
 

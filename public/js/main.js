@@ -1990,14 +1990,71 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
       return;
     }
   }
-  const h = door ? Math.round(ISO.WALL_H * 0.72) : ISO.WALL_H;
-  const base = door ? theme.door : theme.wall;
-  const lid = door ? theme.door : theme.wallHi;
   const f = vis ? 1 : 0.45;
-  drawPrism(ctx, ax, ay, h, shade(lid, f), shade(base, 0.85 * f), shade(base, 0.6 * f));
+  if (door) { drawIsoDoor(ctx, ax, ay, theme, f); return; }
+  drawPrism(ctx, ax, ay, ISO.WALL_H, shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
   if (tile === T.SECRET && vis && sa === 0) {
     ctx.fillStyle = theme.accent;
-    ctx.fillText('+', ax, ay - h);
+    ctx.fillText('+', ax, ay - ISO.WALL_H);
+  }
+}
+
+/* A DOOR THAT LOOKS LIKE A DOOR.
+ *
+ * There is none in the atlas — Flare keeps its doors in event tilesets we
+ * never extracted — and the fallback was a prism one shade off the wall
+ * and a little shorter, which read as "wall, slightly wrong" ("no door
+ * graphic"). So it is drawn: a stone jamb at wall height, a timber leaf
+ * standing in it, plank seams down the grain, and a handle. Same trick as
+ * the stairs, and for the same reason. */
+function drawIsoDoor(ctx, ax, ay, theme, f) {
+  const hw = ISO.TW / 2, hh = ISO.TH / 2;
+  const H_ = ISO.WALL_H;
+  /* The jamb: the masonry the door is set into, full wall height so the
+   * wall line stays unbroken from across the room. */
+  drawPrism(ctx, ax, ay, H_, shade(theme.wallHi, f), shade(theme.wall, 0.8 * f), shade(theme.wall, 0.55 * f));
+  /* The leaf, inset on both visible faces so the door reads from either
+   * side of the passage. Timber, not stone — the one warm thing in a
+   * corridor of rock. */
+  const leafH = Math.round(H_ * 0.78);
+  const inset = 0.22;                       /* how far the leaf sits inside the jamb */
+  const wood = shade('#6b4a2a', f), woodDim = shade('#4e351d', f);
+  const faces = [
+    { dx: -hw, style: wood },               /* west face */
+    { dx: hw, style: woodDim },             /* east face */
+  ];
+  for (const face of faces) {
+    const ex = ax + face.dx * (1 - inset), ey = ay + hh * (1 - inset) * (face.dx < 0 ? 0 : 0);
+    /* The face is the quad from the tile's side vertex to its front vertex. */
+    const x0 = ax + face.dx * (1 - inset), y0 = ay - Math.abs(face.dx) * 0 + (hh * inset * 0);
+    ctx.fillStyle = face.style;
+    ctx.beginPath();
+    ctx.moveTo(x0, ay - (hh * (1 - inset)) * 0 + (face.dx < 0 ? 0 : 0));
+    ctx.lineTo(ax, ay + hh * (1 - inset));
+    ctx.lineTo(ax, ay + hh * (1 - inset) - leafH);
+    ctx.lineTo(x0, ay - leafH);
+    ctx.closePath();
+    ctx.fill();
+    /* Plank seams: three lines down the grain, so the leaf reads as boards
+     * rather than a painted rectangle. */
+    ctx.strokeStyle = shade('#2e1e10', f);
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 2; i++) {
+      const t = i / 3;
+      const px = x0 + (ax - x0) * t;
+      const py = (ay) + (ay + hh * (1 - inset) - ay) * t;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px, py - leafH);
+      ctx.stroke();
+    }
+    /* The handle: a small ring near the leading edge, at hand height. */
+    ctx.fillStyle = shade('#c8a34a', f);
+    const hxp = x0 + (ax - x0) * 0.78;
+    const hyp = ay + (hh * (1 - inset)) * 0.78 - Math.round(leafH * 0.45);
+    ctx.beginPath();
+    ctx.arc(hxp, hyp, 1.6, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

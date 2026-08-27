@@ -72,23 +72,175 @@ function carveCorridor(grid, rng, ax, ay, bx, by) {
   }
 }
 
-function installDoors(grid, rng) {
-  const doors = [];
+/* A DOORWAY SPANS ITS OPENING.
+ *
+ * Doors were installed one tile at a time — correct when every corridor was
+ * one tile wide, and pointless the moment they were dug two: measured, ONE
+ * HUNDRED PERCENT of the doors on a floor could be walked around, because
+ * the door took half the gap and the other half stayed open floor. "A
+ * closed door — what would be the point there?" None whatever.
+ *
+ * So candidates are grouped into runs across the passage, and a run is only
+ * a doorway if it seals the whole gap: rock at both ends. The run shares one
+ * roll, so a two-tile doorway is two open leaves or two closed, never one of
+ * each. A gap that cannot be sealed gets no door at all — better an honest
+ * archway than a door with a hole beside it. */
+/* THE THRESHOLD. Corridors are dug from room centre to room centre, so
+ * they punch straight through a room's wall and leave no jamb behind —
+ * which means the only doors the old pinch-hunt ever found were accidents
+ * of geometry, and with corridors two wide even those had open floor
+ * beside them. A room's doorway is where its WALL RING is broken: find
+ * those breaches, and the whole breach becomes the doorway. Full width by
+ * construction, unbypassable by construction, and one per way in. */
+function installRoomDoors(grid, rng, rooms) {
+  const walkable = (t) => t === T.FLOOR || t === T.DEN || t === T.WATER;
+  for (const room of rooms || []) {
+    const x0 = room.x - 1, y0 = room.y - 1;
+    const x1 = room.x + room.w, y1 = room.y + room.h;
+    /* The four sides of the ring, each walked in its own direction so a
+     * breach reads as a run of consecutive tiles. */
+    const sides = [
+      { fixed: y0, from: x0, to: x1, axis: 'x' },
+      { fixed: y1, from: x0, to: x1, axis: 'x' },
+      { fixed: x0, from: y0, to: y1, axis: 'y' },
+      { fixed: x1, from: y0, to: y1, axis: 'y' },
+    ];
+    for (const side of sides) {
+      let run = [];
+      for (let i = side.from; i <= side.to + 1; i++) {
+        const x = side.axis === 'x' ? i : side.fixed;
+        const y = side.axis === 'x' ? side.fixed : i;
+        const inside = i <= side.to && x > 0 && y > 0 && x < W - 1 && y < H - 1;
+        const breach = inside && walkable(grid[y][x]);
+        if (breach) { run.push([x, y]); continue; }
+        /* The run ended. A doorway is a breach narrow enough to hang a
+         * door in — a room open to a whole flank is a hall, not a room. */
+        /* A doorway needs a JAMB: rock on the ring at both ends of the
+         * breach. Without that check a room whose ring is mostly open —
+         * one room spilling into another, a corridor running alongside —
+         * turned its whole perimeter into door frames, and the doors had
+         * floor beside them again. */
+        if (run.length >= 1 && run.length <= 3) {
+          const [ax, ay] = run[0];
+          const [bx, by] = run[run.length - 1];
+          const stepX = side.axis === 'x' ? 1 : 0, stepY = side.axis === 'x' ? 0 : 1;
+          const before = grid[ay - stepY] && grid[ay - stepY][ax - stepX];
+          const after = grid[by + stepY] && grid[by + stepY][bx + stepX];
+          const jamb = (t) => t === T.WALL || t === T.SECRET;
+          if (jamb(before) && jamb(after)) {
+            const tile = rng.chance(0.14) ? T.DOOR_O : T.DOOR_C;
+            for (const [rx, ry] of run) grid[ry][rx] = tile;
+          }
+        }
+        run = [];
+      }
+    }
+  }
+}
+
+/* THE LAST WORD ON DOORS. Geometry has more corner cases than any placement
+ * rule catches — a corridor brushing a threshold, two rooms sharing a wall,
+ * a breach that opens diagonally — so rather than chase them, every door is
+ * checked once at the end against the only thing that matters: can you walk
+ * around it? One that can becomes plain floor. An honest archway beats a
+ * door with a hole beside it. */
+function pruneBypassableDoors(grid) {
+  /* The game's own rule, not a hand-rolled list: stairs and altars are
+   * walked on too, and a door beside a staircase is as bypassable as a
+   * door beside floor. */
+  const walkable = (t) => isTravelable(t) && t !== T.DOOR_O;
+  /* To a fixpoint: opening one leaf can expose the leaf beside it, so a
+   * single sweep leaves a tail of doors standing next to the holes it just
+   * made. Bounded, and it settles in two or three passes. */
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const t = grid[y][x];
+        if (t !== T.DOOR_C && t !== T.DOOR_O) continue;
+        /* Which way does the passage run? Then look ALONG the wall it sits
+         * in — including through the doorway's own other leaves. */
+        const isDoorTile = (q) => q === T.DOOR_C || q === T.DOOR_O;
+        const openish = (q) => walkable(q) || isDoorTile(q);
+        const northSouth = openish(grid[y - 1][x]) && openish(grid[y + 1][x]);
+        const eastWest = openish(grid[y][x - 1]) && openish(grid[y][x + 1]);
+        /* A door open on BOTH axes is standing in the middle of a junction,
+         * not in a wall — there is nothing for it to close. One open on
+         * neither is a door into rock. Both are archways at best. */
+        if (northSouth === eastWest) { grid[y][x] = T.FLOOR; changed = true; continue; }
+        const step = northSouth ? [1, 0] : [0, 1];
+        let bypassed = false;
+        for (const dir of [-1, 1]) {
+          let cx = x + step[0] * dir, cy = y + step[1] * dir;
+          while (grid[cy] && isDoorTile(grid[cy][cx])) { cx += step[0] * dir; cy += step[1] * dir; }
+          if (grid[cy] && walkable(grid[cy][cx])) bypassed = true;
+        }
+        if (bypassed) { grid[y][x] = T.FLOOR; changed = true; }
+      }
+    }
+    if (!changed) break;
+  }
+  /* One doorway, one state: a leaf pruned or rolled apart from its
+   * neighbours would leave a threshold half open and half shut. */
   for (let y = 1; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
-      if (grid[y][x] !== T.WALL) continue;
-      const N = grid[y - 1][x], S = grid[y + 1][x], E = grid[y][x + 1], W = grid[y][x - 1];
-      const horiz = (N === T.FLOOR || N === T.DEN) && (S === T.FLOOR || S === T.DEN);
-      const vert = (E === T.FLOOR || E === T.DEN) && (W === T.FLOOR || W === T.DEN);
-      if (horiz !== vert) doors.push([x, y]);
+      const t = grid[y][x];
+      if (t !== T.DOOR_C && t !== T.DOOR_O) continue;
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const q = grid[y + dy][x + dx];
+        if ((q === T.DOOR_C || q === T.DOOR_O) && q !== t) grid[y + dy][x + dx] = t;
+      }
+    }
+  }
+}
+
+function installDoors(grid, rng, rooms) {
+  installRoomDoors(grid, rng, rooms);
+  const walkable = (t) => t === T.FLOOR || t === T.DEN || t === T.WATER ||
+    t === T.DOOR_O || t === T.DOOR_C;
+  const isPinch = (x, y) => {
+    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return null;
+    if (grid[y][x] !== T.WALL) return null;
+    const N = grid[y - 1][x], S = grid[y + 1][x], E = grid[y][x + 1], Wt = grid[y][x - 1];
+    const horiz = (N === T.FLOOR || N === T.DEN) && (S === T.FLOOR || S === T.DEN);
+    const vert = (E === T.FLOOR || E === T.DEN) && (Wt === T.FLOOR || Wt === T.DEN);
+    if (horiz === vert) return null;
+    /* 'ns' — the passage runs north-south, so the doorway runs east-west. */
+    return horiz ? 'ns' : 'ew';
+  };
+  const claimed = new Set();
+  const runs = [];
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const dir = isPinch(x, y);
+      if (!dir || claimed.has(y * W + x)) continue;
+      /* Walk the run along the wall's own axis. */
+      const dx = dir === 'ns' ? 1 : 0, dy = dir === 'ns' ? 0 : 1;
+      const run = [[x, y]];
+      claimed.add(y * W + x);
+      let cx = x + dx, cy = y + dy;
+      while (isPinch(cx, cy) === dir && !claimed.has(cy * W + cx)) {
+        run.push([cx, cy]);
+        claimed.add(cy * W + cx);
+        cx += dx; cy += dy;
+      }
+      /* Sealed at both ends? The tiles just past each end of the run must be
+       * something nobody can walk through, or the door has a hole beside it. */
+      const [hx, hy] = run[0];
+      const beforeT = grid[hy - dy] && grid[hy - dy][hx - dx];
+      const afterT = grid[cy] && grid[cy][cx];
+      if (beforeT === undefined || afterT === undefined) continue;
+      if (walkable(beforeT) || walkable(afterT)) continue;
+      runs.push(run);
     }
   }
   /* Ordinary doorways are never secret. These gaps sit on the corridor network,
    * which is connected by construction, so a secret door here has a way around
    * it and finding one only ever saves a walk. The only hidden doors on a floor
    * are the ones that gate something: the cache and the boss den. */
-  for (const [x, y] of doors) {
-    grid[y][x] = rng.chance(0.14) ? T.DOOR_O : T.DOOR_C;
+  for (const run of runs) {
+    const tile = rng.chance(0.14) ? T.DOOR_O : T.DOOR_C;
+    for (const [x, y] of run) grid[y][x] = tile;
   }
 }
 
@@ -404,7 +556,7 @@ export function generateFloor(opts) {
   for (let i = 1; i < rooms.length; i++) {
     carveCorridor(grid, rng, cx(rooms[i - 1]), cy(rooms[i - 1]), cx(rooms[i]), cy(rooms[i]));
   }
-  installDoors(grid, rng);
+  installDoors(grid, rng, rooms);
 
   /* Choose the stairs before stamping the den: the player must never start
    * inside it, and the den's approach corridor is cut back to this tile. */
@@ -425,6 +577,13 @@ export function generateFloor(opts) {
 
   const cache = installHiddenCache(grid, rooms, rng, den);
   populateWater(grid, rng, dungeon.theme, rooms, floorIdx, den, cache);
+
+  /* LAST, because everything above still cuts stone: the den is stamped
+   * over whatever was there, repairConnectivity digs fresh corridors to
+   * whatever it stranded, and the water floods what it likes. Any of them
+   * can open ground beside a door that was honest when it was hung. The
+   * doors are judged once, at the end, against the finished floor. */
+  pruneBypassableDoors(grid);
 
   const threat = dungeon.threat || 0;
   const monsterPool = opts.monsterPool && opts.monsterPool.length ? opts.monsterPool : null;

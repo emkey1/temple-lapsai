@@ -257,8 +257,8 @@ test('corridors are wide enough to fight beside a friend', () => {
   for (const seed of ['wide-a', 'wide-b']) {
     const f = generateFloor({ dungeon: getDungeon2('temple'), floorIdx: 1, seed: seed.length * 7919 + seed.charCodeAt(5) });
     let open = 0, partnered = 0;
-    for (let y = 1; y < MH - 1; y++) {
-      for (let x = 1; x < MW - 1; x++) {
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
         if (!mtrav(f.tiles[y][x])) continue;
         open++;
         if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => mtrav(f.tiles[y + dy][x + dx]))) partnered++;
@@ -668,4 +668,61 @@ test('the line forms across a strung-out column, not just an adjacent one', () =
   const d = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   assert.ok(d(van, mo) < d(p, mo), 'the mage still stands nearer the fight than the fighter');
   assert.ok(g.logs.some((l) => /line forms/.test(l)), 'the form-up went unannounced');
+});
+
+/* ---- a door worth closing ----
+ *
+ * "A closed door — what would be the point there?" None: corridors were dug
+ * two tiles wide and doors installed one tile at a time, so measured across
+ * a dozen floors, ONE HUNDRED PERCENT of doors had open floor beside them.
+ * A doorway spans its opening now, or it is not a doorway. */
+test('no door can simply be walked around', () => {
+  /* The game's own walkability rule — stairs and altars included, since a
+   * door beside a staircase is as bypassable as one beside floor. */
+  const isDoor = (t) => t === T.DOOR_C || t === T.DOOR_O;
+  const walkable = (t) => mtrav(t) && !isDoor(t);
+  let doors = 0;
+  for (const [id, floorIdx] of [['temple', 1], ['temple', 3], ['upper', 0], ['upper', 2]]) {
+    for (let s = 0; s < 4; s++) {
+      const f = generateFloor({ dungeon: getDungeon2(id), floorIdx, seed: 4400 + s * 131 });
+      for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          const t = f.tiles[y][x];
+          if (t !== T.DOOR_C && t !== T.DOOR_O) continue;
+          doors++;
+          /* Which way does the passage run? Then look ALONG the wall. */
+          const openish = (q) => walkable(q) || isDoor(q);
+          const northSouth = openish(f.tiles[y - 1][x]) && openish(f.tiles[y + 1][x]);
+          const step = northSouth ? [1, 0] : [0, 1];
+          /* Walk out along the wall, stepping over this doorway's own other
+           * leaves, and see whether the passage reopens beside it. */
+          for (const dir of [-1, 1]) {
+            let cx = x + step[0] * dir, cy = y + step[1] * dir;
+            while (f.tiles[cy] && isDoor(f.tiles[cy][cx])) { cx += step[0] * dir; cy += step[1] * dir; }
+            assert.ok(!(f.tiles[cy] && walkable(f.tiles[cy][cx])),
+              `the door at ${x},${y} can be walked around at ${cx},${cy}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(doors > 0, 'no doors were generated at all, so nothing was proven');
+});
+
+test('a doorway two leaves wide is two of the same leaf', () => {
+  for (let s = 0; s < 6; s++) {
+    const f = generateFloor({ dungeon: getDungeon2('temple'), floorIdx: 2, seed: 5500 + s * 97 });
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const t = f.tiles[y][x];
+        if (t !== T.DOOR_C && t !== T.DOOR_O) continue;
+        for (const [dx, dy] of [[1, 0], [0, 1]]) {
+          const n = f.tiles[y + dy][x + dx];
+          if (n === T.DOOR_C || n === T.DOOR_O) {
+            assert.equal(n, t, `a doorway at ${x},${y} has one leaf open and one shut`);
+          }
+        }
+      }
+    }
+  }
 });
