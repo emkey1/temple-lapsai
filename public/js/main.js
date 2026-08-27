@@ -1947,7 +1947,15 @@ const WALL_VOCAB = {
    * slab where a wall should be" report since the masonry landed. A
    * corner shows BOTH textured faces, one piece over the other. */
   tileset_dungeon: { x: [81], y: [80], corner: [80, 81], rise: 145 },
-  /* tileset_cave is deliberately ABSENT, and cave themes draw NO wall art
+  /* The caverns, at last — and the reason two attempts failed was SCALE,
+   * not the art: every wall sprite is ~176px against a 64px tile, so each
+   * crag was drawn three times life and sprawled over its neighbours,
+   * black backside and all. The pieces here are the LIT halves (measured:
+   * 64/65/68/69 at 45-58% black against 97-99% for the shadow twins
+   * 66/67/70/71 the first attempt picked), each turned so its dark side
+   * faces into the rock. */
+  tileset_cave: { x: [80], y: [80], corner: [80], rise: 300, grounded: true },
+  /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
    * shadow-bodied slabs (one lit facet on pure black), and standing the
@@ -1955,7 +1963,13 @@ const WALL_VOCAB = {
    * monuments ("distractingly bad" — the playtest, correctly). Flare's
    * cliff art is authored for continuous composition this renderer does
    * not do. Clean geometry beats wrong art; the cave atlas lays FLOORS. */
-  /* tileset_grassland is ABSENT for the same reason tileset_cave is, and
+  /* The treeline returns for the same reason the caverns did: the bluffs
+   * were never wrong, they were three times life. These are the pieces
+   * that measured cleanest of the whole range — the spires 64 and 68 at
+   * 6-7% black, and the little ramp 72 at 3% for the corners — where the
+   * broad caps 56 and 60 that the first attempt trusted are 46%. */
+  tileset_grassland: { x: [64], y: [68], corner: [72], rise: 245, grounded: true },
+  /* The note that retired them, kept because the reasoning still holds for
    * the reason was MEASURED rather than eyeballed this time: counting
    * near-black opaque pixels per piece across the whole bluff range, the
    * two I had trusted as "fully painted broad caps" — 56 and 60 — are
@@ -2043,13 +2057,23 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
         /* Unlit stone dims but stays legible: walls are the shape of the
          * map, and the floor's own darkness already says "not lit". */
         ctx.globalAlpha = ga * (vis ? 1 : 0.5);
+        /* THE WALLS WERE THREE TIMES LIFE, ALL ALONG. Flare draws for a
+         * 192-pixel diamond and ours is 64: every wall sprite is ~178
+         * wide, so each piece sprawled across three tiles. A continuous
+         * run of masonry survived it — like the bleeding floor, overlap
+         * reads as texture — but standing pieces one to a tile turned the
+         * caverns into a black mountain range and the bluffs into a
+         * forest of monuments. The props were scaled to the grid; the
+         * walls never were. */
+        const s = atlasScale(tset);
         for (const id of ids) {
           const r = tset.def.tiles[id];
           if (!r) continue;
           /* grounded: the piece's base may not cross its tile's front
            * vertex (ay + TH/2) — see the vocab comment. Lift, never sink. */
-          const lift = vocab.grounded ? Math.max(0, (r.h - r.oy) - ISO.TH / 2) : 0;
-          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h, ax - r.ox, ay - r.oy - lift, r.w, r.h);
+          const lift = vocab.grounded ? Math.max(0, (r.h - r.oy) * s - ISO.TH / 2) : 0;
+          ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
+            ax - r.ox * s, ay - r.oy * s - lift, r.w * s, r.h * s);
           drew = true;
         }
         ctx.globalAlpha = ga;
@@ -2272,7 +2296,9 @@ function renderIsoScene(g, sa) {
   /* The hamlet builds in timber and tile: houses draw from the medieval
    * building set; the treeline keeps the grassland's rock. */
   const wtset = town ? getTileset('medieval_building_tiles') : tset;
-  const rise = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
+  /* The cutaway's reach is a screen distance, so it scales with the art. */
+  const riseRaw = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
+  const rise = wtset && WALL_VOCAB[wtset.name] ? riseRaw * atlasScale(wtset) : riseRaw;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   const shadow = new Set();
   for (const t of seenTiles) {
