@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
 import { getItemTemplate } from '../public/js/base.js';
 import { deepItem, applyMagic, applyCurse } from '../public/js/dice.js';
-import { PACK_LIMIT, makePlayer, initialStats } from '../public/js/engine.js';
+import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from '../public/js/engine.js';
 import {
   PRICES, shopStock, buyItem, apparentValue, sellPrice, sellItem,
   unreadItems, knownCurses, identifyItem, unbindCurse,
@@ -657,4 +657,55 @@ test('a story beat seen under one member’s reins does not replay under another
   g.state.party.active = 0;
   g.fireBeats('enter', 0);           /* the leader follows — silence */
   assert.equal(shown.length, afterFirst, 'the same beat played twice for two sets of reins');
+});
+
+/* ---- one purse, wherever the reins are ----
+ *
+ * Reported: "Your purse always reflects whichever character is selected."
+ * Gold lived on each sheet and was spent from whichever held the reins —
+ * harmless while the reins never moved, and a vanishing act once a chip
+ * click could hand them over. The coin is the expedition's now. */
+test('the purse does not change hands when the reins do', () => {
+  const { g, p } = rig('t-purse-reins', 900);
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.dungeonId = p.dungeonId; buddy.floorIdx = p.floorIdx;
+  buddy.gold = 0;   /* joins empty-handed, as a hire does */
+  g.state.party.members.push(buddy);
+  linkPurse(g.state);
+  assert.equal(g.purse(), 900);
+  g.state.party.active = 1;                 /* the fighter takes the reins */
+  assert.equal(g.purse(), 900, 'the purse emptied when the reins moved');
+  assert.equal(g.state.player.gold, 900, 'the sheet disagrees with the purse');
+});
+
+test('every counter in town spends the one purse', () => {
+  const { g, p } = rig('t-purse-counters', 1000);
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  buddy.dungeonId = p.dungeonId; buddy.floorIdx = p.floorIdx;
+  buddy.gold = 0;
+  g.state.party.members.push(buddy);
+  linkPurse(g.state);
+  g.state.party.active = 1;                 /* shopping under the companion's reins */
+  const row = shopStock(g).find((r) => r.id === 'potion-heal');
+  assert.ok(buyItem(g, 'potion-heal'), 'the shop refused a full purse');
+  assert.equal(g.purse(), 1000 - row.price, 'the company purse was not charged');
+  /* and the goods landed in the buyer's own pack */
+  assert.ok(buddy.inventory.some((it) => it.id === 'potion-heal'));
+});
+
+test('an old save with gold on every sheet pools it once', () => {
+  const { g, p } = rig('t-purse-pool', 0);
+  const buddy = makePlayer('Blade', 'fighter', initialStats('fighter'));
+  g.state.party.members.push(buddy);
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  /* Hand-build the old shape: coin on the sheets, none on the party. */
+  delete raw.party.gold;
+  raw.party.members[0].gold = 700;
+  raw.party.members[1].gold = 25;
+  const g2 = newGame('t-purse-pool-2', 'fighter');
+  g2.restore(raw);
+  assert.equal(g2.purse(), 725, 'the scattered coin did not pool');
+  const saved = JSON.parse(JSON.stringify(g2.save()));
+  assert.equal(saved.party.gold, 725, 'the purse did not survive the next save');
+  assert.equal(saved.party.members[0].gold, undefined, 'a sheet kept a second copy of the purse');
 });

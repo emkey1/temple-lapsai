@@ -145,6 +145,45 @@ export function installParty(state) {
   return state;
 }
 
+/* THE COMPANY PURSE, and the shim that keeps one truth.
+ *
+ * Gold sat on each sheet and was spent from whichever sheet held the reins —
+ * invisible while the reins never moved, and "my two thousand gold turned
+ * into twenty-five" the moment a chip click could hand them over. Coin is
+ * the expedition's, so it lives on the party.
+ *
+ * Every member keeps a `gold` accessor onto that one purse, for the same
+ * reason `state.player` is an accessor onto the active member: the model
+ * changes underneath while the forty-odd places that read and write
+ * `p.gold` keep saying what they meant. Non-enumerable, so save()'s JSON
+ * round trip stores the purse ONCE, on the party, and never as a copy per
+ * sheet that could drift.
+ */
+export function linkPurse(state) {
+  const party = state.party;
+  if (!party) return state;
+  /* Pool whatever the save carried on the sheets, once, before the
+   * accessors shadow it — most of it on the old leader, a founding
+   * handful on everyone else. No coin lost, none counted twice. */
+  let pooled = Number.isFinite(party.gold) ? party.gold : 0;
+  for (const m of party.members || []) {
+    if (!m) continue;
+    const own = Object.getOwnPropertyDescriptor(m, 'gold');
+    if (own && 'value' in own) { pooled += own.value || 0; delete m.gold; }
+  }
+  party.gold = pooled;
+  for (const m of party.members || []) {
+    if (!m) continue;
+    Object.defineProperty(m, 'gold', {
+      configurable: true,
+      enumerable: false,
+      get() { return party.gold || 0; },
+      set(v) { party.gold = Math.max(0, Math.round(v || 0)); },
+    });
+  }
+  return state;
+}
+
 /* Takes a state from anywhere — freshly built, restored from a save written
  * today, or restored from one written before the party existed — and leaves it
  * with a party and a working accessor. A save from before carries a plain
@@ -156,7 +195,8 @@ export function adoptParty(state) {
   if (!state.party || !Array.isArray(state.party.members)) {
     state.party = { members: legacy ? [legacy] : [], active: 0 };
   }
-  return installParty(state);
+  installParty(state);
+  return linkPurse(state);
 }
 
 export function makePlayer(name, clsId, stats) {
@@ -596,6 +636,9 @@ export class Game {
 
   foundAdventurer(name, clsId, stats, backgroundId) {
     this.state.player = makePlayer(name, clsId, stats);
+    /* The founding handful opens the company purse — linkPurse sweeps the
+     * fresh sheet's raw gold in and hands it the accessor. */
+    linkPurse(this.state);
     this.applyBackground(this.state.player, backgroundId);
     this.outfitMember(this.state.player, 1);
     this.state.player.maxpower = this.computeMaxPower();
@@ -1615,7 +1658,7 @@ export class Game {
     if (!it) return false;
     if (it.kind === 'special') {
       const v = Math.round((it.value || 10) * this.goldMul());
-      p.gold = (p.gold || 0) + v;
+      this.earnGold(v);
       this.uiLog((me ? 'Picked up ' : p.name + ' pockets ') + v + ' gold' + (it.name && it.name !== 'Pile of Gold' ? ' (' + it.name + ')' : '') + '.');
       return true;
     }
@@ -1733,7 +1776,7 @@ export class Game {
     const goldMin = m.goldMin || 0, goldMax = m.goldMax || 0;
     if (goldMax > 0) {
       const g = Math.round(this.rngOfTurn().int(goldMin, goldMax) * this.goldMul());
-      p.gold += g;
+      this.earnGold(g);
       this.log('You strip ' + g + ' gold from the corpse.');
     }
     this.rememberKill(m);
@@ -1797,7 +1840,7 @@ export class Game {
           name: p.name,
           cls: p.cls,
           level: p.level,
-          gold: p.gold,
+          gold: this.purse(),
           kills: this.state.totalKills,
         });
       }
@@ -2708,11 +2751,11 @@ export class Game {
     const p = this.state.player;
     this.dying = false;
     if (resurrect) {
-      const paid = Math.floor((p.gold || 0) / 2);
-      p.gold = (p.gold || 0) - paid;
+      const paid = Math.floor(this.purse() / 2);
+      this.spendGold(paid);
       this.log('The temple scribes haul you from the threshold for ' + paid + ' gold.');
     } else {
-      p.gold = (p.gold || 0) - Math.floor((p.gold || 0) / 2);
+      this.spendGold(Math.floor(this.purse() / 2));
     }
     /* The one bed in the world, and it sleeps the whole party: the fallen get
      * up at camp, wounds and all mended — the resurrection fee already paid
@@ -3514,6 +3557,33 @@ export class Game {
       out.push(...(m.inventory || []), ...Object.values(m.equipment || {}));
     }
     return out.filter(Boolean);
+  }
+
+  /* THE COMPANY PURSE. Gold was stored on whichever member held the reins
+   * and spent from the same place — which was invisible while the reins
+   * never moved, and became "my 2000 gold turned into 25" the moment a
+   * chip click could hand them over. Coin belongs to the expedition: one
+   * purse, on the party, wherever the reins happen to be. */
+  purse() {
+    const party = this.state && this.state.party;
+    return (party && party.gold) || 0;
+  }
+
+  earnGold(n) {
+    const party = this.state && this.state.party;
+    if (!party || !(n > 0)) return 0;
+    party.gold = (party.gold || 0) + Math.round(n);
+    return Math.round(n);
+  }
+
+  /* Returns false and spends nothing when the purse is short, so no caller
+   * can half-pay for anything. */
+  spendGold(n) {
+    const party = this.state && this.state.party;
+    const cost = Math.round(n || 0);
+    if (!party || (party.gold || 0) < cost) return false;
+    party.gold = (party.gold || 0) - cost;
+    return true;
   }
 
   removeAllCurses() {

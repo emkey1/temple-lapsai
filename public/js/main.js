@@ -421,7 +421,9 @@ function townCard(id, title, sub, bodyHtml, backLabel, face) {
 }
 
 function purseLine(g) {
-  return '<div class="lib-status">Your purse: ' + (g.state.player.gold || 0) + ' gold.</div>';
+  /* ONE PURSE for the company: it does not change hands when the reins
+   * do, and the picker below chooses a PACK, never a wallet. */
+  return '<div class="lib-status">Your purse: ' + g.purse() + ' gold.</div>';
 }
 
 function showCamp(g) {
@@ -460,7 +462,7 @@ function showShop(g, sellIdx) {
   const seller = party[sellIdx];
   const stock = shopStock(g).map((r) =>
     '<div class="eq-row"><span class="i-name">' + esc(r.name) + '</span>' +
-    '<button data-buy="' + esc(r.id) + '"' + ((p.gold || 0) < r.price ? ' disabled' : '') + '>BUY · ' + r.price + ' gp</button></div>').join('');
+    '<button data-buy="' + esc(r.id) + '"' + (g.purse() < r.price ? ' disabled' : '') + '>BUY · ' + r.price + ' gp</button></div>').join('');
   /* Whose pack is on the scale: any member's, the fallen included — their
    * gear travels with the company. The coin still lands in the purse at
    * the counter. */
@@ -530,7 +532,7 @@ function showMuster(g) {
     ? '<div class="tiny">The company is full — ' + PARTY_LIMIT + ' is as many as the stairs allow.</div>'
     : musterRoster(g).map((r) =>
         '<div class="eq-row"><span class="i-name"><b>' + esc(r.name) + '</b> <span class="tiny">' + esc(r.desc) + '</span></span>' +
-        '<button data-hire="' + esc(r.id) + '"' + ((p.gold || 0) < r.cost ? ' disabled' : '') + '>HIRE · ' + r.cost + ' gp</button></div>').join('');
+        '<button data-hire="' + esc(r.id) + '"' + (g.purse() < r.cost ? ' disabled' : '') + '>HIRE · ' + r.cost + ' gp</button></div>').join('');
   const box = townCard('muster-card', 'THE MUSTER',
     'Sword-arms and scholars between engagements, seasoned to your own measure and priced for it.',
     purseLine(g) + '<div class="scrolly" style="max-height:280px">' + rows + '</div>',
@@ -2433,7 +2435,7 @@ function renderHud(g) {
   els.topstatus.innerHTML = '<b style="color:' + partyTint(slot) + '">' + esc(p.name) + '</b> · Lv ' + p.level +
     ' · ' + p.hp + '/' + p.maxhp + ' hp' +
     (p.wounds > 0 ? ' (' + p.wounds + ' wounded)' : '') +
-    ' · ' + p.power + '/' + p.maxpower + ' pwr · ' + p.gold + ' gp';
+    ' · ' + p.power + '/' + p.maxpower + ' pwr · ' + g.purse() + ' gp';
 }
 
 /* ---------------- stat sheet ---------------- */
@@ -2490,7 +2492,7 @@ function renderStats(g) {
   kv('Marches', '<button class="mini" data-stance title="Out of combat: the van walks ahead of whoever holds the reins, the rear behind.">' +
     (g.memberStance(p) === 'van' ? 'IN THE VAN' : 'IN THE REAR') + '</button>');
   kv('XP', p.xp + ' / next ' + toNext);
-  kv('Gold', p.gold + ' gp');
+  kv('Gold', g.purse() + ' gp <span class="tiny">company</span>');
   kv('HP', p.hp + ' / ' + p.maxhp);
   if (p.wounds > 0) {
     kv('Wounded', p.wounds + ' <span class="tiny">rest reaches ' + g.restedCap(p) + '</span>');

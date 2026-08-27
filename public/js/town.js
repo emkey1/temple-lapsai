@@ -14,7 +14,7 @@
 
 import { getItemTemplate, CLASSES, BACKGROUNDS } from './base.js';
 import { deepItem } from './dice.js';
-import { PACK_LIMIT, makePlayer, initialStats } from './engine.js';
+import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from './engine.js';
 
 export const PRICES = {
   buyMarkup: 2,      /* the shop sells at twice an item's worth — it is a shop */
@@ -64,9 +64,9 @@ export function buyItem(game, id) {
   const p = game.state.player;
   const row = shopStock(game).find((s) => s.id === id);
   if (!row) { game.log('The Provisioner does not carry that.'); return false; }
-  if ((p.gold || 0) < row.price) { game.log('The Provisioner names ' + row.price + ' gold, and your purse says no.'); return false; }
+  if (game.purse() < row.price) { game.log('The Provisioner names ' + row.price + ' gold, and your purse says no.'); return false; }
   if (p.inventory.length >= PACK_LIMIT) { game.log('Your pack has no room for it.'); return false; }
-  p.gold -= row.price;
+  game.spendGold(row.price);
   p.inventory.push(deepItem(getItemTemplate(id)));
   game.log('Bought: ' + row.name + ', for ' + row.price + ' gold.');
   return true;
@@ -99,7 +99,7 @@ export function sellItem(game, it, owner) {
   const paid = sellPrice(it, game);
   from.inventory.splice(idx, 1);
   game.unbindItem(it, from);
-  p.gold = (p.gold || 0) + paid;
+  game.earnGold(paid);
   game.log('Sold: ' + it.name + ', for ' + paid + ' gold.');
   return true;
 }
@@ -127,8 +127,8 @@ export function innCost(game) {
 export function takeRoom(game) {
   const p = game.state.player;
   const cost = innCost(game);
-  if ((p.gold || 0) < cost) { game.log('A room is ' + cost + ' gold, and your purse says no.'); return false; }
-  p.gold -= cost;
+  if (game.purse() < cost) { game.log('A room is ' + cost + ' gold, and your purse says no.'); return false; }
+  game.spendGold(cost);
   for (const m of game.livingMembers()) {
     m.hp = m.maxhp;
     m.power = m.maxpower;
@@ -152,8 +152,8 @@ export function identifyItem(game, it) {
   const p = game.state.player;
   const fee = identifyCost(game);
   if (!it || it.identified !== false) { game.log('There is nothing unread about it.'); return false; }
-  if ((p.gold || 0) < fee) { game.log('The Lector reads for ' + fee + ' gold, and your purse says no.'); return false; }
-  p.gold -= fee;
+  if (game.purse() < fee) { game.log('The Lector reads for ' + fee + ' gold, and your purse says no.'); return false; }
+  game.spendGold(fee);
   game.revealItem(it);
   game.log('The Lector runs a thumb along the rune: ' + it.name + '.' + (it.cursed ? ' Best not to wear that.' : ''));
   return true;
@@ -163,8 +163,8 @@ export function unbindCurse(game, it) {
   const p = game.state.player;
   const fee = unbindCost(game);
   if (!it || !it.cursed) { game.log('Nothing has hold of that.'); return false; }
-  if ((p.gold || 0) < fee) { game.log('Unbinding costs ' + fee + ' gold, and your purse says no.'); return false; }
-  p.gold -= fee;
+  if (game.purse() < fee) { game.log('Unbinding costs ' + fee + ' gold, and your purse says no.'); return false; }
+  game.spendGold(fee);
   game.revealItem(it);
   it.cursed = false;
   game.log('The bell rings once over the ' + it.name + ', and what had hold of it lets go. It is only a thing again.');
@@ -203,7 +203,7 @@ export function hireMember(game, clsId) {
   if (!c) { game.log('Nobody of that calling is waiting.'); return null; }
   if (party.members.length >= PARTY_LIMIT) { game.log('The company is full: ' + PARTY_LIMIT + ' is as many as the stairs allow.'); return null; }
   const cost = hireCost(game);
-  if ((leader.gold || 0) < cost) { game.log('A ' + c.name + ' of that seasoning asks ' + cost + ' gold, and your purse says no.'); return null; }
+  if (game.purse() < cost) { game.log('A ' + c.name + ' of that seasoning asks ' + cost + ' gold, and your purse says no.'); return null; }
 
   const used = new Set(party.members.map((m) => m && m.name));
   const name = MUSTER_NAMES.find((n) => !used.has(n)) || 'Hireling';
@@ -227,7 +227,7 @@ export function hireMember(game, clsId) {
   b.floorIdx = leader.floorIdx;
   b.x = leader.x;
   b.y = leader.y;
-  leader.gold -= cost;
+  game.spendGold(cost);
   /* A hire signs on to the EXPEDITION: what fell, what was walked and how
    * deep is the company's knowledge, and the new sheet carries it too. */
   b.bossesSlain = { ...(leader.bossesSlain || {}) };
@@ -236,7 +236,12 @@ export function hireMember(game, clsId) {
   b.deepest = { ...(leader.deepest || {}) };
   b.beatsSeen = { ...(leader.beatsSeen || {}) };
   b.npcsMet = { ...(leader.npcsMet || {}) };
+  /* A hire brings their arms, not a wallet: you pay THEM. Without this
+   * their travelling money would land in the purse and quietly refund a
+   * quarter of the fee. */
+  b.gold = 0;
   party.members.push(b);
+  linkPurse(game.state);   /* the new sheet reads the one company purse */
   if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
   game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');
   if (game.journal) game.journal(name + ' the ' + c.name + ' joined the company for ' + cost + ' gold.');

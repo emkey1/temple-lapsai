@@ -30,6 +30,10 @@ export function savedPlayer(state) {
 export function legacyShape(state) {
   const copy = JSON.parse(JSON.stringify(state));
   const who = savedPlayer(copy);
+  /* A real pre-party save carried the purse ON the character, because that
+   * is where gold lived then. Move it, or the rig builds a save no version
+   * of the game ever wrote — and the pooling has nothing to find. */
+  who.gold = (copy.party && copy.party.gold) || 0;
   delete copy.party;
   copy.player = who;
   return copy;
