@@ -1854,36 +1854,18 @@ const WALL_VOCAB = {
    * monuments ("distractingly bad" — the playtest, correctly). Flare's
    * cliff art is authored for continuous composition this renderer does
    * not do. Clean geometry beats wrong art; the cave atlas lays FLOORS. */
-  /* The town's treeline: the grassland set's natural rock bluffs, so the
-   * clearing's edge reads as valley rim rather than dwarven rampart.
-   *
-   * The bluffs come in four-view GROUPS — the same crag seen from each
-   * side: 48 lit-right / 49 lit-left / 50-51 shadow backs, then 52/53/54-55
-   * the same. The first pick here took 48 and 52 for a mirror pair; they
-   * are the SAME facing from two different crags, so every x wall (south
-   * face to the camera) wore rock lit the other way, black flank to the
-   * corridor — measured on the atlas: 48/52 are twins (opaque near-black
-   * left, lit right), 49/53 their true mirrors. 56/60 are the broad
-   * frontal masses and read fine from either side; 64/68 stand lit on
-   * both faces, which is what a corner needs (one piece only — this list
-   * is drawn stacked, unlike the dungeon's two half-faces).
-   *
-   * Flare drew these crags as multi-tile OBJECTS: each piece's base runs a
-   * further ~23px below its anchor tile's front corner, because in Flare
-   * the tile in front belongs to the same crag's footprint. Worn per-tile
-   * that spill lands on open corridor — a two-wide passage read as one —
-   * so `grounded` lifts each piece until its base sits on the tile's front
-   * vertex. `twoFaced` layers both facings where a thin wall shows the
-   * camera its unpainted west flank. */
-  /* Audited on the rig against magenta: of the whole bluff range 48-75,
-   * only FOUR pieces are painted on every visible face — 56 and 60 (broad
-   * caps) and 64 and 68 (freestanding spires). The rest carry a baked
-   * BLACK body meant to be buried under the next piece of a continuous
-   * Flare cliff, and showed as dead black slabs when placed singly
-   * ("what is the point of having a wall there if it's just black?").
-   * Both axes share the clean four; the hash keeps the variety. */
-  tileset_grassland: { x: [56, 64, 60, 68], y: [60, 68, 56, 64], corner: [56, 60], rise: 245,
-                       grounded: true, twoFaced: true },
+  /* tileset_grassland is ABSENT for the same reason tileset_cave is, and
+   * the reason was MEASURED rather than eyeballed this time: counting
+   * near-black opaque pixels per piece across the whole bluff range, the
+   * two I had trusted as "fully painted broad caps" — 56 and 60 — are
+   * 46% pure black, and only the spires 64/68 (6-7%) and the little
+   * ramps 72-75 (0-3%) are actually clean. Flare's cliff art buries each
+   * piece's black backside under the next piece of a continuous cliff;
+   * standing them one to a tile shows it, in a hamlet exactly as in a
+   * cavern. The treeline wears the painted prisms now, in the town
+   * theme's own colours — the same verdict the dungeons got, applied to
+   * the same art for the same reason. The grassland atlas keeps its real
+   * gifts: the turf underfoot and the props standing on it. */
   /* The houses: Clint Bellanger's medieval building tiles — timber frame,
    * wattle, red tile roofs — made for OSARE on this exact 64x32 grid,
    * under the same CC-BY-SA as the rest of the Flare art. */
