@@ -484,8 +484,12 @@ function showShop(g, sellIdx) {
   const box = townCard('shop-card', 'THE PROVISIONER',
     'Shelves of what the dungeon is stingy with, and a scale that weighs what you hauled up.',
     purseLine(g) +
+    /* WHOSE PACK IS ON THE SCALE, decided before anything is read: the
+     * picker sat in the GOODS header, below a shelf long enough to push
+     * it off the card. It belongs at the top, where a choice is made. */
+    (party.length > 1 ? '<div class="picker"><span class="tiny">On the scale:</span> ' + chips + '</div>' : '') +
     '<h3 class="pane">FOR SALE</h3><div class="scrolly" style="max-height:170px">' + stock + '</div>' +
-    '<h3 class="pane">GOODS ' + (party.length > 1 ? '<span class="tiny">from the pack of</span> ' + chips : '') + '</h3>' +
+    '<h3 class="pane">GOODS <span class="tiny">' + esc(seller.name) + '\u2019s pack</span></h3>' +
     '<div class="scrolly" style="max-height:170px">' +
       (goods || '<div class="tiny">' + (seller === p ? 'You carry' : esc(seller.name) + ' carries') + ' nothing worth weighing.</div>') + '</div>',
     'BACK TO THE STREET', npcPortrait('provisioner', 'female'));

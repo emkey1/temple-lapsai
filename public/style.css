@@ -379,6 +379,13 @@ h3.pane {
 .overlay-card .sub { color: var(--ink-dim); text-align: center; margin: 0 0 18px; }
 .overlay-card h2.death { color: var(--red); }
 .overlay-card h2.gold { color: var(--amb); }
+/* A CAPPED, SCROLLING LIST. Five cards asked for `scrolly` and the
+ * stylesheet had never heard of it: max-height clipped nothing, so a long
+ * shop shelf simply overflowed its box and printed straight through the
+ * section beneath it. */
+.scrolly { overflow-y: auto; overscroll-behavior: contain; }
+.picker { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+
 .row { display: flex; gap: 10px; justify-content: center; margin-top: 10px; align-items: center; flex-wrap: wrap; }
 .col { flex: 1; min-width: 220px; }
 button {
