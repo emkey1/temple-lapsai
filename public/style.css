@@ -384,7 +384,9 @@ h3.pane {
  * shop shelf simply overflowed its box and printed straight through the
  * section beneath it. */
 .scrolly { overflow-y: auto; overscroll-behavior: contain; }
-.picker { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+/* The purse states a fact; the picker asks a question. They were set
+ * flush against each other and read as one run-on line. */
+.picker { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 12px 0 16px; }
 
 .row { display: flex; gap: 10px; justify-content: center; margin-top: 10px; align-items: center; flex-wrap: wrap; }
 .col { flex: 1; min-width: 220px; }
