@@ -36,6 +36,33 @@ function oracleReadyNow() {
   return describeOracle(oracle).ready;
 }
 
+/* ---- the black box ----
+ * The server died twice leaving nothing behind — the terminal that held
+ * its stderr was gone, and with it the reason. Every way this process can
+ * end now writes a line to server-events.log first: crashes with stacks,
+ * signals with their names, and plain exits with their codes. The log
+ * call itself may never be the thing that kills the server. */
+const EVENTS_LOG = path.join(__dirname, 'server-events.log');
+function logEvent(kind, detail) {
+  const line = `[${new Date().toISOString()}] pid ${process.pid} ${kind}: ${detail}\n`;
+  try { fs.appendFileSync(EVENTS_LOG, line); } catch { /* never fatal */ }
+  console.error(line.trim());
+}
+process.on('uncaughtException', (err) => {
+  /* Log and stay up: every request is stateless, so serving on beats
+   * dying clean. The stack is in the log either way. */
+  logEvent('uncaughtException', (err && err.stack) || String(err));
+});
+process.on('unhandledRejection', (err) => {
+  logEvent('unhandledRejection', (err && err.stack) || String(err));
+});
+process.on('SIGINT', () => { logEvent('SIGINT', 'interrupted'); process.exit(130); });
+process.on('SIGTERM', () => { logEvent('SIGTERM', 'terminated'); process.exit(143); });
+process.on('SIGHUP', () => { logEvent('SIGHUP', 'hangup — parent terminal or pane closed'); process.exit(129); });
+process.on('exit', (code) => {
+  try { fs.appendFileSync(EVENTS_LOG, `[${new Date().toISOString()}] pid ${process.pid} exit: code ${code}\n`); } catch { /* dying anyway */ }
+});
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(EXPANSIONS_FILE)) {
   fs.writeFileSync(EXPANSIONS_FILE, '[]');
@@ -163,7 +190,16 @@ async function staticServe(req, res, pathname) {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
     });
-    fs.createReadStream(filePath).pipe(res);
+    /* The stream gets its own error handler: a file swapped or deleted
+     * mid-read — routine while the game is being EDITED as it is played —
+     * emits 'error' after the 200 is already sent, and an unhandled
+     * stream error is an uncaughtException that used to kill the server. */
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      logEvent('static-stream', rel + ': ' + err.message);
+      res.destroy();
+    });
+    stream.pipe(res);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found. This is the dungeon of broken links.');
@@ -268,7 +304,20 @@ const server = http.createServer(async (req, res) => {
  * Set HOST=0.0.0.0 deliberately if you want it on the network. */
 const HOST = process.env.HOST || '127.0.0.1';
 
+server.on('error', (err) => {
+  logEvent('server-error', (err && err.stack) || String(err));
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is taken — another server is already running there.`);
+    process.exit(1);
+  }
+});
+server.on('clientError', (err, socket) => {
+  /* A malformed request is the client's problem, not a reason to die. */
+  try { socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); } catch { /* gone already */ }
+});
+
 server.listen(PORT, HOST, () => {
+  logEvent('start', `listening on ${HOST}:${PORT}`);
   const llm = oracleReadyNow()
     ? `${oracle.settings.provider} · ${oracle.settings.model} @ ${oracle.settings.baseUrl} (${oracle.source})`
     : 'NOT BOUND — pick a provider in the Black Library, in game';
