@@ -43,8 +43,19 @@ function oracleReadyNow() {
  * signals with their names, and plain exits with their codes. The log
  * call itself may never be the thing that kills the server. */
 const EVENTS_LOG = path.join(__dirname, 'server-events.log');
+const BORN = Date.now();
+/* The parent at birth. If it differs at death — or has become 1 — the
+ * process was ORPHANED before it was killed, which names the killer: a
+ * supervisor that went away and reaped its children on the way out. */
+const BORN_PPID = process.ppid;
+function upFor() {
+  const s = Math.round((Date.now() - BORN) / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
+}
 function logEvent(kind, detail) {
-  const line = `[${new Date().toISOString()}] pid ${process.pid} ${kind}: ${detail}\n`;
+  const line = `[${new Date().toISOString()}] pid ${process.pid} ppid ${process.ppid}` +
+    (process.ppid !== BORN_PPID ? ` (was ${BORN_PPID} — orphaned)` : '') +
+    ` up ${upFor()} ${kind}: ${detail}\n`;
   try { fs.appendFileSync(EVENTS_LOG, line); } catch { /* never fatal */ }
   console.error(line.trim());
 }
@@ -57,7 +68,13 @@ process.on('unhandledRejection', (err) => {
   logEvent('unhandledRejection', (err && err.stack) || String(err));
 });
 process.on('SIGINT', () => { logEvent('SIGINT', 'interrupted'); process.exit(130); });
-process.on('SIGTERM', () => { logEvent('SIGTERM', 'terminated'); process.exit(143); });
+process.on('SIGTERM', () => {
+  /* Measured: this is what actually kills this server — not crashes, not
+   * the lid. A session-scoped supervisor reaps it while the machine is
+   * wide awake. `npm run serve` starts a copy outside any session. */
+  logEvent('SIGTERM', 'terminated — a supervisor asked this process to stop');
+  process.exit(143);
+});
 process.on('SIGHUP', () => { logEvent('SIGHUP', 'hangup — parent terminal or pane closed'); process.exit(129); });
 process.on('exit', (code) => {
   try { fs.appendFileSync(EVENTS_LOG, `[${new Date().toISOString()}] pid ${process.pid} exit: code ${code}\n`); } catch { /* dying anyway */ }

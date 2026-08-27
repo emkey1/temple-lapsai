@@ -9,7 +9,10 @@
     "open": "node scripts/open.mjs",
     "test": "node --test test/*.test.mjs",
     "lint": "node scripts/lint.mjs",
-    "check": "npm run lint && npm test"
+    "check": "npm run lint && npm test",
+    "serve": "node scripts/serve.mjs start",
+    "serve:stop": "node scripts/serve.mjs stop",
+    "serve:status": "node scripts/serve.mjs status"
   },
   "engines": {
     "node": ">=18"

@@ -22,6 +22,21 @@ node server.js
 
 Serve yourself at http://localhost:8080. Port overrides via `PORT`.
 
+`npm start` ties the server to the terminal that launched it — close the tab,
+or let an editor session that owns it go away, and the server goes with it
+(measured: SIGTERM from a session supervisor, while the machine was wide
+awake). For a server that belongs to nobody and outlives all of that:
+
+```sh
+npm run serve
+```
+
+It runs detached in its own process group, appends output to `server-out.log`,
+and stops only when you say so — `npm run serve:stop`, with `npm run
+serve:status` to ask how it is. Either way, every way the process can end is
+recorded in `server-events.log`: crashes with stacks, signals by name, exit
+codes, and how long it had been up.
+
 The game runs entirely in the browser. Character sheet, inventory, codex, library, and dungeon
 generation are all client-side; progression is saved to `localStorage`.
 
