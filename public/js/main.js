@@ -2100,10 +2100,24 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
    * can walk" — the playtest, verbatim), and glass stacked into milk where
    * pieces overlapped. A stub is opaque, short, and honest: wall here,
    * room behind it, floor everywhere the stub is not. */
-  if (stub && !door) {
-    const f = vis ? 1 : 0.7;
+  if (stub) {
+    const sf = vis ? 1 : 0.7;
+    /* A DOOR KNEELS TOO. It stood at full height while every wall around
+     * it lay down, which is the one thing T exists to prevent — but a
+     * door cut to a stub is indistinguishable from wall, so it keeps its
+     * timber colour and wears a mark: the threshold, drawn as a bar
+     * across the opening. */
+    if (door) {
+      drawPrism(ctx, ax, ay, Math.round(STUB_H * 0.55),
+        shade('#6b4a2a', 1.15 * sf), shade('#6b4a2a', 0.9 * sf), shade('#4e351d', 0.75 * sf));
+      if (vis) {
+        ctx.fillStyle = shade('#c8a34a', sf);
+        ctx.fillRect(ax - 5, ay - Math.round(STUB_H * 0.55) - 1, 10, 2);
+      }
+      return;
+    }
     drawPrism(ctx, ax, ay, STUB_H,
-      shade(theme.wallHi, 1.1 * f), shade(theme.wall, 0.9 * f), shade(theme.wall, 0.62 * f));
+      shade(theme.wallHi, 1.1 * sf), shade(theme.wall, 0.9 * sf), shade(theme.wall, 0.62 * sf));
     if (tile === T.SECRET && vis && sa === 0) {
       ctx.fillStyle = theme.accent;
       ctx.fillText('+', ax, ay - STUB_H);
@@ -2130,10 +2144,12 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
          * forest of monuments. The props were scaled to the grid; the
          * walls never were. */
         const s = atlasScale(tset);
-        /* The stone beneath the art: whatever the keyed sprite does not
-         * cover reads as this wall's own masonry rather than as a hole. */
-        drawPrism(ctx, ax, ay, ISO.WALL_H,
-          shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
+        /* NO PRISM UNDER THE ART. One was drawn here to fill whatever the
+         * keyed sprite left transparent — and since a wall sprite is
+         * taller and narrower than its tile's box, what actually showed
+         * was the box: a row of flat pink blocks standing behind the
+         * stone. Where the art paints, the art is the wall; where it does
+         * not, the tile behind it is the honest answer. */
         const keyed = getKeyedTileset(tset.name) || tset;
         for (const id of ids) {
           const r = tset.def.tiles[id];
@@ -2163,7 +2179,7 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
       return;
     }
   }
-  if (door) { drawIsoDoor(ctx, ax, ay, theme, f); return; }
+  if (door) { drawIsoDoor(ctx, ax, ay, theme, f, g, t); return; }
   drawPrism(ctx, ax, ay, ISO.WALL_H, shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
   if (tile === T.SECRET && vis && sa === 0) {
     ctx.fillStyle = theme.accent;
@@ -2179,55 +2195,60 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
  * graphic"). So it is drawn: a stone jamb at wall height, a timber leaf
  * standing in it, plank seams down the grain, and a handle. Same trick as
  * the stairs, and for the same reason. */
-function drawIsoDoor(ctx, ax, ay, theme, f) {
+function drawIsoDoor(ctx, ax, ay, theme, f, g, t) {
   const hw = ISO.TW / 2, hh = ISO.TH / 2;
   const H_ = ISO.WALL_H;
-  /* The jamb: the masonry the door is set into, full wall height so the
+  /* Which way the passage runs, so the leaf hangs in it. A door drew a
+   * leaf on BOTH visible faces before, which read as two doors meeting at
+   * a corner — a doorway has one door, and it faces the way you walk. */
+  let west = true;
+  if (g && t && g.currentFloor) {
+    const tiles = g.currentFloor.tiles;
+    const walk = (x, y) => {
+      const q = tiles[y] && tiles[y][x];
+      return q !== undefined && q !== T.WALL && q !== T.SECRET;
+    };
+    /* Floor north and south of it: you walk N-S through it, so the leaf
+     * shows on the south-EAST face. Otherwise the south-west. */
+    west = !(walk(t.x, t.y - 1) && walk(t.x, t.y + 1));
+  }
+  /* The jamb: the masonry the door is set into, at full wall height so the
    * wall line stays unbroken from across the room. */
   drawPrism(ctx, ax, ay, H_, shade(theme.wallHi, f), shade(theme.wall, 0.8 * f), shade(theme.wall, 0.55 * f));
-  /* The leaf, inset on both visible faces so the door reads from either
-   * side of the passage. Timber, not stone — the one warm thing in a
-   * corridor of rock. */
-  const leafH = Math.round(H_ * 0.78);
-  const inset = 0.22;                       /* how far the leaf sits inside the jamb */
-  const wood = shade('#6b4a2a', f), woodDim = shade('#4e351d', f);
-  const faces = [
-    { dx: -hw, style: wood },               /* west face */
-    { dx: hw, style: woodDim },             /* east face */
-  ];
-  for (const face of faces) {
-    const ex = ax + face.dx * (1 - inset), ey = ay + hh * (1 - inset) * (face.dx < 0 ? 0 : 0);
-    /* The face is the quad from the tile's side vertex to its front vertex. */
-    const x0 = ax + face.dx * (1 - inset), y0 = ay - Math.abs(face.dx) * 0 + (hh * inset * 0);
-    ctx.fillStyle = face.style;
+  const leafH = Math.round(H_ * 0.76);
+  const inset = 0.2;
+  const dx = west ? -hw : hw;                  /* the face the leaf hangs on */
+  const x0 = ax + dx * (1 - inset);
+  const y0 = ay + Math.abs(dx * (1 - inset)) * (hh / hw) * (dx < 0 ? -1 : -1);
+  /* The quad from the tile's side vertex to its front vertex, inset. */
+  const nearY = ay + hh * (1 - inset);
+  ctx.fillStyle = shade(west ? '#6b4a2a' : '#5d3f24', f);
+  ctx.beginPath();
+  ctx.moveTo(x0, ay + (y0 - ay) * 0);
+  ctx.lineTo(ax, nearY);
+  ctx.lineTo(ax, nearY - leafH);
+  ctx.lineTo(x0, ay - leafH);
+  ctx.closePath();
+  ctx.fill();
+  /* Plank seams down the grain. */
+  ctx.strokeStyle = shade('#2e1e10', f);
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 2; i++) {
+    const tt = i / 3;
+    const px = x0 + (ax - x0) * tt;
+    const py = ay + (nearY - ay) * tt;
     ctx.beginPath();
-    ctx.moveTo(x0, ay - (hh * (1 - inset)) * 0 + (face.dx < 0 ? 0 : 0));
-    ctx.lineTo(ax, ay + hh * (1 - inset));
-    ctx.lineTo(ax, ay + hh * (1 - inset) - leafH);
-    ctx.lineTo(x0, ay - leafH);
-    ctx.closePath();
-    ctx.fill();
-    /* Plank seams: three lines down the grain, so the leaf reads as boards
-     * rather than a painted rectangle. */
-    ctx.strokeStyle = shade('#2e1e10', f);
-    ctx.lineWidth = 1;
-    for (let i = 1; i <= 2; i++) {
-      const t = i / 3;
-      const px = x0 + (ax - x0) * t;
-      const py = (ay) + (ay + hh * (1 - inset) - ay) * t;
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(px, py - leafH);
-      ctx.stroke();
-    }
-    /* The handle: a small ring near the leading edge, at hand height. */
-    ctx.fillStyle = shade('#c8a34a', f);
-    const hxp = x0 + (ax - x0) * 0.78;
-    const hyp = ay + (hh * (1 - inset)) * 0.78 - Math.round(leafH * 0.45);
-    ctx.beginPath();
-    ctx.arc(hxp, hyp, 1.6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px, py - leafH);
+    ctx.stroke();
   }
+  /* The handle, at hand height near the leading edge. */
+  ctx.fillStyle = shade('#c8a34a', f);
+  const hxp = x0 + (ax - x0) * 0.8;
+  const hyp = ay + (nearY - ay) * 0.8 - Math.round(leafH * 0.45);
+  ctx.beginPath();
+  ctx.arc(hxp, hyp, 1.7, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawIsoMonster(g, m, p) {
