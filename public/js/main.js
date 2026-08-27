@@ -795,6 +795,23 @@ function getTileset(name) {
   return null;
 }
 
+/* AN ATLAS'S OWN SCALE. Flare's tilesets are drawn for a 192px diamond;
+ * ours is 64. Floors get away with it — a ground piece painting three
+ * tiles' worth of turf just bleeds over its neighbours, which is how the
+ * texture reads continuous — but a PROP drawn at native size is a
+ * three-times-lifesize anvil beside a correctly-sized house. Derived from
+ * the atlas's own first tile rather than hardcoded, so a set authored at
+ * another scale (the medieval kit, at 64) needs no special case. */
+const atlasScaleCache = new Map();
+function atlasScale(tset) {
+  if (!tset || !tset.def) return 1;
+  if (atlasScaleCache.has(tset.name)) return atlasScaleCache.get(tset.name);
+  const first = Object.values(tset.def.tiles).find((r) => r && r.w > 0);
+  const s = first ? ISO.TW / first.w : 1;
+  atlasScaleCache.set(tset.name, s);
+  return s;
+}
+
 /* Which atlas dresses which theme: the masonry sets for built places, the
  * rough stone for grown ones. */
 const THEME_TILESET = {
@@ -2069,8 +2086,9 @@ function renderIsoScene(g, sa) {
       const vis = g.vis[t.y] && g.vis[t.y][t.x];
       const ga = ctx.globalAlpha;
       ctx.globalAlpha = ga * (vis ? 0.95 : 0.5);
+      const bs = atlasScale(tset);
       ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
-        a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+        a.sx - isoCamX - r.ox * bs, a.sy - isoCamY - r.oy * bs, r.w * bs, r.h * bs);
       ctx.globalAlpha = ga;
     }
   }
@@ -2225,10 +2243,14 @@ function renderIsoScene(g, sa) {
     if (pr.atlas) {
       const r = tset && tset.def.tiles[pr.atlas];
       if (!r) continue;
+      /* Scaled to the grid, offsets and all: `pr.scale` lets one prop be
+       * deliberately bigger than life — a market cross, a standing stone
+       * — without lying about the rest. */
+      const s = atlasScale(tset) * (pr.scale || 1);
       standers.push({ x: pr.x, y: pr.y, draw: () => {
         const a = isoToScreen(pr.x, pr.y);
         ctx.drawImage(tset.img, r.x, r.y, r.w, r.h,
-          a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+          a.sx - isoCamX - r.ox * s, a.sy - isoCamY - r.oy * s, r.w * s, r.h * s);
       } });
       continue;
     }
