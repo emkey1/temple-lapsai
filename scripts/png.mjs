@@ -88,12 +88,21 @@ export function decodePNG(buf) {
   }
   if (!hdr) throw new Error('PNG has no IHDR');
   if (hdr.interlace) throw new Error('interlaced PNG not supported');
-  if (hdr.depth !== 8) throw new Error(`PNG bit depth ${hdr.depth} not supported`);
+  if (hdr.depth !== 8 && hdr.depth !== 16) throw new Error(`PNG bit depth ${hdr.depth} not supported`);
   const ch = CHANNELS[hdr.color];
   if (!ch) throw new Error(`PNG colour type ${hdr.color} not supported`);
 
-  const stride = hdr.w * ch;
-  const px = unfilter(zlib.inflateSync(Buffer.concat(idat)), hdr.h, stride, ch);
+  const bytes = hdr.depth / 8;
+  const stride = hdr.w * ch * bytes;
+  let px = unfilter(zlib.inflateSync(Buffer.concat(idat)), hdr.h, stride, ch * bytes);
+  /* Sixteen bits a channel is more than a screen can show and more than an
+   * atlas needs; the high byte IS the eight-bit value. Flattening here means
+   * everything downstream only ever handles one sample size. */
+  if (bytes === 2) {
+    const flat = Buffer.alloc(hdr.w * hdr.h * ch);
+    for (let i = 0; i < flat.length; i++) flat[i] = px[i * 2];
+    px = flat;
+  }
 
   /* Everything becomes RGBA, so the packer only ever handles one shape. */
   const out = Buffer.alloc(hdr.w * hdr.h * 4);

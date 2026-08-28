@@ -832,3 +832,41 @@ test('the refund is measured by the best-travelled, not by whoever holds the rei
   const levels = g2.state.party.members.map((m) => m.level);
   assert.ok(levels.every((l) => l > 8), 'the fresh-faced leader capped the refund: ' + levels.join(','));
 });
+
+/* THE NORTH GATE. Shut on purpose — nothing is written beyond the wall yet —
+ * so what these guard is that it stays shut, stays four tiles wide, and keeps
+ * standing on the one town wall whose face this camera can see. */
+
+test('the gate is a shut wall, not a way out', () => {
+  const g = newGame('gate');
+  const floor = generateTownFloor([]);
+  const all = [...floor.gateDoors, ...floor.gateTowers];
+  assert.equal(floor.gateDoors.size, 2, 'a gate needs two leaves to meet at a ridge');
+  assert.equal(floor.gateTowers.size, 2, 'towers either side, the playtest asked, and either side is two');
+  for (const key of all) {
+    const x = key % TW2, y = Math.floor(key / TW2);
+    assert.equal(floor.tiles[y][x], TT.WALL, `the gate at ${x},${y} can be walked through`);
+  }
+  void g;
+});
+
+test('and it stands where the camera can see its face', () => {
+  /* The building kit draws facing the camera: a cottage door sits in its
+   * southmost row. So the gate belongs on the wall whose SOUTH side is the
+   * green — the northern treeline. On the east wall it would be a door
+   * painted on the outside of the town. */
+  const floor = generateTownFloor([]);
+  for (const key of [...floor.gateDoors, ...floor.gateTowers]) {
+    const x = key % TW2, y = Math.floor(key / TW2);
+    assert.notEqual(floor.tiles[y + 1][x], TT.WALL, `nothing open south of the gate at ${x},${y}`);
+  }
+});
+
+test('the two leaves are side by side, so they can meet at a ridge', () => {
+  const floor = generateTownFloor([]);
+  const doors = [...floor.gateDoors].sort((a, b) => a - b);
+  assert.equal(doors[1] - doors[0], 1, 'the leaves are stacked north-south, where the kit cannot join them');
+  const towers = [...floor.gateTowers].sort((a, b) => a - b);
+  assert.equal(doors[0] - towers[0], 1, 'the west turret does not touch the gate');
+  assert.equal(towers[1] - doors[1], 1, 'the east turret does not touch the gate');
+});

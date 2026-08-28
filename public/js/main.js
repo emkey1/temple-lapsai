@@ -2107,12 +2107,35 @@ const WALL_VOCAB = {
    * monuments ("distractingly bad" — the playtest, correctly). Flare's
    * cliff art is authored for continuous composition this renderer does
    * not do. Clean geometry beats wrong art; the cave atlas lays FLOORS. */
-  /* The treeline returns for the same reason the caverns did: the bluffs
-   * were never wrong, they were three times life. These are the pieces
-   * that measured cleanest of the whole range — the spires 64 and 68 at
-   * 6-7% black, and the little ramp 72 at 3% for the corners — where the
-   * broad caps 56 and 60 that the first attempt trusted are 46%. */
-  tileset_grassland: { x: [64], y: [68], corner: [72], rise: 245, grounded: true },
+  /* The bluffs, read out of Flare's OWN rules at last rather than picked
+   * by how clean they measured — which is how the town ended up walled in
+   * cones and flat tan sheets.
+   *
+   * tiled/grassland/rules/ holds four automapping rulesets. Decoded (the
+   * grassland tileset's firstgid is 16, exactly where its def starts, so
+   * a Tiled gid IS the def id here — no offset, unlike the cave's), their
+   * output_object layers say it plainly: 48-51 and 52-55 are the STRAIGHT
+   * runs, four directions in two varieties; 56-71 are the CORNERS.
+   *
+   * Every piece the old vocabulary used was therefore the wrong kind of
+   * thing. 64 and 68 are corner outputs — they measured cleanest of the
+   * range, which is why picking by measurement alone chose them, and they
+   * were laid down the length of a straight wall, where a corner is a
+   * spire. And 72 is not in any output layer at all: it is a ramp, which
+   * is exactly what those flat tan quadrilaterals in the town were.
+   *
+   * Which of the four straights face this camera was settled on the
+   * composition rig, not by eye: a run of four laid along world x and
+   * again along world y, where the right piece reads as one continuous
+   * rock face and the wrong one as a row of jagged teeth. 49 and 53
+   * compose along x, 48 and 52 along y. The other two of each variety are
+   * the same walls seen from behind (95% black, the same signature the
+   * cave's 66/67/70/71 carry), which this camera never shows.
+   *
+   * Two varieties per axis so a long wall does not repeat one silhouette,
+   * and the corner stacks one of each facing — the dungeon masonry's own
+   * trick, and it means the corner needs no fifth measurement to trust. */
+  tileset_grassland: { x: [49, 53], y: [48, 52], corner: [48, 49], rise: 245, grounded: true },
   /* The note that retired them, kept because the reasoning still holds for
    * the reason was MEASURED rather than eyeballed this time: counting
    * near-black opaque pixels per piece across the whole bluff range, the
@@ -2560,6 +2583,27 @@ function renderIsoScene(g, sa) {
     /* T kneels the cottages with everything else: with the walls down a
      * house is its footprint in stubs, same as any dungeon wall. */
     const hKey = t.y * W + t.x;
+    /* THE GATE. Same kit as the cottages and the same rule about T: with
+     * the walls down it kneels with everything else. Two leaves that meet
+     * at a ridge, a turret either side, and no way through — there is
+     * nothing on the far side of it yet. */
+    if (town && wallMode !== 'down' && floor.gateDoors &&
+        (floor.gateDoors.has(hKey) || floor.gateTowers.has(hKey))) {
+      const med = getTileset('medieval_building_tiles');
+      if (med) {
+        const id = floor.gateTowers.has(hKey) ? 10
+          : (floor.gateDoors.has(t.y * W + (t.x + 1)) ? 14 : 15);
+        const r = med.def.tiles[id];
+        if (r) {
+          standers.push({ x: t.x, y: t.y, draw: () => {
+            const a = isoToScreen(t.x, t.y);
+            ctx.drawImage(med.img, r.x, r.y, r.w, r.h,
+              a.sx - isoCamX - r.ox, a.sy - isoCamY - r.oy, r.w, r.h);
+          } });
+          continue;
+        }
+      }
+    }
     if (town && wallMode !== 'down' && floor.houseWalls && floor.houseWalls.has(hKey)) {
       const med = getTileset('medieval_building_tiles');
       if (med) {

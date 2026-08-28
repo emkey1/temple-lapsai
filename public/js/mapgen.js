@@ -743,6 +743,33 @@ export function generateTownFloor(dungeons) {
     }
   }
 
+  /* THE NORTH GATE, and the reason it is on the north wall.
+   *
+   * The building kit is drawn facing the camera — a house's door sits in
+   * its southmost row, looking down the lane — so the only town wall that
+   * can wear a gate the right way round is the one whose south face is
+   * toward the green. That is the northern treeline. Set the same doorway
+   * in the eastern wall and it would be a door painted on the outside of
+   * the town, which is a wall with a picture of a gate on it.
+   *
+   * The leaves are the kit's own pair, 14 and 15, which meet at a ridge
+   * the way a cottage's two columns do; the flanking turrets are piece 10,
+   * the one square tower in the set with a roof on all four sides.
+   *
+   * Shut, and shut on purpose: nothing is written beyond the wall yet.
+   * It stands so the treeline is a boundary somebody BUILT to rather than
+   * scenery that happens to stop, and so the road has somewhere to arrive
+   * when there is a road. */
+  const GATE_X = 30, GATE_Y = 5;
+  const gateDoors = new Set(), gateTowers = new Set();
+  for (let x = GATE_X - 1; x <= GATE_X + 2; x++) {
+    tiles[GATE_Y][x] = T.WALL;
+    (x === GATE_X || x === GATE_X + 1 ? gateDoors : gateTowers).add(GATE_Y * W + x);
+    /* Clear the ragged scrub in front of it. A gatehouse peering through
+     * two tiles of leaning treeline reads as a shed someone mislaid. */
+    for (let y = GATE_Y + 1; y <= GATE_Y + 2; y++) tiles[y][x] = T.FLOOR;
+  }
+
   /* A building is a ring of wall with a doorway. `doorSide` is 's' or 'n';
    * the keeper's spot is just outside the door. */
   /* THE BUILDING KIT, derived on a test rig from Clint Bellanger's
@@ -898,6 +925,9 @@ export function generateTownFloor(dungeons) {
     const y = x < 30 ? 18 + Math.round((x - 12) * 0.1) : 20 - Math.round((x - 30) * 0.15);
     PATH.push([x, y + 2]);
   }
+  /* And the spur down from the gate to meet it, so the front door opens
+   * onto a road rather than onto grass. */
+  for (let y = GATE_Y + 1; y < 22; y++) PATH.push([GATE_X, y]);
   PATH.forEach(([x, y], i) => {
     if (tiles[y] && tiles[y][x] === T.FLOOR) {
       props.push({ x, y, piece: i % 4 === 0 ? 'dirtTiles_S' : 'dirt_S', flat: true });
@@ -907,7 +937,7 @@ export function generateTownFloor(dungeons) {
   return {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
     up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
-    isLast: false, den: null, mouths, props, houseWalls, houseDoors,
+    isLast: false, den: null, mouths, props, houseWalls, houseDoors, gateDoors, gateTowers,
     entry: { x: 36, y: 22 },
   };
 }
