@@ -46,6 +46,10 @@ const STRENGTH_BUFF = 4;
  * of the run. Out of combat both come back, slowly, which is what makes
  * retreating a tactic instead of a longer death. */
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
+/* How far a heavy door carries. Deliberately inside CALM_RADIUS: what a door
+ * wakes should be something the company then has to deal with, not something
+ * that starts a fight from further off than a fight can reach. */
+const DOOR_NOISE = 6;
 export const TOWN_ID = 'the-whetstone';   /* the town is a place, not a dungeon */
 /* Halved from 0.02. It had made the altar — which mends 35% of maximum health
  * once, and lifts every curse — worth about a third of what one free keypress
@@ -1399,8 +1403,33 @@ export class Game {
     if (tile === T.DOOR_C) {
       floor.tiles[ny][nx] = T.DOOR_O;
       this.rememberDoor(nx, ny);
-      for (const m of floor.monsters) if (dist1(m, { x: nx, y: ny }) <= 10 && !m.boss) { m.aggro = true; }
       this.log('A heavy door groans open.');
+      /* WHAT HEARS A DOOR.
+       *
+       * Everything within ten tiles of it used to — through solid rock, and
+       * whether or not it was alive. Ten is wider than CALM_RADIUS, so any
+       * door in a populated quarter of a floor put the company into combat
+       * with something it could not see, could not reach, and which could
+       * not reach it; corpses woke too. And the only thing said about it was
+       * that a door had opened, so what the playtest saw was doors invoking
+       * combat mode for no stated reason.
+       *
+       * The rule the water already uses is the right one: six tiles, the
+       * living only, rousing SPOKEN aloud. Two things sound needs that sight
+       * does not — the door is open by now, so what can see through the gap
+       * hears through it, and whatever is close enough to touch the jamb
+       * hears it around any corner. Bosses go on sleeping; they always did. */
+      let roused = 0;
+      for (const m of floor.monsters) {
+        if (m.hp <= 0 || m.aggro || m.boss) continue;
+        const d = dist1(m, { x: nx, y: ny });
+        if (d > DOOR_NOISE) continue;
+        if (d > 2 && !this.los(nx, ny, m.x, m.y, DOOR_NOISE)) continue;
+        m.aggro = true;
+        m.lastSeen = this.turn;
+        roused++;
+      }
+      if (roused) this.log('The groan carries — something in the dark hears it.');
       return 'door';
     }
     if (!isTravelable(tile)) {

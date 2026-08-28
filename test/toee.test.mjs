@@ -772,3 +772,82 @@ test('and adjacent hands always work, pressed or not', () => {
   p.inventory.push(it);
   assert.ok(g.giveItem(it, buddy, p), 'a hand at arm’s length was refused');
 });
+
+/* WHAT HEARS A DOOR.
+ *
+ * "Doors seem to invoke combat mode?" — the playtest, and they did. Opening
+ * one woke everything within TEN tiles of it: through solid rock, and whether
+ * or not it was still alive. Ten is wider than CALM_RADIUS, so any door in a
+ * populated quarter of a floor started a fight with something the company
+ * could not see, could not reach, and which could not reach back — and the
+ * only line printed was that a door had opened.
+ */
+
+/* A corridor with a door in it, a room beyond, and a vault sealed in rock. */
+function doorway(g) {
+  const floor = arena(g);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) floor.tiles[y][x] = T.WALL;
+  for (let x = 10; x <= 14; x++) floor.tiles[20][x] = T.FLOOR;   /* the corridor */
+  floor.tiles[20][15] = T.DOOR_C;                                 /* the door */
+  for (let x = 16; x <= 22; x++) floor.tiles[20][x] = T.FLOOR;    /* the room beyond */
+  floor.tiles[26][15] = T.FLOOR;                                  /* the sealed vault */
+  const p = g.state.player;
+  p.x = 14; p.y = 20;
+  g.state.party.members.forEach((m, i) => { if (m !== p) { m.x = 11 + i; m.y = 20; } });
+  return floor;
+}
+
+const asleep = (x, y, over) => Object.assign(beast(x, y, over), { aggro: false });
+
+test('a door does not wake what is sealed in rock behind it', () => {
+  const g = newGame('door-rock');
+  const floor = doorway(g);
+  const sealed = asleep(15, 26);        /* six tiles off, and no way there */
+  floor.monsters = [sealed];
+  assert.equal(g.outOfCombat(), true, 'the rig started in a fight');
+  g.tryMove(1, 0);
+  assert.equal(sealed.aggro, false, 'the groan carried through solid stone');
+  assert.equal(g.outOfCombat(), true, 'a door started a fight with something unreachable');
+});
+
+test('but it does wake what is standing in the room it opens into', () => {
+  const g = newGame('door-room');
+  const floor = doorway(g);
+  const listener = asleep(20, 20);      /* five tiles, straight through the doorway */
+  floor.monsters = [listener];
+  g.tryMove(1, 0);
+  assert.equal(listener.aggro, true, 'a heavy door opened and nothing in the room heard it');
+  assert.equal(g.outOfCombat(), false, 'it woke and yet the company was still at ease');
+});
+
+test('and says so, rather than starting a fight in silence', () => {
+  const g = newGame('door-said');
+  const floor = doorway(g);
+  floor.monsters = [asleep(20, 20)];
+  g.logs.length = 0;
+  g.tryMove(1, 0);
+  assert.ok(g.logs.some((l) => /hears it/.test(l)),
+    'combat began with no line saying anything had heard the door');
+});
+
+test('a door does not wake the dead', () => {
+  const g = newGame('door-dead');
+  const floor = doorway(g);
+  const corpse = Object.assign(beast(17, 20), { aggro: false, hp: 0 });
+  floor.monsters = [corpse];
+  g.logs.length = 0;
+  g.tryMove(1, 0);
+  assert.equal(corpse.aggro, false, 'the groan roused a corpse');
+  assert.ok(!g.logs.some((l) => /hears it/.test(l)), 'a corpse was announced as listening');
+});
+
+test('what it wakes, it wakes no further off than a fight can reach', () => {
+  /* The old radius was ten and CALM_RADIUS is nine, so a door could always
+   * open a fight from further away than being in one means. */
+  const g = newGame('door-reach');
+  const floor = doorway(g);
+  const far = asleep(22, 20);           /* eight tiles down the open room */
+  floor.monsters = [far];
+  g.tryMove(1, 0);
+  assert.equal(far.aggro, false, 'the door was heard from further off than it should carry');
+});
