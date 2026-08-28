@@ -2036,6 +2036,25 @@ export class Game {
     this.advanceQueue();
   }
 
+  /* THE ORDER OF THE COMPANY. The roster is not just a list: it decides
+   * who stands where when the party arrives on a floor, and who the reins
+   * fall to when the one holding them goes down. The player should be
+   * able to say what that order is. `active` and any pinned view follow
+   * the MEMBER, not the slot, or reordering would quietly hand the reins
+   * to somebody else. */
+  reorderParty(from, to) {
+    const party = this.state.party;
+    const list = party && party.members;
+    if (!list || from === to) return false;
+    if (from < 0 || to < 0 || from >= list.length || to >= list.length) return false;
+    const held = list[party.active];
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+    const at = list.indexOf(held);
+    if (at >= 0) party.active = at;
+    return true;
+  }
+
   /* Where a member marches when the company moves as one: the VAN walks
    * ahead of whoever holds the reins, the REAR walks behind. Class sets the
    * default — steel ahead, robes behind — and the stat sheet overrides it,

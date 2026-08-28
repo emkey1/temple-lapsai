@@ -226,6 +226,11 @@ body {
   box-shadow: 0 0 6px rgba(216, 176, 74, .5), inset 0 0 4px rgba(216, 176, 74, .25);
 }
 #party-strip button.fallen { opacity: .45; }
+/* Reordering: the plate being carried fades, the one it would land on
+   lights up, so the line's new shape is visible before the drop. */
+#party-strip button { cursor: grab; }
+#party-strip button.dragging { opacity: .4; cursor: grabbing; }
+#party-strip button.drop-target { outline: 1px dashed var(--amb); outline-offset: -3px; }
 #party-strip .pchip-row { display: flex; align-items: center; gap: 4px; justify-content: center; }
 #party-strip .pbar {
   display: block;

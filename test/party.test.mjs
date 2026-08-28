@@ -135,3 +135,35 @@ test('the saved shape is what the ledger reads', () => {
   assert.equal(savedPlayer(saved).name, 'Marlyle');
   assert.equal(savedPlayer(legacyShape(saved)).name, 'Marlyle');
 });
+
+/* ---- the order of the company ----
+ *
+ * The roster decides who stands where when the party lands on a floor and
+ * who inherits the reins when the holder falls, so the player gets to say
+ * what it is — by dragging a nameplate. `active` follows the MEMBER
+ * through the shuffle, never the slot. */
+test('reordering the company keeps the reins with the same character', () => {
+  const g = newGame('order-reins');
+  const names = ['Ash', 'Bru', 'Cad'];
+  for (const n of names) {
+    const m = makePlayer(n, 'fighter', initialStats('fighter'));
+    g.state.party.members.push(m);
+  }
+  const roster = () => g.state.party.members.map((m) => m.name);
+  const before = roster();
+  g.state.party.active = 2;                     /* whoever that is holds the reins */
+  const held = g.state.player;
+  assert.ok(g.reorderParty(3, 0), 'the move was refused');
+  assert.equal(g.state.player, held, 'the reins changed hands during a reshuffle');
+  assert.notDeepEqual(roster(), before, 'nothing moved');
+  assert.equal(roster()[0], before[3], 'the dragged member did not land where it was dropped');
+});
+
+test('a reorder that goes nowhere changes nothing', () => {
+  const g = newGame('order-noop');
+  g.state.party.members.push(makePlayer('Ash', 'thief', initialStats('thief')));
+  const before = g.state.party.members.map((m) => m.name);
+  assert.equal(g.reorderParty(1, 1), false);
+  assert.equal(g.reorderParty(0, 9), false, 'a drop past the end was accepted');
+  assert.deepEqual(g.state.party.members.map((m) => m.name), before);
+});

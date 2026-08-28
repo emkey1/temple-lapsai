@@ -2813,7 +2813,7 @@ function renderPartyStrip(g) {
      * unable to help as one at death's door, and the strip was only
      * telling half of that. */
     const pwr = Math.max(0, Math.min(100, 100 * (m.power || 0) / Math.max(1, m.maxpower || 1)));
-    return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
+    return '<button draggable="true" data-view="' + i + '" style="color:' + tint + '" class="' +
       (m === shown ? 'viewed' : '') + (m === g.state.player ? ' reins' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
       '<span class="pchip-row"><img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
       esc(m.name) + reins + '</span>' +
@@ -3790,6 +3790,46 @@ async function boot() {
   els.btnLedgerNew.onclick = () => beginCreate();
   els.btnLedgerClose.onclick = () => doRoster();
   els.ledgerList.addEventListener('click', ledgerClick);
+  /* DRAGGING A NAMEPLATE REORDERS THE COMPANY. The roster decides who
+   * stands where on arrival and who inherits the reins, so the player
+   * gets to say what it is: pick a plate up, drop it on another, and the
+   * two trade places in the line. */
+  let dragFrom = null;
+  els.partyStrip.addEventListener('dragstart', (e) => {
+    const b = e.target.closest('[data-view]');
+    if (!b) return;
+    dragFrom = Number(b.dataset.view);
+    b.classList.add('dragging');
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch { /* some browsers refuse */ } }
+  });
+  els.partyStrip.addEventListener('dragend', () => {
+    dragFrom = null;
+    els.partyStrip.querySelectorAll('.dragging, .drop-target')
+      .forEach((el) => el.classList.remove('dragging', 'drop-target'));
+  });
+  els.partyStrip.addEventListener('dragover', (e) => {
+    const b = e.target.closest('[data-view]');
+    if (dragFrom === null || !b) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    els.partyStrip.querySelectorAll('.drop-target').forEach((el) => el.classList.remove('drop-target'));
+    if (Number(b.dataset.view) !== dragFrom) b.classList.add('drop-target');
+  });
+  els.partyStrip.addEventListener('drop', (e) => {
+    const b = e.target.closest('[data-view]');
+    if (dragFrom === null || !b || !game) return;
+    e.preventDefault();
+    const to = Number(b.dataset.view);
+    if (game.reorderParty(dragFrom, to)) {
+      const order = game.state.party.members.filter(Boolean).map((m) => m.name).join(', ');
+      game.log('The company falls in: ' + order + '.');
+      /* A pinned view follows its character through the shuffle. */
+      viewedIdx = null;
+      renderStats(game); renderGear(game); renderHud(game); renderGame(game); saveGame();
+    }
+    dragFrom = null;
+  });
+
   els.partyStrip.addEventListener('click', (e) => {
     const b = e.target.closest('[data-view]');
     if (!b || !game) return;
