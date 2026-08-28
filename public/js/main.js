@@ -11,7 +11,7 @@ import { T, W, H, isTravelable } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
-import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
+import { WEARABLE_SLOTS as WEARABLE, isWorn, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
   CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef, parseTilesetDef,
@@ -3007,12 +3007,13 @@ function itemIcon(tpl) {
   return (tpl.glyph || 'o')[0];
 }
 
-/* What the button will actually do, so the label cannot lie. useItem checks
- * kind before slot, so a wand in the pack fires rather than being worn. */
+/* What the button will actually do, so the label cannot lie — which it did,
+ * for as long as this asked isWorn's question and the click asked a different
+ * one. Both ask it here now. */
 function itemVerb(it) {
   if (!it) return 'USE';
   if (it.kind === 'wand') return 'FIRE';
-  return WEARABLE.includes(it.slot) ? 'WEAR' : 'USE';
+  return isWorn(it) ? 'WEAR' : 'USE';
 }
 
 /* Interchangeable things share one row. The pack keeps holding individual
@@ -3092,6 +3093,8 @@ function renderGear(g) {
       : (it.slot === 'consumable' || it.kind === 'wand'
           ? '<button data-inv="' + grp.indices[0] + '"' + (own || g.outOfCombat() ? '' : ' disabled title="on their turn"') + '>' + itemVerb(it) + '</button>'
           : '<button data-inv="' + grp.indices[0] + '">' + itemVerb(it) + '</button>') +
+        (it.kind === 'wand' && WEARABLE.includes(it.slot)
+          ? '<button data-wield="' + grp.indices[0] + '">WIELD</button>' : '') +
         (free === undefined ? '' : '<button data-bind="' + free + '">BELT</button>') +
         (others.length ? '<button data-give-start="' + giveIdx + '">GIVE</button>' : '') +
         '<button data-drop="' + giveIdx + '">DROP</button>';
@@ -4030,9 +4033,15 @@ function inventoryClick(e) {
     /* Wearing is arranging straps — free, anyone's. Drinking spends the
      * turn of whoever drinks: at the reins, the classic path; a companion
      * between fights, the standing swig (refused with a line mid-fight). */
-    if (it && WEARABLE.includes(it.slot)) game.equip(it, p);
+    if (isWorn(it)) game.equip(it, p);
     else if (p !== game.state.player) game.useItemAs(p, it);
     else game.useItem(it);
+  } else if (b.dataset.wield !== undefined) {
+    /* A wand is the one thing worth both verbs: fire it for the working it
+     * carries, or hold it, which lends its damage to the arm and — if it is
+     * a focus — its power back to the reserve. One button could only ever
+     * be a lie about the other. */
+    game.equip(p.inventory[Number(b.dataset.wield)], p);
   }
   renderGear(game); renderStats(game); saveGame(); canvasFocus();
 }

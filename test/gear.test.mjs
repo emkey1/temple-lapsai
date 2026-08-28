@@ -9,6 +9,7 @@ import { newGame } from './helpers.mjs';
 import { itemStackKey, getItemTemplate } from '../public/js/base.js';
 import { PACK_LIMIT } from '../public/js/engine.js';
 import { deepItem, applyMagic } from '../public/js/dice.js';
+import { isWorn } from '../public/js/contract.js';
 
 const potion = () => deepItem(getItemTemplate('potion-heal'));
 
@@ -99,4 +100,76 @@ test('the pack limit the gear tab prints is the one the engine enforces', () => 
   const before = p.inventory.length;
   g.unequip('weapon');
   assert.equal(p.inventory.length, before, 'the pack took more than it says it holds');
+});
+
+/* WHAT A THING IS, BEFORE WHERE IT WOULD SIT.
+ *
+ * A wand's slot is `weapon`, so that a staff can be wielded and lend its
+ * damage to the arm. Anything that asked the slot before the kind therefore
+ * read every wand in the game as clothing — and the pack's click handler did,
+ * while the button's label and the engine both asked the kind. The button
+ * said FIRE and equipped the thing out of the pack, where nothing could fire
+ * it. One rule now, in contract.js, and all three ask it.
+ */
+
+test('a wand is used, not worn, however weapon-shaped its slot is', () => {
+  for (const id of ['wand-of-fire', 'wand-of-healing', 'wand-of-frost']) {
+    const it = deepItem(getItemTemplate(id));
+    assert.equal(it.slot, 'weapon', id + ' no longer sits in the weapon slot');
+    assert.equal(isWorn(it), false, id + ' reads as something you put on');
+  }
+});
+
+test('and the things that really are worn still are', () => {
+  for (const [id, slot] of [['broadsword', 'weapon'], ['chainmail', 'body'], ['buckler', 'shield']]) {
+    const tpl = getItemTemplate(id);
+    if (!tpl) continue;
+    const it = deepItem(tpl);
+    assert.equal(it.slot, slot, id + ' changed slot');
+    assert.equal(isWorn(it), true, id + ' stopped being wearable');
+  }
+  for (const id of ['potion-heal', 'scroll-map']) {
+    const tpl = getItemTemplate(id);
+    if (tpl) assert.equal(isWorn(deepItem(tpl)), false, id + ' reads as wearable');
+  }
+});
+
+test('firing a wand from the pack spends a charge and leaves it in the pack', () => {
+  const g = newGame('wand-fire');
+  g.loadFloor(0);
+  const p = g.state.player;
+  const wand = deepItem(getItemTemplate('wand-of-fire'));
+  p.inventory.push(wand);
+  const charges = wand.effects.charges;
+  /* Something to lance, or the wand fizzles without spending anything. */
+  const m = g.currentFloor.monsters.find((x) => x.hp > 0);
+  if (m) { m.x = p.x + 2; m.y = p.y; m.hp = m.maxhp = 9999; }
+  g.useItem(wand);
+  assert.equal(wand.effects.charges, charges - 1, 'the wand did not fire');
+  assert.notEqual(p.equipment.weapon, wand, 'FIRE equipped the wand instead');
+  assert.ok(p.inventory.includes(wand), 'the wand left the pack, where nothing can fire it');
+});
+
+test('a healing wand mends rather than being strapped on', () => {
+  const g = newGame('wand-heal');
+  g.loadFloor(0);
+  const p = g.state.player;
+  const wand = deepItem(getItemTemplate('wand-of-healing'));
+  p.inventory.push(wand);
+  p.hp = 1;
+  g.useItem(wand);
+  assert.ok(p.hp > 1, 'the wand of healing was worn instead of used');
+  assert.notEqual(p.equipment.weapon, wand, 'it ended up in the weapon slot');
+});
+
+test('but a wand can still be taken in hand deliberately', () => {
+  const g = newGame('wand-wield');
+  g.loadFloor(0);
+  const p = g.state.player;
+  const wand = deepItem(getItemTemplate('wand-of-fire'));
+  p.inventory.push(wand);
+  const charges = wand.effects.charges;
+  g.equip(wand, p);
+  assert.equal(p.equipment.weapon, wand, 'WIELD could not put the wand in the hand');
+  assert.equal(wand.effects.charges, charges, 'taking it in hand burned a charge');
 });

@@ -17,7 +17,7 @@ import {
 import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
-import { WEARABLE_SLOTS } from './contract.js';
+import { WEARABLE_SLOTS, isWorn } from './contract.js';
 import { itemStackKey } from './base.js';
 
 /* How much the pack holds. Named because the Gear tab shows it, and a limit
@@ -3559,7 +3559,7 @@ export class Game {
       if (this.consumeItem(item, fx) === false) return;
     } else if (item.kind === 'wand') {
       this.castWand(item);
-    } else if (WEARABLE_SLOTS.includes(item.slot)) {
+    } else if (isWorn(item)) {
       this.equip(item);
       return;
     } else {

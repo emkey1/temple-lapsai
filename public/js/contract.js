@@ -107,6 +107,23 @@ export const SLOT_FOR_KIND = {
 
 export const WEARABLE_SLOTS = ['weapon', 'body', 'shield', 'ring', 'amulet'];
 
+/* KIND BEFORE SLOT, and one copy of the rule for everyone who needs it.
+ *
+ * A wand's slot is `weapon`, because a staff can be wielded and an equipped
+ * one lends its damage and its power to the arm holding it. That made every
+ * wand in the game look wearable to anything that asked the slot first — and
+ * the click handler did, while the button's label and the engine both asked
+ * the kind. So the button said FIRE and equipped the thing instead, out of
+ * the pack and beyond any way of firing it.
+ *
+ * What decides whether a thing is worn or used is WHAT IT IS. Where it would
+ * sit only matters once that is settled. */
+export function isWorn(it) {
+  if (!it) return false;
+  if (it.kind === 'potion' || it.kind === 'scroll' || it.kind === 'wand') return false;
+  return WEARABLE_SLOTS.includes(it.slot);
+}
+
 export const EFFECT_SPELLS = ['firebolt', 'fireball', 'frost', 'reveal', 'light', 'heal', 'detectevil', 'purge', 'teleport', 'identify', 'removecurse'];
 
 /* The canonical field name is `props`, because that is what the engine reads.
