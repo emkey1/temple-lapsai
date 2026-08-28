@@ -1369,8 +1369,13 @@ function renderInitiative(g) {
         esc(e.ref.t.name) + '</span>');
     }
   });
-  const moved = at.moved || 0;
-  out.push('<span class="ini-turn">moves ' + moved + '/' + g.memberSpeed(p) +
+  /* GROUND LEFT, not ground spent. It counted upward from zero, so a turn
+   * opened reading "moves 0/5" — which says "no moves" to every eye that
+   * has ever read a health bar, at the exact moment the character has all
+   * five. Count down, like everything else that can run out. */
+  const speed = g.memberSpeed(p);
+  const left = Math.max(0, speed - (at.moved || 0));
+  out.push('<span class="ini-turn">moves ' + left + '/' + speed +
     ' · strike or SPACE ends</span>');
   bar.innerHTML = out.join('');
 }
