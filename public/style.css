@@ -250,6 +250,17 @@ body {
 #party-strip .pbar.pwr { margin-top: 1px; }
 #party-strip .pbar.pwr i { background: linear-gradient(90deg, #2a4a6a, #5fa8d8); }
 
+/* An offer, in the middle of the conversation that made it. */
+.quest-offer {
+  border: 1px solid var(--amb-dim);
+  background: rgba(216, 176, 74, .05);
+  padding: 6px 8px;
+  margin: 8px 0 0;
+}
+.quest-offer b { color: var(--amb); letter-spacing: 1px; }
+.quest-offer.done { border-color: var(--ink-dim); background: rgba(157, 201, 122, .06); }
+.quest-offer .flavor { margin: 4px 0 6px; }
+
 #sheets-tabs { display: flex; border-bottom: 2px solid var(--ink-dim); }
 #sheets-tabs .tab {
   flex: 1;

@@ -3,6 +3,7 @@
  * leveling, abilities and item use. UI is injected via opts.ui (see main.js).
  */
 import { RNG, hashSeed } from './rng.js';
+import { QUESTS, questById, questsFrom } from './quests.js';
 import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
@@ -14,7 +15,7 @@ import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
-import { beatsAt, arcForDungeon, setFlag, getFlag } from './world.js';
+import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
 import { WEARABLE_SLOTS } from './contract.js';
 import { itemStackKey } from './base.js';
@@ -845,6 +846,7 @@ export class Game {
       p.hp = Math.max(p.hp, Math.min(this.restedCap(p), p.hp + breath));
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
     }
+    this.questReached(d.id, floorIdx);
     this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
@@ -1740,6 +1742,7 @@ export class Game {
         this.log('A practiced eye knows it at once: ' + it.name + '.');
       }
     }
+    this.refreshQuestProgress();
     const idk = !it.identified ? ' unknown' : '';
     /* Name the pack, always. "You take: Scroll of Cartography" and then
      * not finding it is a mystery; "it goes in Porter's pack" is not. */
@@ -1847,6 +1850,7 @@ export class Game {
       this.log('You strip ' + g + ' gold from the corpse.');
     }
     this.rememberKill(m);
+    this.questKilled(m.t && m.t.id);
     floor.monsters = floor.monsters.filter((x) => x !== m);
 
     /* Cleave, the Fighter's level-1 passive: 'slaying a foe grants one bonus
@@ -2962,6 +2966,154 @@ export class Game {
       if (!m.beatsSeen) m.beatsSeen = {};
       m.beatsSeen[key] = true;
     });
+  }
+
+  /* ---- THE UNDERTAKINGS ----
+   *
+   * A quest is the company's, like the purse and like what the company
+   * knows: it does not live on a sheet, it does not travel with whoever
+   * holds the reins, and it survives the death of the member who took it.
+   * The ledger is one map on the state:
+   *
+   *   state.quests[id] = { state: 'active' | 'done', got: n, took: turn }
+   *
+   * `got` is progress toward the objective. A slay quest counts from the
+   * moment it was ACCEPTED — counting kills already made would be a lie
+   * the first time somebody takes a quest on a half-cleared floor — and a
+   * gather quest reads the packs, so what you are already carrying counts
+   * and nothing has to be dropped and picked up again. */
+  questLedger() {
+    if (!this.state.quests) this.state.quests = {};
+    return this.state.quests;
+  }
+
+  questState(id) {
+    const e = this.questLedger()[id];
+    return (e && e.state) || 'unoffered';
+  }
+
+  /* What this NPC can put to the player right now: written order, minus
+   * anything taken or finished, minus anything still gated. */
+  questsOnOffer(npcId) {
+    return questsFrom(npcId).filter((q) => {
+      if (this.questState(q.id) !== 'unoffered') return false;
+      if (q.requires && q.requires.quest && this.questState(q.requires.quest) !== 'done') return false;
+      if (q.opens && q.opens.dungeonCleared && !this.isDungeonCleared(q.opens.dungeonCleared)) return false;
+      return true;
+    });
+  }
+
+  acceptQuest(id) {
+    const q = questById(id);
+    if (!q || this.questState(id) !== 'unoffered') return false;
+    this.questLedger()[id] = { state: 'active', got: 0, took: this.turn || 0 };
+    this.log('Undertaken: ' + q.name + '.');
+    this.journal('Took up an undertaking: ' + q.name + '.');
+    /* A gather quest reads what is already in the packs. */
+    this.refreshQuestProgress();
+    return true;
+  }
+
+  activeQuests() {
+    return QUESTS.filter((q) => this.questState(q.id) === 'active');
+  }
+
+  questProgressOf(q) {
+    const e = this.questLedger()[q.id];
+    if (!e) return 0;
+    if (q.objective && q.objective.kind === 'gather') {
+      const want = q.objective.item;
+      return this.companyItems().filter((it) => it && it.id === want).length;
+    }
+    return e.got || 0;
+  }
+
+  questSatisfied(q) {
+    const o = q.objective || {};
+    return this.questProgressOf(q) >= (o.count || 1);
+  }
+
+  /* Gather quests are read from the packs rather than counted at pickup,
+   * so this only has to run where the packs change. */
+  refreshQuestProgress() {
+    for (const q of this.activeQuests()) {
+      if (q.objective && q.objective.kind === 'gather' && this.questSatisfied(q)) {
+        this.noteQuestReady(q);
+      }
+    }
+  }
+
+  noteQuestReady(q) {
+    const e = this.questLedger()[q.id];
+    if (!e || e.told) return;
+    e.told = true;
+    const who = getNPC(q.giver);
+    this.log(q.name + ' — what was asked for is in hand' +
+      (q.turnIn && who ? '. Take it back to ' + who.name + '.' : '.'));
+  }
+
+  /* Called where the world changes in ways an objective might care about. */
+  questKilled(monsterId) {
+    for (const q of this.activeQuests()) {
+      const o = q.objective || {};
+      if (o.kind !== 'slay' || o.monster !== monsterId) continue;
+      const e = this.questLedger()[q.id];
+      e.got = (e.got || 0) + 1;
+      if (this.questSatisfied(q)) this.noteQuestReady(q);
+      else this.log(q.name + ' — ' + e.got + ' of ' + o.count + '.');
+    }
+  }
+
+  questReached(dungeonId, floorIdx) {
+    for (const q of this.activeQuests()) {
+      const o = q.objective || {};
+      if (o.kind !== 'reach' || o.dungeon !== dungeonId) continue;
+      if (floorIdx < (o.floor || 0)) continue;
+      const e = this.questLedger()[q.id];
+      if (e.got) continue;
+      e.got = 1;
+      this.noteQuestReady(q);
+    }
+  }
+
+  /* Anything this NPC is owed and can now be paid for. */
+  questsToClose(npcId) {
+    return this.activeQuests().filter((q) => q.giver === npcId && this.questSatisfied(q));
+  }
+
+  completeQuest(id) {
+    const q = questById(id);
+    if (!q || this.questState(id) !== 'active' || !this.questSatisfied(q)) return false;
+    /* A gather quest hands the goods over — the whole company's, since
+     * they were the company's to find. */
+    if (q.objective && q.objective.kind === 'gather') {
+      let owed = q.objective.count;
+      for (const m of (this.state.party && this.state.party.members) || []) {
+        if (!m || owed <= 0) continue;
+        for (let i = m.inventory.length - 1; i >= 0 && owed > 0; i--) {
+          const it = m.inventory[i];
+          if (!it || it.id !== q.objective.item) continue;
+          m.inventory.splice(i, 1);
+          this.unbindItem(it, m);
+          owed--;
+        }
+      }
+    }
+    this.questLedger()[id] = { state: 'done', got: this.questProgressOf(q) };
+    const r = q.reward || {};
+    if (r.gold) { this.earnGold(r.gold); this.log('Paid: ' + r.gold + ' gold.'); }
+    if (r.xp) this.gainXP(r.xp);
+    if (r.item) {
+      const tpl = this.itemTemplate(r.item);
+      const taker = this.state.player;
+      if (tpl && taker && taker.inventory.length < PACK_LIMIT) {
+        taker.inventory.push(deepItem(tpl));
+        this.log('Given: ' + tpl.name + '.');
+      }
+    }
+    this.log('Undertaking closed: ' + q.name + '.');
+    this.journal(q.journal || (q.name + ' was seen through.'));
+    return true;
   }
 
   introduceNpc(npcId) {

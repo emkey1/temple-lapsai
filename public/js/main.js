@@ -8,6 +8,7 @@ import {
   BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
 import { T, W, H, isTravelable } from './mapgen.js';
+import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
@@ -127,6 +128,7 @@ const els = {
   dlgLog: $('dlg-log'),
   dlgInput: $('dlg-input'),
   dlgSend: $('dlg-send'),
+  dlgQuests: $('dlg-quests'),
   viewport: $('viewport'),
   help: $('help'),
   helpKeys: $('help-keys'),
@@ -3136,7 +3138,27 @@ function renderCodex(g) {
     '<p class="flavor">' + esc(e.text) + '</p></div>').join('')
     || '<div class="tiny">Nothing worth ink yet. It will come.</div>';
 
+  /* THE UNDERTAKINGS: what has been taken on, what is still wanted, and
+   * who is owed the telling. Above the journal, because it is the only
+   * part of the codex that asks something of the player. */
+  const und = [];
+  for (const q of g.activeQuests()) {
+    const giver = WORLD.npcs.find((n) => n.id === q.giver);
+    const ready = g.questSatisfied(q);
+    und.push('<div class="codex-item' + (ready ? '' : ' unread') + '"><b>' + esc(q.name) + '</b> ' +
+      '<span class="tiny">· ' + esc(objectiveText(q, g.questProgressOf(q))) +
+      (ready && giver ? ' · take it back to ' + esc(giver.name) : '') + '</span>' +
+      '<p class="flavor">' + esc(q.accepted || '') + '</p></div>');
+  }
+  const closed = QUESTS.filter((q) => g.questState(q.id) === 'done');
+  for (const q of closed) {
+    und.push('<div class="codex-item"><b>' + esc(q.name) + '</b> <span class="tiny">· seen through</span></div>');
+  }
+  const undertakings = und.join('') ||
+    '<div class="tiny">Nobody has asked anything of you yet. People who want things are found by talking to them.</div>';
+
   els.dungeonCodex.innerHTML =
+    codexSection('THE UNDERTAKINGS', undertakings) +
     codexSection('THE JOURNAL', jn) +
     codexSection('KNOWN DEPTHS', depths) +
     codexSection('THE CHRONICLE', chronicle) +
@@ -3342,8 +3364,47 @@ function openDialogue(npc) {
   const hist = dialogue.start(tpl);
   for (const m of hist) appendDlg(m);
   els.dlgInput.value = '';
+  renderQuestOffers();
   overlayShow(els.dialogue);
   setTimeout(() => els.dlgInput.focus(), 30);
+}
+
+/* WHAT THIS PERSON WANTS OF YOU. Offers and payments ride above the input
+ * box, so a quest is taken and closed in the same conversation it is
+ * spoken of rather than through a menu somewhere else. */
+function renderQuestOffers() {
+  const host = els.dlgQuests;
+  if (!host) return;
+  host.innerHTML = '';
+  if (!game || !activeNpc || !activeNpc.id) return;
+  const owed = game.questsToClose(activeNpc.id);
+  const offers = game.questsOnOffer(activeNpc.id);
+  let html = '';
+  for (const q of owed) {
+    html += '<div class="quest-offer done"><b>' + esc(q.name) + '</b>' +
+      '<p class="flavor">' + esc(q.done || '') + '</p>' +
+      '<button data-quest-done="' + esc(q.id) + '">HAND IT OVER</button></div>';
+  }
+  for (const q of offers) {
+    html += '<div class="quest-offer"><b>' + esc(q.name) + '</b>' +
+      '<p class="flavor">' + esc(q.offer || '') + '</p>' +
+      '<button data-quest-take="' + esc(q.id) + '">TAKE IT ON</button></div>';
+  }
+  host.innerHTML = html;
+  host.querySelectorAll('[data-quest-take]').forEach((b) => {
+    b.onclick = () => {
+      const q = game.questsOnOffer(activeNpc.id).find((x) => x.id === b.dataset.questTake);
+      if (game.acceptQuest(b.dataset.questTake) && q && q.accepted) appendDlg({ role: 'npc', text: q.accepted });
+      renderQuestOffers(); renderCodex(game); saveGame();
+    };
+  });
+  host.querySelectorAll('[data-quest-done]').forEach((b) => {
+    b.onclick = () => {
+      const q = game.questsToClose(activeNpc.id).find((x) => x.id === b.dataset.questDone);
+      if (game.completeQuest(b.dataset.questDone) && q && q.done) appendDlg({ role: 'npc', text: q.done });
+      renderQuestOffers(); renderCodex(game); renderStats(game); renderGear(game); renderHud(game); saveGame();
+    };
+  });
 }
 
 function appendDlg(m) {

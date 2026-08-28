@@ -133,6 +133,39 @@ A few rules worth knowing before you go down:
 - **Armour class descends**, as in the modules this is an homage to: lower is harder to hit.
 - The stairs down are only barred while something is at your heels.
 
+### The undertakings
+
+The world was full of hooks that went nowhere. Ogil is "still owed" by the
+salvage families; Venn has had thirty years to ask where the carved hands
+emptied themselves; the four families buy godlings "cash, no questions". That
+was writing for quests with no machinery behind it, so the machinery exists
+now and the hooks are kept.
+
+**A quest is offered in conversation and closed in conversation.** Walk up to
+somebody who wants something and their offer sits in the dialogue card above
+the input box: TAKE IT ON, and later — with the thing done — HAND IT OVER,
+with the giver's own words on either side of it. Nothing is picked up from a
+menu somewhere else.
+
+Objectives are the three the engine can answer honestly: **slay** a named
+thing, **gather** a number of something, **reach** a floor. A slay quest counts
+only what dies after it was taken, because counting kills already made is a
+lie the first time somebody takes a quest on a half-cleared floor. A gather
+quest reads the whole **company's** packs, so what you are already carrying
+counts, a companion may hold it, and nothing has to be shuffled about first —
+and the goods are handed over when it closes.
+
+Quests are the company's, like the purse and like what the company knows: they
+do not live on a sheet, do not travel with whoever holds the reins, and
+survive the death of the member who took them. Some are gated — behind a
+dungeon cleared, or behind another quest — so the four that ship tell one
+story in order, from three carved idols to the serpent under the last hill.
+**THE UNDERTAKINGS** at the top of the Codex says what is wanted, how far
+along it is, and who is owed the telling.
+
+Content lives in [quests.js](public/js/quests.js), which is data and nothing
+else — the same rule [lore.js](public/js/lore.js) follows.
+
 ## The writing
 
 The world — five eras of history, seven factions, a story arc per dungeon and a speaking cast —
