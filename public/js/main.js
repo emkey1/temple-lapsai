@@ -294,6 +294,20 @@ function makeUI() {
     },
     flagNpcIntroduced: () => { if (currentTab === 'codex') renderCodex(game); },
     prepareTransition: () => { els.topstatus.textContent = '…descending…'; },
+    /* WHERE TO COME IN. The stairs remember the deepest floor, which saves
+     * re-walking swept halls — but the people who ask things of you live
+     * near the entrance, and dropping in four floors below them turned
+     * every hand-in into a climb. Ask. */
+    askDepth: (d, known, go) => {
+      const box = townCard('depth-card', d.name.toUpperCase(),
+        'The stairs are known as far as floor ' + (known + 1) + '. The upper halls are swept — but the living are near the door.',
+        '<div class="row">' +
+          '<button id="btn-depth-deep">DOWN TO FLOOR ' + (known + 1) + '</button>' +
+          '<button id="btn-depth-top">IN AT THE ENTRANCE</button>' +
+        '</div>', 'NOT YET');
+      box.querySelector('#btn-depth-deep').onclick = () => { overlayHideAll(); box.remove(); go(known); };
+      box.querySelector('#btn-depth-top').onclick = () => { overlayHideAll(); box.remove(); go(0); };
+    },
   };
   return self;
 }

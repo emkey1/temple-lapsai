@@ -54,40 +54,61 @@ export const QUESTS = [
   {
     id: 'the-demons-account',
     name: 'The Thing With Its Mouth Open',
-    giver: 'priestess-eilyth',
+    giver: 'hermit-ogil',
+    requires: { quest: 'idols-for-ogil' },
     offer:
-      'Eilyth does not look up. “There is a god asleep at the bottom of the Temple with its ' +
-      'mouth open, and the mouth is the point — it was left open to be fed. I do not need it ' +
-      'explained. I need it stopped. Go down and put the Demon of Lapsai out, and I will give ' +
-      'you what the order kept back for whoever finally did.”',
-    accepted: '“Four floors. It is at the bottom. It has always been at the bottom.”',
-    objective: { kind: 'slay', monster: 'demon', count: 1 },
+      'Ogil jerks his chin at the stairs. “You have been down and come back, which is more ' +
+      'than most manage twice. Then you know there is a god asleep at the bottom of this ' +
+      'place with its mouth open, and that the mouth is the point — it was left open to be ' +
+      'fed. I am too old and too fond of my knees. Put it out, and I will see you paid from ' +
+      'a purse the order pretends it does not keep.”',
+    accepted: '“Four floors down. It has always been at the bottom. Do not go poor.”',
+    objective: { kind: 'slay', monster: 'lapsai-demon', count: 1 },
     turnIn: true,
     reward: { gold: 250, xp: 400, item: 'potion-major-heal' },
     done:
-      '“Then it is out.” She finally looks up. “Thirty years of us saying the mouth was ' +
-      'shut. Take this, and do not tell me what was in the bronze room.”',
-    journal: 'The Demon of Lapsai was put out, and Eilyth paid what the order had kept back.',
+      '“Then it is out.” Ogil is quiet for a moment. “Thirty years of us telling each other ' +
+      'the mouth was shut. Take the coin, and do not tell me what was in the bronze room.”',
+    journal: 'The Demon of Lapsai was put out, and Ogil paid from a purse nobody admits to.',
+  },
+
+  {
+    id: 'the-route-still-runs',
+    name: 'What Is Still Being Moved',
+    giver: 'priestess-eilyth',
+    offer:
+      'Eilyth speaks without turning from the water. “The works are supposed to be dead. ' +
+      'Dead things do not keep a channel clear, and something at the head of these reaches ' +
+      'has been keeping one clear for longer than I have been down here listening to it dig. ' +
+      'Go up the water to the head of the works and put a stop to whatever is doing it.”',
+    accepted: '“Upstream. Four floors of it. The word means inward, not up — you will see.”',
+    objective: { kind: 'slay', monster: 'umber-hulk', count: 1 },
+    turnIn: true,
+    reward: { gold: 450, xp: 600 },
+    done:
+      '“Quiet.” She listens a while longer than is comfortable. “Do you hear it? Neither do ' +
+      'I. That is the first time in eleven years. Take the money; I have no use for a channel.”',
+    journal: 'The digger at the head of the Upper Reaches was stopped, and the water went quiet.',
   },
 
   {
     id: 'venns-question',
     name: 'Where the Hands Went',
     giver: 'keeper-venn',
-    opens: { dungeonCleared: 'temple' },
     offer:
       'Venn has the look of a man resuming a sentence. “You have seen the hands — cupped at ' +
       'the shoulder, cupped at the hip, every one of them carrying something in. It is not in ' +
-      'the halls. It is not on the floor. I have had thirty years to look and I have not moved ' +
-      'the question an inch. Go where I cannot: the Upper Reaches, all the way to the head of ' +
-      'the works, and tell me what is down there.”',
-    accepted: '“The head of the works. The fourth floor. Whatever it costs you, I have paid more.”',
-    objective: { kind: 'reach', dungeon: 'upper', floor: 3 },
+      'these halls. It is not on the floor. I have had thirty years to look and I have not ' +
+      'moved the question an inch, because I cannot go past the fourth door and live. You ' +
+      'can. Go to the bottom of the serpent\u2019s halls and come back able to tell me.”',
+    accepted: '“The bottom. The fourth floor. Whatever it costs you, I have paid more for less.”',
+    objective: { kind: 'reach', dungeon: 'serpent', floor: 3 },
     turnIn: true,
     reward: { gold: 300, xp: 500 },
     done:
-      '“So that is where it went.” Venn is quiet a while. “Thirty years, and the answer was ' +
-      'four floors of water. Take the money. I have no more use for it than the hands had.”',
+      '“So that is where it went.” Venn is quiet a long while. “Thirty years, and the answer ' +
+      'was four floors down and nobody to carry it back. Take the money. I have as much use ' +
+      'for it now as the hands had.”',
     journal: 'Venn learned where the carved hands had emptied themselves, after thirty years.',
   },
 
@@ -95,7 +116,7 @@ export const QUESTS = [
     id: 'the-long-account',
     name: 'The Long Account',
     giver: 'hermit-ogil',
-    requires: { quest: 'idols-for-ogil' },
+    requires: { quest: 'the-demons-account' },
     opens: { dungeonCleared: 'upper' },
     offer:
       'Ogil has been waiting with the air of a man who has rehearsed. “You have been down ' +

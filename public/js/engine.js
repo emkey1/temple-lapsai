@@ -758,11 +758,24 @@ export class Game {
     }
     /* The mouth remembers. Monsters do not respawn, so the floors above your
      * deepest mark are swept corridors and nothing else — the stairs take you
-     * straight back to where the work stopped. Climbing UP still walks. */
+     * straight back to where the work stopped. Climbing UP still walks.
+     *
+     * But people LIVE on these floors, and the ones who ask things of you
+     * live near the entrance: dropping the company four floors down turned
+     * every hand-in into a climb. So when there is a choice to make, the
+     * player makes it. */
     const p = this.state.player;
     const known = Math.min((p.deepest && p.deepest[id]) || 0, d.floors - 1);
-    if (known > 0) this.log('The upper halls are swept and the stairs are known — you descend to floor ' + (known + 1) + '.');
-    this.loadFloor(known);
+    if (known > 0 && this.ui.askDepth) {
+      this.ui.askDepth(d, known, (floorIdx) => this.arriveAtDepth(d, floorIdx));
+      return;
+    }
+    this.arriveAtDepth(d, known);
+  }
+
+  arriveAtDepth(d, floorIdx) {
+    if (floorIdx > 0) this.log('The upper halls are swept and the stairs are known — you descend to floor ' + (floorIdx + 1) + '.');
+    this.loadFloor(floorIdx);
   }
 
   /* `arriveAt` says which end of the floor you come in at:

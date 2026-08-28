@@ -163,6 +163,17 @@ story in order, from three carved idols to the serpent under the last hill.
 **THE UNDERTAKINGS** at the top of the Codex says what is wanted, how far
 along it is, and who is owed the telling.
 
+Every asking points AHEAD of the person who makes it — Ogil stands at the
+Temple's door and asks about its bottom, Eilyth stands in the drowned works
+and asks about their head, Venn keeps the serpent's halls and cannot go past
+the fourth door himself. A test holds that rule, because the first draft broke
+it twice: a quest whose objective was already satisfied by the time its giver
+could be met is a quest that closes itself.
+
+And because the people who ask things live near the door while the stairs
+remember your deepest floor, **the mouths ask where to come in**: down to the
+known depth, or in at the entrance. A hand-in is never a climb.
+
 Content lives in [quests.js](public/js/quests.js), which is data and nothing
 else — the same rule [lore.js](public/js/lore.js) follows.
 

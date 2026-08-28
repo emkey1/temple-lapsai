@@ -74,53 +74,64 @@ test('what the company carries counts, wherever it is carried', () => {
 });
 
 test('a slay quest counts only what dies after it was taken', () => {
-  const { g } = rig('q-slay');
+  const { g, p } = rig('q-slay');
   const q = questById('the-demons-account');
+  /* It is Ogil's second asking, so his first must be closed. */
+  g.acceptQuest('idols-for-ogil');
+  for (let i = 0; i < 3; i++) p.inventory.push(deepItem(getItemTemplate('statuette')));
+  g.completeQuest('idols-for-ogil');
   /* A kill before the asking is not the asking's. */
-  g.questKilled('demon');
+  g.questKilled('lapsai-demon');
   assert.ok(g.acceptQuest(q.id));
   assert.equal(g.questProgressOf(q), 0, 'an earlier kill was counted');
   g.questKilled('sewer-rat');
   assert.equal(g.questProgressOf(q), 0, 'the wrong corpse counted');
-  g.questKilled('demon');
+  g.questKilled('lapsai-demon');
   assert.ok(g.questSatisfied(q));
-  assert.equal(g.questsToClose('priestess-eilyth').map((x) => x.id)[0], q.id);
+  assert.equal(g.questsToClose('hermit-ogil').map((x) => x.id)[0], q.id);
 });
 
 test('a reach quest closes on arriving, and not before', () => {
-  const { g, p } = rig('q-reach');
-  p.bossesSlain.temple = true;               /* it is gated behind the Temple */
+  const { g } = rig('q-reach');
   const q = questById('venns-question');
   assert.ok(g.questsOnOffer('keeper-venn').some((x) => x.id === q.id));
   g.acceptQuest(q.id);
-  g.questReached('upper', 1);
-  assert.equal(g.questSatisfied(q), false, 'shallow water satisfied it');
-  g.questReached('upper', 3);
+  g.questReached('serpent', 1);
+  assert.equal(g.questSatisfied(q), false, 'a shallow floor satisfied it');
+  g.questReached('serpent', 3);
   assert.ok(g.questSatisfied(q));
 });
 
 test('gates hold: a chained quest waits for its parent and its dungeon', () => {
   const { g, p } = rig('q-gates');
-  assert.equal(g.questsOnOffer('keeper-venn').length, 0, 'offered before the Temple fell');
-  assert.equal(g.questsOnOffer('hermit-ogil').map((x) => x.id).includes('the-long-account'), false);
-  p.bossesSlain.temple = true; p.bossesSlain.upper = true;
-  assert.equal(g.questsOnOffer('hermit-ogil').map((x) => x.id).includes('the-long-account'), false,
-    'the chain opened without its parent');
+  const offered = () => g.questsOnOffer('hermit-ogil').map((x) => x.id);
+  assert.equal(offered().includes('the-demons-account'), false, 'the second asking came before the first');
+  assert.equal(offered().includes('the-long-account'), false);
+
   g.acceptQuest('idols-for-ogil');
   for (let i = 0; i < 3; i++) p.inventory.push(deepItem(getItemTemplate('statuette')));
   g.completeQuest('idols-for-ogil');
-  assert.ok(g.questsOnOffer('hermit-ogil').map((x) => x.id).includes('the-long-account'), 'the chain never opened');
+  assert.ok(offered().includes('the-demons-account'), 'the chain never opened');
+
+  /* The last link needs its parent AND the Upper Reaches behind you. */
+  assert.equal(offered().includes('the-long-account'), false, 'the last link opened early');
+  g.acceptQuest('the-demons-account');
+  g.questKilled('lapsai-demon');
+  g.completeQuest('the-demons-account');
+  assert.equal(offered().includes('the-long-account'), false, 'the dungeon gate was ignored');
+  p.bossesSlain.upper = true;
+  assert.ok(offered().includes('the-long-account'), 'the last link never opened');
 });
 
 test('an undertaking belongs to the company and survives the save', () => {
-  const { g, p } = rig('q-save');
-  g.acceptQuest('the-demons-account');
-  g.questKilled('demon');
+  const { g } = rig('q-save');
+  g.acceptQuest('venns-question');
+  g.questReached('serpent', 3);
   const raw = JSON.parse(JSON.stringify(g.save()));
   const g2 = newGame('q-save-2', 'fighter');
   g2.restore(raw);
-  assert.equal(g2.questState('the-demons-account'), 'active', 'the undertaking was forgotten');
-  assert.ok(g2.questSatisfied(questById('the-demons-account')), 'the progress was forgotten');
+  assert.equal(g2.questState('venns-question'), 'active', 'the undertaking was forgotten');
+  assert.ok(g2.questSatisfied(questById('venns-question')), 'the progress was forgotten');
 });
 
 test('the objective line says something true at every stage', () => {
@@ -130,4 +141,40 @@ test('the objective line says something true at every stage', () => {
   assert.match(objectiveText(q, 0), /0\/3/);
   p.inventory.push(deepItem(getItemTemplate('statuette')));
   assert.match(objectiveText(q, g.questProgressOf(q)), /1\/3/);
+});
+
+test('every giver stands where a player can actually reach them', async () => {
+  /* The failure this guards: a quest whose giver exists in the lore but
+   * lives somewhere the player never goes, or whose objective is already
+   * satisfied by the time they can be met. Both happened on the first
+   * draft — Eilyth asking for a boss you must have killed to reach her. */
+  const { WORLD } = await import('../public/js/world.js');
+  const { npcsForDungeonFloor } = await import('../public/js/npc.js');
+  const { DUNGEONS } = await import('../public/js/base.js');
+  const order = DUNGEONS.map((d) => d.id);
+  for (const q of QUESTS) {
+    const n = WORLD.npcs.find((x) => x.id === q.giver);
+    assert.ok(npcsForDungeonFloor(n.dungeon, n.floor).some((x) => x.id === n.id),
+      q.id + ': ' + n.id + ' never spawns on ' + n.dungeon + ' floor ' + n.floor);
+    const o = q.objective;
+    /* The objective must lie AHEAD of the giver, not behind them: the
+     * dungeon it points at is theirs or deeper in the world's order. */
+    const target = o.dungeon || (o.kind === 'slay'
+      ? (DUNGEONS.find((d) => d.bossId === o.monster) || {}).id
+      : null);
+    if (!target) continue;
+    assert.ok(order.indexOf(target) >= order.indexOf(n.dungeon),
+      q.id + ' asks for something in ' + target + ', behind its giver in ' + n.dungeon);
+  }
+});
+
+test('the deep entrance is a choice, so a hand-in is never a climb', () => {
+  const { g } = rig('q-depth');
+  const p = g.state.player;
+  p.deepest = { temple: 3 };
+  let asked = null;
+  g.ui.askDepth = (d, known, go) => { asked = { id: d.id, known }; go(0); };
+  g.enterDungeon('temple');
+  assert.deepEqual(asked, { id: 'temple', known: 3 }, 'the player was never asked');
+  assert.equal(p.floorIdx, 0, 'the choice was ignored');
 });
