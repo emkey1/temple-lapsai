@@ -3288,8 +3288,12 @@ export class Game {
     const lit = (m) => !!(this.vis[m.y] && this.vis[m.y][m.x]);
 
     if (a.sight) return live.filter(lit);
-    /* Nothing about swinging where you stand requires seeing it first. */
-    if (a.aura && !a.range) return live.filter((m) => dist1(m, p) <= a.aura);
+    /* You cannot hit what you cannot see, and that goes for the workings that
+     * turn on the spot too. It reads like pedantry at Whirlwind's two tiles —
+     * anything at a fighter's elbow has line of sight to him by definition —
+     * and stops being pedantry at Judgment's five, where the far edge of the
+     * circle is through a wall and into the next room. */
+    if (a.aura && !a.range) return live.filter((m) => dist1(m, p) <= a.aura && lit(m));
 
     /* Reach is KING-move reach — a Backstab refused a foe on the diagonal
      * that a plain strike would take. The preference among those in reach

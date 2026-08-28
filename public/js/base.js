@@ -195,7 +195,12 @@ export const ABILITIES = [
   { cls: 'cleric', level: 1, id: 'lay-hands', name: 'Lay on Hands', kind: 'heal', powerCost: 5, cooldown: 0, heal: '2d6', healFraction: 1 / 3, description: 'Old gods answer: heal 2d6.' },
   { cls: 'cleric', level: 3, id: 'detect-evil', name: 'Detect Evil', kind: 'reveal', powerCost: 2, cooldown: 0, detectMonsters: true, description: 'Foes burn on your sight: show every monster on the floor until next turn.' },
   { cls: 'cleric', level: 6, id: 'turn-undead', name: 'Turn Undead', kind: 'turn', powerCost: 6, cooldown: 3, range: 6, damage: { sides: 6, bonus: 0, dice: 2 }, description: 'Drive the unhallowed back: undead & cursed creatures take 2d6 and flee.' },
-  { cls: 'cleric', level: 9, id: 'judgment', name: 'Judgment', kind: 'damage', powerCost: 8, cooldown: 3, range: 5, damage: { sides: 6, bonus: 0, dice: 3 }, description: 'Sythe of the temple: 3d6 to every foe in a 5-tile blast.' },
+  /* `aura` and not `range`, which is the whole difference between a scythe
+   * and a dart. Turn Undead above spells its radius `range` because a turning
+   * measures from the priest and nothing else, but a DAMAGING working reads
+   * range as how far off it may pick its one target — so this was written as
+   * a five-tile reach to hit a single foe, and read on its card as a blast. */
+  { cls: 'cleric', level: 9, id: 'judgment', name: 'Judgment', kind: 'damage', powerCost: 8, cooldown: 3, aura: 5, damage: { sides: 6, bonus: 0, dice: 3 }, description: 'Scythe of the temple: 3d6 to every foe in a 5-tile blast.' },
 ];
 
 export function abilitiesFor(clsId, level) {

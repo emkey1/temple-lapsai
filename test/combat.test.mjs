@@ -203,3 +203,37 @@ test('a working with nothing to reach is still refused before it costs anything'
   assert.equal(p.cooldowns['fatal-flurry'] || 0, 0, 'an empty room still put it on cooldown');
   assert.ok(g.logs.some((l) => /finds no target/.test(l)), 'said nothing about why nothing happened');
 });
+
+test('Judgment falls on every foe within five tiles, not on the nearest one', () => {
+  const { g, p, monsters } = fightAt(9, 'cleric', 'jd', [[1, 0], [3, 1], [0, 5], [7, 0]]);
+  p.power = 99;
+  g.activateAbility('judgment');
+  assert.equal(hurt(monsters.slice(0, 3)), 3, 'a five-tile blast spared foes standing inside it');
+  assert.equal(monsters[3].hp, monsters[3].maxhp, 'and reached one seven tiles off');
+});
+
+test('but it does not scythe through a wall into the next room', () => {
+  const { g, p, monsters } = fightAt(9, 'cleric', 'jd-dark', [[1, 0], [4, 0]]);
+  p.power = 99;
+  /* The far one stands well inside the radius and outside the light. */
+  g.vis[monsters[1].y][monsters[1].x] = false;
+  g.activateAbility('judgment');
+  assert.ok(monsters[0].hp < monsters[0].maxhp, 'the foe in plain view went untouched');
+  assert.equal(monsters[1].hp, monsters[1].maxhp, 'the blast found something it could not see');
+});
+
+test('what stands at a fighter’s elbow is lit by standing there', () => {
+  /* Requiring light of a working that turns on the spot must not cost
+   * Whirlwind the foe it is named for, so this one takes the floor's own
+   * visibility rather than forcing it on. */
+  const g = newGame('ww-lit', 'fighter');
+  for (let i = 1; i < 9; i++) g.levelUp();
+  g.loadFloor(0);
+  const p = g.state.player;
+  const m = { ...g.currentFloor.monsters.find((x) => x.hp > 0), x: p.x + 1, y: p.y, hp: 9999, maxhp: 9999, aggro: true };
+  g.currentFloor.monsters = [m];
+  g.computeVisibility();
+  p.power = 99;
+  g.activateAbility('whirlwind');
+  assert.ok(m.hp < m.maxhp, 'the dance missed the foe it was touching');
+});
