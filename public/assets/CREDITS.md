@@ -47,7 +47,7 @@ is than the sizing it replaced, so creatures keep the size they had).
 - **Obligations:** credit the artists (this file); the modified copies here
   stay under CC-BY-SA, as ShareAlike requires.
 
-## hero/ — Flare (minicore), CC-BY-SA 3.0
+## hero/ — Flare (fantasycore and minicore), CC-BY-SA 3.0
 
 The modular hero: `male/` and `female/` each hold ~58 paper-doll layers
 (bodies, heads, cloth/leather/chain/plate/mage gear, and weapons from dagger
@@ -55,9 +55,21 @@ to greatsword), each an 8-direction sheet aligned to the same frame grid, so
 equipped gear can be drawn visibly on the character, ToEE-style. `defs/`
 holds the per-layer animation definitions.
 
+The layers a calling actually wears are **modified copies** at full
+`fantasycore` resolution, repacked by `scripts/repack-flare-art.mjs` the same
+way the creatures were, and carrying the same `scale=` line — one figure for
+the whole wardrobe, because a doll drawn out of layers that disagree about
+the size of a pixel wears its hood at a sixth of its head. Two of them are
+recast rather than enlarged: `steel_armor` and `leather_armor` are
+fantasycore's `plate_cuirass` and `leather_chest`, which is the same idea
+under the name a smith would use. The layers nobody wears are still
+minicore's.
+
 - **Artists:** Clint Bellanger and the Flare art contributors
 - **Licence:** [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
 - **Source:** https://github.com/flareteam/flare-game
+- **Obligations:** credit the artists (this file); the modified copies here
+  stay under CC-BY-SA, as ShareAlike requires.
 
 ## icons/ — Flare (fantasycore), CC-BY-SA 3.0
 

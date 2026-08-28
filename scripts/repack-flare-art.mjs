@@ -33,6 +33,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'no
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePNG, encodePNG, blit, resample } from './png.mjs';
+import { HERO_LAYERS, HERO_HEADS, CREATURE_SHEETS } from '../public/js/sprites.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CACHE = path.join(ROOT, '.art-cache');
@@ -97,6 +98,21 @@ const CREATURES = {
   wyvern_water: 'fantasycore/animations/enemies/wyvern_water.txt',
   zombie: 'fantasycore/animations/enemies/zombie.txt',
 };
+
+/* The two layers fantasycore calls something else. Ours came from minicore,
+ * which had a `steel_armor` and a `leather_armor`; the larger pack has the
+ * same idea under the names a smith would use. */
+const HERO_RENAME = { steel_armor: 'plate_cuirass', leather_armor: 'leather_chest' };
+
+/* Every layer any calling actually wears, plus both heads. Layers nobody
+ * wears are left as they were: a doll is only ever drawn out of this list,
+ * and mixing a repacked chest with an untouched hood would put the hood on
+ * at a sixth of its size. */
+function heroLayers(sex) {
+  const worn = new Set(Object.values(HERO_LAYERS).flat());
+  worn.add(HERO_HEADS[sex]);
+  return [...worn];
+}
 
 async function cached(rel) {
   const file = path.join(CACHE, rel);
@@ -271,6 +287,92 @@ async function repackOne(name, defRel, outDir, ourDefPath) {
   return { png, def: lines.join('\n'), width, height, frames: wanted.length, scale };
 }
 
+/* A hero is a stack of layers drawn into each other, so every one of them
+ * must agree about how big a pixel is — one scale for the whole wardrobe, not
+ * one per garment. The number is measured across every layer both packs have
+ * in common, summed rather than averaged: these frames are ten to twenty
+ * pixels tall and a single one rounds by five percent, but a hundred of them
+ * together do not. */
+async function heroScale() {
+  let up = 0, ours = 0;
+  for (const layer of heroLayers('male')) {
+    if (HERO_RENAME[layer]) continue;     /* different art, not a smaller copy */
+    const u = parseDef((await cached(`fantasycore/animations/avatar/male/${layer}.txt`)).toString('utf8'));
+    const o = parseDef(readFileSync(path.join(ROOT, 'public', 'assets', 'hero', 'defs', 'male', `${layer}.txt`), 'utf8'));
+    up += stanceHeight(u.anims);
+    ours += stanceHeight(o.anims) / o.scale;
+  }
+  return up / ours;
+}
+
+/* The fallen are drawn on the last frame of their dying and never on any
+ * other — pickFrame is called with hold set — so one frame per direction is
+ * the whole of what `die` needs to be. Kept as frame zero, which is what the
+ * renderer would land on if that ever stopped being true. */
+function trimToLastFrame(anim) {
+  const last = new Map();
+  for (const f of anim.frames) {
+    const prev = last.get(f.dir);
+    if (!prev || f.idx > prev.idx) last.set(f.dir, f);
+  }
+  anim.frames = [...last.values()].map((f) => ({ ...f, idx: 0 }));
+}
+
+async function repackHero(sex, layer, scale, dry) {
+  const up = HERO_RENAME[layer] || layer;
+  const def = parseDef((await cached(`fantasycore/animations/avatar/${sex}/${up}.txt`)).toString('utf8'));
+  if (def.anims.die) trimToLastFrame(def.anims.die);
+
+  const wanted = [];
+  const seen = new Map();
+  for (const anim of ['stance', 'die']) {
+    const a = def.anims[anim];
+    if (!a) continue;
+    for (const f of a.frames) {
+      const img = def.images[f.image] ?? def.images[''] ?? def.images[anim];
+      const key = `${img}|${f.x},${f.y},${f.w},${f.h}`;
+      let rect = seen.get(key);
+      if (!rect) { rect = { img, x: f.x, y: f.y, sw: f.w, sh: f.h, w: f.w, h: f.h }; seen.set(key, rect); wanted.push(rect); }
+      f.rect = rect;
+    }
+  }
+  const { width, height } = pack(wanted, GUTTER);
+  const sheet = { w: width, h: height, data: Buffer.alloc(width * height * 4) };
+  const sources = new Map();
+  for (const rect of wanted) {
+    let src = sources.get(rect.img);
+    if (!src) { src = decodePNG(await cached(`fantasycore/${rect.img}`)); sources.set(rect.img, src); }
+    blit(src, rect.x, rect.y, rect.sw, rect.sh, sheet, rect.px, rect.py);
+  }
+
+  const lines = [
+    `# Repacked from Flare's fantasycore mod by scripts/repack-flare-art.mjs.`,
+    '# Only the frames this renderer draws survive; see that script.',
+    '',
+    `image=images/avatar/${sex}/${layer}.png`,
+    `scale=${scale.toFixed(4)}`,
+    '',
+  ];
+  for (const anim of ['stance', 'die']) {
+    const a = def.anims[anim];
+    if (!a) continue;
+    lines.push(`[${anim}]`);
+    lines.push(`frames=${new Set(a.frames.map((f) => f.idx)).size}`);
+    if (a.duration) lines.push(`duration=${a.duration}`);
+    if (a.type) lines.push(`type=${a.type}`);
+    for (const f of a.frames) {
+      lines.push(`frame=${f.idx},${f.dir},${f.rect.px},${f.rect.py},${f.w},${f.h},${f.ox},${f.oy}`);
+    }
+    lines.push('');
+  }
+  const png = encodePNG(sheet);
+  const imgPath = path.join(ROOT, 'public', 'assets', 'hero', sex, `${layer}.png`);
+  const defPath = path.join(ROOT, 'public', 'assets', 'hero', 'defs', sex, `${layer}.txt`);
+  const was = statSync(imgPath).size;
+  if (!dry) { writeFileSync(imgPath, png); writeFileSync(defPath, lines.join('\n')); }
+  return { was, now: png.length, frames: wanted.length, width, height };
+}
+
 const dry = process.argv.includes('--dry-run');
 const outImg = path.join(ROOT, 'public', 'assets', 'creatures');
 const outDef = path.join(outImg, 'defs');
@@ -298,4 +400,24 @@ for (const [name, rel] of Object.entries(CREATURES)) {
   if (!dry) { writeFileSync(imgPath, r.png); writeFileSync(defPath, r.def); }
 }
 if (skipped.length) console.log(`\nleft alone (no larger art upstream): ${skipped.join(', ')}`);
-console.log(`\ncreature art ${(before / 1048576).toFixed(1)}MB -> ${(after / 1048576).toFixed(1)}MB${dry ? '  (dry run, nothing written)' : ''}`);
+console.log(`creature art ${(before / 1048576).toFixed(1)}MB -> ${(after / 1048576).toFixed(1)}MB`);
+
+console.log('');
+const hs = await heroScale();
+/* The same reasoning as a creature's, in the other branch of drawFrameAt: a
+ * hero layer is drawn at unit/28 of its own pixels. What comes out is the
+ * same for every layer, which is the point — the wardrobe scales as one. */
+const heroK = Math.min(1, ((ISO_UNIT / 28) * ZOOM_MAX * DPR) / hs);
+let hBefore = 0, hAfter = 0;
+for (const sex of ['male', 'female']) {
+  for (const layer of heroLayers(sex)) {
+    const r = await repackHero(sex, layer, hs / heroK, dry);
+    hBefore += r.was; hAfter += r.now;
+    process.stdout.write(
+      `${(sex[0] + '/' + layer).padEnd(22)} ${String(r.frames).padStart(3)} frames  ` +
+      `${String(r.width).padStart(4)}x${String(r.height).padEnd(4)}  ` +
+      `${(r.was / 1024).toFixed(0).padStart(4)}K -> ${(r.now / 1024).toFixed(0).padStart(4)}K\n`);
+  }
+}
+console.log(`\nhero art ${(hBefore / 1048576).toFixed(1)}MB -> ${(hAfter / 1048576).toFixed(1)}MB  (one scale for the whole wardrobe: ${hs.toFixed(2)}x)`);
+console.log(`\nall of it ${((before + hBefore) / 1048576).toFixed(1)}MB -> ${((after + hAfter) / 1048576).toFixed(1)}MB${dry ? '  (dry run, nothing written)' : ''}`);

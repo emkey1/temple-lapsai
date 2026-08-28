@@ -2,7 +2,7 @@
 # Only the animations this renderer draws survive; see that script.
 
 image=images/creatures/wyvern_adult.png
-scale=4.3319
+scale=4.3323
 
 [stance]
 frames=8
