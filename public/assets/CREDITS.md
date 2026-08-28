@@ -21,20 +21,31 @@ ids to atlas rectangles.
 - **Obligations:** credit the artists (this file), and any redistribution of
   the art — including modified copies — stays under CC-BY-SA.
 
-## creatures/ — Flare (minicore), CC-BY-SA 3.0
+## creatures/ — Flare (fantasycore, empyrean_campaign, minicore), CC-BY-SA 3.0
 
-Eight-direction creature sprite sheets from Flare's `mods/minicore` — the
-half-scale (64px-frame) renders of the same models as fantasycore, chosen
-because they match this game's on-screen token size and cost a fortieth of
-the bytes. `defs/` holds Flare's animation definitions
-(`frame=direction,index,x,y,w,h,offset_x,offset_y` under `[stance]`,
-`[run]`, `[swing]`, `[die]`, … sections).
+Eight-direction creature sprite sheets from Flare, at full `mods/fantasycore`
+resolution — about six times the linear detail of the half-scale `minicore`
+renders these started as, which turned to mush the moment this renderer let
+the player zoom in. `wyvern_adult` (the Great Wyrm) comes from
+`mods/empyrean_campaign`; `stealth` is still minicore's, because no larger
+copy of it exists in any mod.
+
+**These sheets are modified copies.** `scripts/repack-flare-art.mjs` cuts the
+`[stance]` frames out of the upstream sheets and packs them into a smaller
+one, discarding the nine animations this game never draws, and scales what is
+left to the largest size the renderer can put on screen — 170MB of upstream
+art reduced to 26MB with no loss visible at any zoom this game offers. No
+pixel is painted, redrawn or invented; every one that survives is the
+artist's own. `defs/` holds the rewritten animation definitions, in Flare's
+own format plus one line of ours (`scale=`, recording how much bigger the art
+is than the sizing it replaced, so creatures keep the size they had).
 
 - **Artists:** Clint Bellanger, Justin Jacobs, and the Flare art contributors
   (see [FLARE-CREDITS.txt](../assets/FLARE-CREDITS.txt))
 - **Licence:** [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
 - **Source:** https://github.com/flareteam/flare-game
-- **Obligations:** as above.
+- **Obligations:** credit the artists (this file); the modified copies here
+  stay under CC-BY-SA, as ShareAlike requires.
 
 ## hero/ — Flare (minicore), CC-BY-SA 3.0
 

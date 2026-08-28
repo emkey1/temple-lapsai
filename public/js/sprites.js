@@ -18,7 +18,7 @@
  * rectangle in a packed atlas and where its anchor sits. Eight directions,
  * counted clockwise from west the way Flare counts them. */
 export function parseAnimationDef(text) {
-  const def = { image: null, animations: {} };
+  const def = { image: null, scale: 1, animations: {} };
   let cur = null;
   for (const raw of String(text || '').split('\n')) {
     const line = raw.trim();
@@ -35,6 +35,13 @@ export function parseAnimationDef(text) {
     const val = line.slice(eq + 1).trim();
     if (key === 'image' && !def.image) {
       def.image = val;
+    } else if (key === 'scale' && !cur) {
+      /* Not Flare's — ours. A sheet repacked from the high-resolution art
+       * says here how many of its pixels stand for one of the pixels the
+       * renderer's sizing was tuned against, so the same creature comes out
+       * the same size on screen with six times the detail in it. Sheets
+       * without the line are the original art and scale by one. */
+      def.scale = parseFloat(val) || 1;
     } else if (cur && key === 'duration') {
       cur.duration = parseInt(val, 10) || 0;
     } else if (cur && key === 'type') {

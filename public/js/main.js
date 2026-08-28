@@ -1015,18 +1015,27 @@ function stanceHeight(def) {
  * Two scales: hero layers share one fixed scale, because they must agree
  * with each other; creatures are scaled from their own stance height along
  * a compressed curve, so a rat is small without being invisible and a wyrm
- * is enormous without being the whole room. */
+ * is enormous without being the whole room.
+ *
+ * Both read that curve in the art's own pixels, and the art no longer agrees
+ * with itself about how big a pixel is: a repacked sheet carries six times
+ * the detail in the same creature. So the height is divided back down to the
+ * scale the curve was tuned against before it is asked how big a thing is,
+ * and multiplied back up when the drawing happens. Sheets that were never
+ * repacked declare a scale of one and pass through untouched. */
 function drawFrameAt(ax, ay, unit, entry, animName, dir, opts = {}) {
   const f = pickFrame(entry.def, animName, dir, opts.hold);
   if (!f) return false;
   const ctx = els.ctx;
+  const src = entry.def.scale || 1;
   let scale;
   if (opts.fit) {
     if (!entry.baseH) entry.baseH = stanceHeight(entry.def);
-    const targetH = unit * Math.min(1.9, Math.max(0.7, 0.5 + 0.55 * entry.baseH / 40));
+    const nominal = entry.baseH / src;
+    const targetH = unit * Math.min(1.9, Math.max(0.7, 0.5 + 0.55 * nominal / 40));
     scale = (targetH / entry.baseH) * (opts.scale || 1);
   } else {
-    scale = (unit / 28) * (opts.scale || 1);
+    scale = (unit / (28 * src)) * (opts.scale || 1);
   }
   if (opts.dim) ctx.globalAlpha = 0.55;
   ctx.drawImage(entry.img, f.x, f.y, f.w, f.h,

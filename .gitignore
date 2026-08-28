@@ -3,3 +3,6 @@ node_modules/
 *.log
 config.json
 .server.pid
+
+# Upstream art downloads for scripts/repack-flare-art.mjs
+.art-cache/
