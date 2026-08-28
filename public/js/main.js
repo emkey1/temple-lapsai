@@ -2776,11 +2776,16 @@ function renderPartyStrip(g) {
     /* The nameplate carries the health: the same red bar as the HUD, in
      * miniature, so the whole company's blood is one glance up. */
     const hp = Math.max(0, Math.min(100, 100 * m.hp / Math.max(1, m.maxhp)));
+    /* Power beside blood: a cleric with a full bar and no power is as
+     * unable to help as one at death's door, and the strip was only
+     * telling half of that. */
+    const pwr = Math.max(0, Math.min(100, 100 * (m.power || 0) / Math.max(1, m.maxpower || 1)));
     return '<button data-view="' + i + '" style="color:' + tint + '" class="' +
       (m === shown ? 'viewed' : '') + (m === g.state.player ? ' reins' : '') + (m.hp <= 0 ? ' fallen' : '') + '">' +
       '<span class="pchip-row"><img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
       esc(m.name) + reins + '</span>' +
-      '<span class="pbar"><i style="width:' + hp + '%"></i></span></button>';
+      '<span class="pbar"><i style="width:' + hp + '%"></i></span>' +
+      '<span class="pbar pwr"><i style="width:' + pwr + '%"></i></span></button>';
   }).join('');
 }
 

@@ -240,6 +240,10 @@ body {
   background: linear-gradient(90deg, #7a3a30, #d8453a);
   transition: width .12s;
 }
+/* The second bar: power, in the HUD's own blue, sitting tight under the
+   blood so a plate reads as one small gauge rather than two. */
+#party-strip .pbar.pwr { margin-top: 1px; }
+#party-strip .pbar.pwr i { background: linear-gradient(90deg, #2a4a6a, #5fa8d8); }
 
 #sheets-tabs { display: flex; border-bottom: 2px solid var(--ink-dim); }
 #sheets-tabs .tab {
