@@ -863,16 +863,25 @@ function getKeyedTileset(name) {
   cx.drawImage(base.img, 0, 0);
   const px = cx.getImageData(0, 0, c.width, c.height);
   const d = px.data;
+  /* While every pixel is in hand, take the atlas's own average colour off
+   * the stone that survives. The wall masses this camera sees no face of
+   * have to be SOME colour, and the honest one is the colour of the rock
+   * standing beside them — not the theme's swatch, which read as pink
+   * furniture in a brown cavern. */
+  let rs = 0, gs = 0, bs = 0, n = 0;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 8) continue;
     const sum = d[i] + d[i + 1] + d[i + 2];
     /* Hard black goes entirely; the near-black shoulder fades, so a
      * crevice the artist meant as depth does not turn into a hole. */
-    if (sum < 42) d[i + 3] = 0;
-    else if (sum < 96) d[i + 3] = Math.round(d[i + 3] * ((sum - 42) / 54));
+    if (sum < 42) { d[i + 3] = 0; continue; }
+    if (sum < 96) d[i + 3] = Math.round(d[i + 3] * ((sum - 42) / 54));
+    rs += d[i]; gs += d[i + 1]; bs += d[i + 2]; n++;
   }
   cx.putImageData(px, 0, 0);
-  const made = { name: base.name, img: c, def: base.def };
+  const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  const avg = n ? '#' + hex(rs / n) + hex(gs / n) + hex(bs / n) : null;
+  const made = { name: base.name, img: c, def: base.def, avg };
   sheetCache.set(key, made);
   return made;
 }
@@ -1711,38 +1720,21 @@ try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-
 let wallMode = 'up';
 try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'; } catch { /* private mode */ }
 
-/* ZOOM GLIDES, IT DOES NOT STEP.
- *
- * A repaint of the whole floor measures under six milliseconds, so the
- * jerkiness was never cost — it was the SIZE OF THE STEP: every notch
- * moved the scene ten percent at once, and the eye reads a stack of
- * instant jumps as stutter. The wheel now sets a TARGET and each frame
- * eases toward it, so a gesture is one continuous movement. The
- * preference is written when the gliding stops. */
-let zoomTarget = isoZoom, zoomFrame = null, zoomSave = null;
+/* Straight back to a repaint per notch, because that is what was smooth.
+ * Two attempts to "improve" this made it worse: coalescing to an
+ * animation frame, then easing toward a target — the second rendered the
+ * scene a dozen times per notch at intermediate scales and felt like mud.
+ * A repaint measures under six milliseconds; it does not need help. Only
+ * the preference write is deferred, since that touches disk. */
+let zoomSave = null;
 function setIsoZoom(z) {
-  zoomTarget = Math.min(1.4, Math.max(0.4, Math.round(z * 1000) / 1000));
-  if (zoomFrame) return;
-  const step = () => {
-    const gap = zoomTarget - isoZoom;
-    /* Close enough to land: snap, stop, and remember. */
-    if (Math.abs(gap) < 0.004) {
-      isoZoom = zoomTarget;
-      zoomFrame = null;
-      lastTiles = '';
-      if (game) renderGame(game);
-      clearTimeout(zoomSave);
-      zoomSave = setTimeout(() => {
-        try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
-      }, 150);
-      return;
-    }
-    isoZoom = Math.round((isoZoom + gap * 0.28) * 1000) / 1000;
-    lastTiles = '';
-    if (game) renderGame(game);
-    zoomFrame = requestAnimationFrame(step);
-  };
-  zoomFrame = requestAnimationFrame(step);
+  isoZoom = Math.min(1.4, Math.max(0.4, Math.round(z * 100) / 100));
+  lastTiles = '';
+  if (game) renderGame(game);
+  clearTimeout(zoomSave);
+  zoomSave = setTimeout(() => {
+    try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
+  }, 200);
 }
 const ISO_UNIT = 46;   /* what "one tile tall" means for a body in the scene */
 
@@ -2027,7 +2019,7 @@ const WALL_VOCAB = {
    * never shows and this renderer never asks for. The near pair of each
    * variety is what belongs here, and having two varieties is what stops
    * a long wall repeating one silhouette down its length. */
-  tileset_cave: { x: [65, 69], y: [64, 68], corner: [96], rise: 300, grounded: true },
+  tileset_cave: { x: [65, 69], y: [64, 68], corner: [96], inner: [100, 101], rise: 300, grounded: true },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
@@ -2106,6 +2098,14 @@ function wallPieceId(vocab, g, t) {
     if (vocab.runsOnly && !(sameAxis(0, 1) && sameAxis(0, -1))) return null;
     return [vocab.y[h % vocab.y.length]];
   }
+  /* THE INNY CORNER. Where two runs meet at an inside angle, the tile
+   * shows no face south and none east — the open ground is DIAGONAL from
+   * it — so it fell through to a faceless mass and left a notch of bare
+   * block in an otherwise carved wall. Flare paints these: the automap
+   * ruleset's other corner group, 100/101. */
+  if (vocab.inner && openAt(t.x + 1, t.y + 1)) {
+    return [vocab.inner[h % vocab.inner.length]];
+  }
   /* A tile with no visible face: for building sets, the roof over the
    * body of the house; for dungeon masonry, nothing (the stub answers). */
   if (vocab.filler) return [vocab.filler[h % vocab.filler.length]];
@@ -2118,6 +2118,11 @@ const STUB_H = 13;
 
 function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
   const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+  /* Cut stone is still stone: a stub wears the colour of the set's own
+   * rock, not the theme's swatch, or the cutaway leaves pale blocks
+   * standing in a dark cavern — which is the whole complaint. */
+  const keyedHere = tset && WALL_VOCAB[tset.name] ? getKeyedTileset(tset.name) : null;
+  const tone = (keyedHere && keyedHere.avg) || theme.wall;
   const { sx, sy } = isoToScreen(t.x, t.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   const ctx = els.ctx;
@@ -2145,7 +2150,7 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
       return;
     }
     drawPrism(ctx, ax, ay, STUB_H,
-      shade(theme.wallHi, 1.1 * sf), shade(theme.wall, 0.9 * sf), shade(theme.wall, 0.62 * sf));
+      shade(tone, 0.72 * sf), shade(tone, 0.55 * sf), shade(tone, 0.4 * sf));
     if (tile === T.SECRET && vis && sa === 0) {
       ctx.fillStyle = theme.accent;
       ctx.fillText('+', ax, ay - STUB_H);
@@ -2203,12 +2208,12 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
        * `const f` in this block put the whole block in the dead zone.) */
       const sf = vis ? 1 : 0.7;
       drawPrism(ctx, ax, ay, STUB_H,
-        shade(theme.wall, 0.26 * sf), shade(theme.wall, 0.2 * sf), shade(theme.wall, 0.14 * sf));
+        shade(tone, 0.2 * sf), shade(tone, 0.15 * sf), shade(tone, 0.11 * sf));
       return;
     }
   }
   if (door) { drawIsoDoor(ctx, ax, ay, theme, f, g, t); return; }
-  drawPrism(ctx, ax, ay, ISO.WALL_H, shade(theme.wallHi, f), shade(theme.wall, 0.85 * f), shade(theme.wall, 0.6 * f));
+  drawPrism(ctx, ax, ay, ISO.WALL_H, shade(tone, 0.8 * f), shade(tone, 0.62 * f), shade(tone, 0.45 * f));
   if (tile === T.SECRET && vis && sa === 0) {
     ctx.fillStyle = theme.accent;
     ctx.fillText('+', ax, ay - ISO.WALL_H);
@@ -2416,6 +2421,11 @@ function renderIsoScene(g, sa) {
   /* The hamlet builds in timber and tile: houses draw from the medieval
    * building set; the treeline keeps the grassland's rock. */
   const wtset = town ? getTileset('medieval_building_tiles') : tset;
+  /* What colour a faceless wall mass wears: the average of the stone the
+   * set actually paints, so a block reads as the same rock seen without
+   * its lit face — never as a swatch from a different palette. */
+  const keyedSet = wtset && WALL_VOCAB[wtset.name] ? getKeyedTileset(wtset.name) : null;
+  const rockTone = (keyedSet && keyedSet.avg) || theme.wall;
   /* The cutaway's reach is a screen distance, so it scales with the art. */
   const riseRaw = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const rise = wtset && WALL_VOCAB[wtset.name] ? riseRaw * atlasScale(wtset) : riseRaw;
@@ -2504,7 +2514,7 @@ function renderIsoScene(g, sa) {
          * the cavern. Unlit rock is nearly black with a hint of the
          * theme, which is what the back of a wall looks like. */
         drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
-          shade(theme.wall, 0.22 * f), shade(theme.wall, 0.17 * f), shade(theme.wall, 0.12 * f));
+          shade(rockTone, 0.2 * f), shade(rockTone, 0.15 * f), shade(rockTone, 0.11 * f));
       } });
     }
   }
@@ -2529,7 +2539,7 @@ function renderIsoScene(g, sa) {
         standers.push({ x: nx, y: ny, draw: () => {
           const a = isoToScreen(nx, ny);
           drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
-            shade(theme.wall, 0.2), shade(theme.wall, 0.15), shade(theme.wall, 0.11));
+            shade(rockTone, 0.3), shade(rockTone, 0.24), shade(rockTone, 0.18));
         } });
       }
     }
