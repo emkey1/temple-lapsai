@@ -726,3 +726,49 @@ test('a doorway two leaves wide is two of the same leaf', () => {
     }
   }
 });
+
+/* ---- hands are free when nothing is pressing ----
+ *
+ * The reach rule used the calm radius — nine tiles — so a single woken
+ * thing across the room, or behind a wall, stopped the company passing a
+ * potion down a quiet corridor. What it is for is a cross-room handoff
+ * with blades out, so it asks the narrow question instead. */
+test('a companion across the room can be handed something when nothing is close', () => {
+  const g = newGame('t3-give-quiet', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'thief', 'Far');
+  buddy.x = p.x + 7; buddy.y = p.y;
+  /* Awake, and well inside the old nine-tile calm radius — but nowhere
+   * near either of them. */
+  f.monsters.push(beast(p.x + 4, p.y + 6, {}));
+  const it = { name: 'Potion of Healing', kind: 'potion', slot: 'consumable', uid: 1 };
+  p.inventory.push(it);
+  assert.ok(g.giveItem(it, buddy, p), 'a quiet handoff was refused: ' + g.logs.slice(-1));
+  assert.ok(buddy.inventory.includes(it));
+});
+
+test('but not across the room with something at your elbow', () => {
+  const g = newGame('t3-give-pressed', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'thief', 'Far');
+  buddy.x = p.x + 7; buddy.y = p.y;
+  f.monsters.push(beast(p.x + 1, p.y, {}));      /* right beside the giver */
+  const it = { name: 'Potion of Healing', kind: 'potion', slot: 'consumable', uid: 2 };
+  p.inventory.push(it);
+  assert.equal(g.giveItem(it, buddy, p), false, 'handed it across a melee');
+  assert.ok(p.inventory.includes(it), 'the refused item left the pack anyway');
+});
+
+test('and adjacent hands always work, pressed or not', () => {
+  const g = newGame('t3-give-adjacent', 'fighter');
+  const f = arena(g);
+  const p = g.state.player;
+  const buddy = companion(g, 'thief', 'Near');
+  buddy.x = p.x + 1; buddy.y = p.y;
+  f.monsters.push(beast(p.x - 1, p.y, {}));
+  const it = { name: 'Potion of Healing', kind: 'potion', slot: 'consumable', uid: 3 };
+  p.inventory.push(it);
+  assert.ok(g.giveItem(it, buddy, p), 'a hand at arm’s length was refused');
+});

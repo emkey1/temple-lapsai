@@ -3608,8 +3608,18 @@ export class Game {
     const idx = giver.inventory.indexOf(item);
     if (idx < 0) { this.log('You are not carrying that.'); return false; }
     if (to.hp <= 0) { this.log(to.name + ' is in no state to carry anything.'); return false; }
-    if (!this.outOfCombat() && dist8(giver, to) > 1) {
-      this.log(to.name + ' is not in reach — not in the middle of this.');
+    /* Reach matters only IN THE THICK OF IT. The gate used to be the
+     * calm radius — nine tiles — so one woken thing across the room, or
+     * behind a wall, made the whole company unable to pass a potion down
+     * a quiet corridor. What the rule is actually for is stopping a
+     * cross-room handoff while blades are out, so it asks the narrow
+     * question: is anything hostile close enough to interrupt either of
+     * them? If not, hands are free however far apart they stand. */
+    const pressed = (this.currentFloor.monsters || []).some((m) =>
+      m.hp > 0 && m.aggro && !m.submerged && !(m.stunned > 0) &&
+      (dist8(m, giver) <= 2 || dist8(m, to) <= 2));
+    if (pressed && dist8(giver, to) > 1) {
+      this.log(to.name + ' is not in reach — not with something this close.');
       return false;
     }
     if (to.inventory.length >= PACK_LIMIT) { this.log(to.name + '\'s pack is full.'); return false; }
