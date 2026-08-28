@@ -1948,7 +1948,11 @@ function keyedIcon(img, icon) {
 
 /* An item lies ON its tile: the icon is drawn a whisker above the diamond's
  * centre, small enough that two adjacent drops never merge into a heap. */
-const ITEM_ICON_SIZE = 40;
+/* A thing lying on the floor is a thing, not a monument. At 40 it stood
+ * two-thirds the height of a tile and read as furniture — a gem on the
+ * ground looked like a boulder of sapphire. Half that sits it in the
+ * dirt at about the size of the hand that would pick it up. */
+const ITEM_ICON_SIZE = 20;
 
 function drawIsoItem(it) {
   const icon = itemIconIndex(it.i);
@@ -1960,7 +1964,9 @@ function drawIsoItem(it) {
   const { sx, sy } = isoToScreen(it.x, it.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   const S = ITEM_ICON_SIZE;
-  els.ctx.drawImage(keyedIcon(img, icon), ax - S / 2, ay - S + 12, S, S);
+  /* Sat on the tile's own centre now rather than floating above it: the
+   * old +12 lift was tuned to a sprite twice this tall. */
+  els.ctx.drawImage(keyedIcon(img, icon), ax - S / 2, ay - S + 6, S, S);
 }
 
 /* STAIRS, drawn by hand in the scene's own prism language. The atlas
