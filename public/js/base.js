@@ -163,7 +163,7 @@ export const ABILITIES = [
   { cls: 'thief', level: 2, id: 'hide-shadows', name: 'Hide in Shadows', kind: 'buff', buff: 'shadow', powerCost: 3, cooldown: 5, turns: 6, description: 'Step out of the world’s attention: nothing hunts what it cannot see. Your first blow from the dark strikes true (+4) and cuts twice as deep — and ends the hiding.' },
   { cls: 'thief', level: 3, id: 'backstab', name: 'Backstab', kind: 'damage', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 4, dice: 1 }, description: 'Find the unguarded flank: deal 1d6+4 to a foe and vanish one tile.' },
   { cls: 'thief', level: 6, id: 'shadow-blink', name: 'Shadow Blink', kind: 'teleport', powerCost: 5, cooldown: 4, teleportRng: 6, description: 'Fold into the dark and reappear up to 6 tiles away. Monsters lose your trail.' },
-  { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
+  { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, sight: true, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
 
   /* Mage */
   /* The reserve is a tide, not a cup. This is the half of the answer that

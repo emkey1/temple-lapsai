@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CLASSES, XP_FOR_LEVEL } from '../public/js/base.js';
 import { newGame, floorOf } from './helpers.mjs';
+import { W, H } from '../public/js/mapgen.js';
 
 test('armour class descends: armour and DEX both make you harder to hit', () => {
   const g = newGame('ac');
@@ -113,4 +114,92 @@ test('levelling never gets cheaper as you go', () => {
   for (let l = 1; l < 15; l++) {
     assert.ok(XP_FOR_LEVEL(l + 1) > XP_FOR_LEVEL(l), `level ${l + 2} costs less than level ${l + 1}`);
   }
+});
+
+/* THE WORKINGS THAT TURN ON THE SPOT.
+ *
+ * Three level-nine capstones spread their damage, and each one says a
+ * different thing about where it reaches from. Two of them used to be read as
+ * "an aura with a reach of one tile", which sent them looking for an adjacent
+ * monster to be the centre of themselves — so a thief with a room in view and
+ * nothing touching her was told her working found no target in the light, and
+ * one step closer it hit only the single foe she had walked up to.
+ */
+
+/* A fight, with monsters exactly where the test wants them and nowhere else.
+ * The company stands mid-map so that an offset in any direction is still a
+ * tile the floor has, and the light is forced on afterwards: these are tests
+ * about reach, not about what a wall happens to be standing in front of. */
+function fightAt(level, clsId, seed, at) {
+  const g = newGame(seed, clsId);
+  for (let i = 1; i < level; i++) g.levelUp();
+  g.loadFloor(0);
+  const p = g.state.player;
+  p.x = Math.floor(W / 2); p.y = Math.floor(H / 2);
+  const stock = g.currentFloor.monsters.filter((m) => m.hp > 0);
+  const placed = at.map(([dx, dy], i) => {
+    const m = stock[i % stock.length];
+    const copy = { ...m, x: p.x + dx, y: p.y + dy, hp: 9999, maxhp: 9999, aggro: true, revealed: true };
+    return copy;
+  });
+  g.currentFloor.monsters = placed;
+  g.computeVisibility();
+  /* Whatever the floor's own walls do to the light, these tests are about
+   * reach and not about line of sight. */
+  for (const m of placed) { if (g.vis[m.y]) g.vis[m.y][m.x] = true; }
+  return { g, p, monsters: placed };
+}
+
+const hurt = (ms) => ms.filter((m) => m.hp < m.maxhp).length;
+
+test('Fatal Flurry reaches every foe in the light, not just the one in arm’s reach', () => {
+  const { g, p, monsters } = fightAt(9, 'thief', 'ff', [[1, 0], [4, 0], [0, 5]]);
+  p.power = 99;
+  g.activateAbility('fatal-flurry');
+  assert.equal(hurt(monsters), 3, 'a working that strikes every foe in sight left some of them standing');
+});
+
+test('and it does not need one of them adjacent before it will happen at all', () => {
+  const { g, p, monsters } = fightAt(9, 'thief', 'ff-far', [[4, 0], [0, 5]]);
+  p.power = 99;
+  g.activateAbility('fatal-flurry');
+  assert.equal(hurt(monsters), 2, 'foes in plain view were treated as no target at all');
+  assert.ok(!g.logs.some((l) => /finds no target/.test(l)), 'refused a working that had two things to hit');
+});
+
+test('Whirlwind turns on the fighter, so distance from HIM is what counts', () => {
+  /* One at his elbow, one two tiles off on the OTHER side of him, and one
+   * across the room. The middle foe is the whole test: it stands well within
+   * a dance centred on the man, and four tiles from the one at his elbow. A
+   * circle drawn around the neighbour instead of around the fighter reaches
+   * the first and misses the second, which is exactly what used to happen. */
+  const { g, p, monsters } = fightAt(9, 'fighter', 'ww', [[1, 1], [-2, 0], [7, 0]]);
+  p.power = 99;
+  g.activateAbility('whirlwind');
+  assert.ok(monsters[0].hp < monsters[0].maxhp, 'the foe at the fighter’s elbow went untouched');
+  assert.ok(monsters[1].hp < monsters[1].maxhp, 'the dance was drawn around a monster, not around the man');
+  assert.equal(monsters[2].hp, monsters[2].maxhp, 'the dance reached clear across the room');
+});
+
+test('Fireball still bursts where it lands, not where the mage stands', () => {
+  /* The thrown shape is the one that was never broken: aim at the nearest in
+   * reach, and let the burst catch what stands near IT — while a foe in plain
+   * view but out of range stays out of it, which is what separates this from
+   * the working that strikes the whole room. */
+  const { g, p, monsters } = fightAt(9, 'mage', 'fb', [[4, 0], [5, 0], [0, 7]]);
+  p.power = 99;
+  g.activateAbility('fireball');
+  assert.ok(monsters[0].hp < monsters[0].maxhp, 'the ball missed what it was aimed at');
+  assert.ok(monsters[1].hp < monsters[1].maxhp, 'the burst spared a foe standing beside the target');
+  assert.equal(monsters[2].hp, monsters[2].maxhp, 'the burst reached a foe seven tiles past its range');
+});
+
+test('a working with nothing to reach is still refused before it costs anything', () => {
+  const { g, p } = fightAt(9, 'thief', 'ff-empty', []);
+  p.power = 99;
+  const power = p.power;
+  g.activateAbility('fatal-flurry');
+  assert.equal(p.power, power, 'an empty room still charged for the working');
+  assert.equal(p.cooldowns['fatal-flurry'] || 0, 0, 'an empty room still put it on cooldown');
+  assert.ok(g.logs.some((l) => /finds no target/.test(l)), 'said nothing about why nothing happened');
 });

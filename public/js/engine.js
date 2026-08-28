@@ -3248,10 +3248,7 @@ export class Game {
     const floor = this.currentFloor;
     const monsters = (floor.monsters || []).filter((m) => m.hp > 0);
     if (a.kind === 'damage') {
-      const range = a.range || (a.aura ? 1 : 1000);
-      const targeted = monsters.some((m) => this.vis[m.y] && this.vis[m.y][m.x] && dist8(m, p) <= range);
-      const splashed = a.aura && monsters.some((m) => dist1(m, p) <= a.aura);
-      if (!targeted && !splashed) return a.name + ' finds no target in the light — you hold the working.';
+      if (!this.damageTargets(a).length) return a.name + ' finds no target in the light — you hold the working.';
     } else if (a.kind === 'turn') {
       const answers = monsters.some((m) => m.t.props &&
         (m.t.props.indexOf('undead') >= 0 || m.t.props.indexOf('cursed') >= 0) &&
@@ -3264,42 +3261,63 @@ export class Game {
     return null;
   }
 
-  abilityDamage(a, der) {
-    this.breakSanctuary();
-    const floor = this.currentFloor;
+  /* EVERYTHING A DAMAGING WORKING REACHES, in the order it should be told.
+   *
+   * There are three shapes, and the difference between them is what an
+   * ability says about itself:
+   *
+   *   sight        every foe the light shows. Fatal Flurry throws knives at
+   *                the room, not at a neighbour.
+   *   aura, alone  a radius turning on the caster's own tile. Whirlwind is a
+   *                dance of death "around you", so YOU are the centre of it.
+   *   aura + range the thrown blast: pick a foe within reach, and let the
+   *                burst catch what stands near THEM. Fireball.
+   *
+   * These used to be one expression, and it read an aura with no range of its
+   * own as a reach of one — so both capstones that turn on the spot went
+   * looking for an adjacent monster to be the centre instead of standing at
+   * it. A thief with three foes in view and none of them touching her was
+   * told her working found no target in the light; one step closer, and it
+   * blasted the single monster she had walked up to.
+   *
+   * The refusal law calls this too, rather than keeping its own copy of the
+   * search. The copy is how the two drifted apart in the first place. */
+  damageTargets(a) {
     const p = this.state.player;
-    const range = a.range || (a.aura ? 1 : 1000);
+    const live = (this.currentFloor.monsters || []).filter((m) => m.hp > 0);
+    const lit = (m) => !!(this.vis[m.y] && this.vis[m.y][m.x]);
+
+    if (a.sight) return live.filter(lit);
+    /* Nothing about swinging where you stand requires seeing it first. */
+    if (a.aura && !a.range) return live.filter((m) => dist1(m, p) <= a.aura);
+
+    /* Reach is KING-move reach — a Backstab refused a foe on the diagonal
+     * that a plain strike would take. The preference among those in reach
+     * stays Manhattan (the adjacentMember idiom): straight-on before the
+     * corner, and ranged targeting unchanged. */
+    const range = a.range || 1000;
     let target = null, best = 1e9;
-    for (const m of floor.monsters) {
-      if (m.hp <= 0) continue;
-      if (!this.vis[m.y] || !this.vis[m.y][m.x]) continue;
-      /* Reach is KING-move reach — a Backstab refused a foe on the diagonal
-       * that a plain strike would take. The preference among those in reach
-       * stays Manhattan (the adjacentMember idiom): straight-on before the
-       * corner, and ranged targeting unchanged. */
-      if (dist8(m, p) > range) continue;
+    for (const m of live) {
+      if (!lit(m) || dist8(m, p) > range) continue;
       const d = dist1(m, p);
       if (d < best) { best = d; target = m; }
     }
+    if (!target) return [];
+    if (!a.aura) return [target];
+    return [target, ...live.filter((m) => m !== target && dist1(m, target) <= a.aura)];
+  }
+
+  abilityDamage(a, der) {
+    this.breakSanctuary();
+    const hit = this.damageTargets(a);
+    if (!hit.length) { this.log(a.name + ' finds no target in the light.'); return; }
     const bonus = this.abilityBonus(a.damage, der);
-    const r = this.rngOfTurn();
-    if (a.aura) {
-      const cx = target ? target.x : p.x, cy = target ? target.y : p.y;
-      const hit = floor.monsters.filter((m) => m.hp > 0 && !(m.x === cx && m.y === cy) && Math.abs(m.x - cx) + Math.abs(m.y - cy) <= a.aura);
-      hit.unshift(target);
-      for (const m of hit) {
-        if (!m) continue;
-        const dmg = Math.max(1, this.rollDamage(this.casterDice(a.damage)) + bonus);
-        this.log(a.name + ' blasts the ' + m.t.name + ' for ' + dmg + '!');
-        this.applyDamageToMonster(m, dmg, false, der);
-        if (this.dying) return;
-      }
-    } else if (target) {
+    const spread = !!(a.aura || a.sight);
+    for (const m of hit) {
       const dmg = Math.max(1, this.rollDamage(this.casterDice(a.damage)) + bonus);
-      this.log(a.name + ' strikes the ' + target.t.name + ' for ' + dmg + '!');
-      this.applyDamageToMonster(target, dmg, false, der);
-    } else {
-      this.log(a.name + ' finds no target in the light.');
+      this.log(a.name + (spread ? ' blasts the ' : ' strikes the ') + m.t.name + ' for ' + dmg + '!');
+      this.applyDamageToMonster(m, dmg, false, der);
+      if (this.dying) return;
     }
   }
 
