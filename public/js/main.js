@@ -2051,7 +2051,7 @@ const WALL_VOCAB = {
    * never shows and this renderer never asks for. The near pair of each
    * variety is what belongs here, and having two varieties is what stops
    * a long wall repeating one silhouette down its length. */
-  tileset_cave: { x: [65, 69], y: [64, 68], corner: [96], inner: [100, 101], rise: 300, grounded: true },
+  tileset_cave: { x: [65, 69], y: [64, 68], corner: [96], inner: [100, 101], rise: 300, grounded: true, squash: 0.55 },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
@@ -2219,9 +2219,16 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
           if (!kp) continue;
           /* grounded: the piece's base may not cross its tile's front
            * vertex (ay + TH/2) — see the vocab comment. Lift, never sink. */
-          const lift = vocab.grounded ? Math.max(0, (kp.h - kp.oy) * s - ISO.TH / 2) : 0;
+          /* Flare's crags stand four tiles tall on a 192px grid, which is
+           * right for its camera and reads as double height on ours — the
+           * scene is a room, not a canyon. `squash` shortens the piece
+           * without narrowing it, so the stone keeps its width and its
+           * footing and only loses the cliff. */
+          const q = vocab.squash || 1;
+          const sy = s * q;
+          const lift = vocab.grounded ? Math.max(0, (kp.h - kp.oy) * sy - ISO.TH / 2) : 0;
           ctx.drawImage(kp.img, 0, 0, kp.w, kp.h,
-            ax - kp.ox * s, ay - kp.oy * s - lift, kp.w * s, kp.h * s);
+            ax - kp.ox * s, ay - kp.oy * sy - lift, kp.w * s, kp.h * sy);
           drew = true;
         }
         ctx.globalAlpha = ga;
@@ -2457,7 +2464,9 @@ function renderIsoScene(g, sa) {
   const rockTone = rockToneOf(wtset) || theme.wall;
   /* The cutaway's reach is a screen distance, so it scales with the art. */
   const riseRaw = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
-  const rise = wtset && WALL_VOCAB[wtset.name] ? riseRaw * atlasScale(wtset) : riseRaw;
+  const rise = wtset && WALL_VOCAB[wtset.name]
+    ? riseRaw * atlasScale(wtset) * (WALL_VOCAB[wtset.name].squash || 1)
+    : riseRaw;
   const depth = Math.ceil(rise / (ISO.TH / 2));
   /* THE CUTAWAY CUTS FOR THE COMPANY, NOT FOR THE FLOOR.
    *
@@ -3012,7 +3021,11 @@ function renderGear(g) {
       (it ? '<button data-act="unequip" data-slot="' + slot + '">TAKE OFF</button>' : '') +
       '</div>' + descRow(it, p);
   }
-  els.equipmentBlock.innerHTML = '<h3 class="pane">EQUIPPED</h3>' + html;
+  /* WHOSE. A panel that says only "PACK" is read as "the party's pack",
+   * and a thing handed to a companion then looks lost. Every heading on
+   * this tab names the character it belongs to. */
+  const whose = esc(p.name) + '\u2019s ';
+  els.equipmentBlock.innerHTML = '<h3 class="pane">' + whose.toUpperCase() + 'GEAR</h3>' + html;
 
   const inv = p.inventory || [];
   const onBelt = (it) => (p.belt || []).some((e) => e && (typeof e === 'string' ? e : e.uid) === it.uid);
@@ -3041,7 +3054,7 @@ function renderGear(g) {
       verbs + '</div>' +
       descRow(it, p);
   }).join('');
-  els.inventoryBlock.innerHTML = '<h3 class="pane">PACK (' + inv.length + '/' + PACK_LIMIT + ')</h3>' +
+  els.inventoryBlock.innerHTML = '<h3 class="pane">' + whose.toUpperCase() + 'PACK (' + inv.length + '/' + PACK_LIMIT + ')</h3>' +
     (ih || '<div class="tiny">You carry nothing.</div>');
 
   let belt = '';
@@ -3053,7 +3066,7 @@ function renderGear(g) {
       '<span class="i-name">' + (it ? esc(it.name) : '—') + '</span>' +
       (it ? '<button data-use-belt="' + i + '"' + (own || g.outOfCombat() ? '' : ' disabled title="on their turn"') + '>USE</button><button data-belt="' + i + '">UNBIND</button>' : '') + '</div>';
   }
-  els.beltBlock.innerHTML = '<h3 class="pane">BELT <span class="tiny">shift + 1-4</span></h3>' + belt;
+  els.beltBlock.innerHTML = '<h3 class="pane">' + whose.toUpperCase() + 'BELT <span class="tiny">shift + 1-4</span></h3>' + belt;
 }
 
 /* ---------------- codex ---------------- */
