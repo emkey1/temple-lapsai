@@ -252,7 +252,7 @@ data/expansions.json  Persisted generated content (server-side)
 | `Shift+1`–`4` | Drink or read what is in that belt loop |
 | `V` | Switch between the isometric scene and the classic top-down map |
 | `T` | Kneel the walls to stubs, and raise them again |
-| `+` / `-` | Zoom the isometric scene (the mouse wheel works too) |
+| `+` / `-` | Lean in or out of the scene — to 3x, which is the size the art was painted (the mouse wheel works too) |
 | `Tab` | Cycle panels (stats / gear / codex / library) |
 | `I` / `E` | Gear & inventory panel |
 | `C` | Codex panel |

@@ -1768,7 +1768,14 @@ function getUnknownPattern(ctx) {
   return unknownPattern;
 }
 let isoZoom = 1;
-try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
+/* THE CEILING IS THE ART'S OWN SIZE. Flare draws for a 192-pixel diamond
+ * and this grid is 64, so every wall, floor and prop carries three times
+ * the detail the default view asks of it — leaning all the way in to 3x
+ * is drawing the art at exactly the size it was painted, not upscaling a
+ * smaller picture. Which is the zoom a fight wants: bodies large enough
+ * to read a stance at, and the same crispness the wide view has. */
+const ZOOM_MIN = 0.4, ZOOM_MAX = 3;
+try { isoZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(localStorage.getItem('lapsai-zoom')) || 1)); } catch { /* private mode */ }
 
 /* Whether walls stand at their carved height ('up') or kneel to stubs
  * everywhere ('down') — ToEE's wall button, asked for by name in the
@@ -1785,7 +1792,7 @@ try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'
  * the preference write is deferred, since that touches disk. */
 let zoomSave = null;
 function setIsoZoom(z) {
-  isoZoom = Math.min(1.4, Math.max(0.4, Math.round(z * 100) / 100));
+  isoZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
   lastTiles = '';
   if (game) renderGame(game);
   clearTimeout(zoomSave);
@@ -3283,7 +3290,10 @@ function onKey(e) {
     return;
   }
   if ((k === '+' || k === '=' || k === '-') && viewMode === 'iso' && !cardUp) {
-    setIsoZoom(k === '-' ? isoZoom - 0.15 : isoZoom + 0.15);
+    /* Proportional, like the wheel: a flat step of 0.15 is a third of the
+     * way in at the near end and a twentieth at the far end, so the keys
+     * felt broken at exactly the range this ceiling opened up. */
+    setIsoZoom(k === '-' ? isoZoom / 1.15 : isoZoom * 1.15);
     e.preventDefault();
     return;
   }
