@@ -842,48 +842,75 @@ function atlasScale(tset) {
  * Flare's cliff and cavern pieces carry a large near-black margin — the
  * face that, in a continuous Flare cliff, the NEXT piece covers. This
  * renderer sets one piece per tile, so that margin stays visible and the
- * caverns read as slabs of void with a stripe of rock. Rather than hunt
- * for pieces without margins (there are none) or restrict the art to
- * unbroken runs (which leaves the ends bare), the margin is keyed OUT:
- * one cached copy of the atlas with every near-black opaque pixel made
- * transparent. The wall's own painted prism is drawn first, so what shows
- * through the hole is the theme's stone — rock where the artist painted
- * rock, and honest masonry everywhere they painted shadow. */
-function getKeyedTileset(name) {
-  const key = 'tileset-keyed:' + name;
-  if (sheetCache.has(key)) {
-    const v = sheetCache.get(key);
-    return v === 'pending' ? null : v;
-  }
-  const base = getTileset(name);
-  if (!base) return null;   /* still loading; try again next frame */
-  const c = document.createElement('canvas');
-  c.width = base.img.width; c.height = base.img.height;
-  const cx = c.getContext('2d', { willReadFrequently: true });
-  cx.drawImage(base.img, 0, 0);
-  const px = cx.getImageData(0, 0, c.width, c.height);
+ * caverns read as slabs of void with a stripe of rock. The margin is
+ * keyed OUT: near-black opaque pixels made transparent, hard below a
+ * threshold and feathered above it so a crevice the artist meant as depth
+ * does not become a hole.
+ *
+ * PER PIECE, not per atlas. The first version keyed the whole sheet —
+ * 3072x5760 is seventeen million pixels, some seventy megabytes of canvas
+ * per set, and because the context was opened `willReadFrequently` every
+ * later drawImage came off a CPU-backed surface instead of the GPU. Three
+ * atlases in and the whole scene crawled, worse the longer you played and
+ * the more sets you had walked through. A wall vocabulary uses a handful
+ * of pieces; keying just those costs well under a megabyte and draws at
+ * full speed. */
+const keyedPieces = new Map();
+function getKeyedPiece(tset, id) {
+  const key = tset.name + ':' + id;
+  if (keyedPieces.has(key)) return keyedPieces.get(key);
+  const r = tset.def.tiles[id];
+  if (!r) { keyedPieces.set(key, null); return null; }
+  /* Read on a scratch surface, then hand the result to a clean canvas the
+   * compositor is happy to keep on the GPU. */
+  const scratch = document.createElement('canvas');
+  scratch.width = r.w; scratch.height = r.h;
+  const sx = scratch.getContext('2d', { willReadFrequently: true });
+  sx.drawImage(tset.img, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  const px = sx.getImageData(0, 0, r.w, r.h);
   const d = px.data;
-  /* While every pixel is in hand, take the atlas's own average colour off
-   * the stone that survives. The wall masses this camera sees no face of
-   * have to be SOME colour, and the honest one is the colour of the rock
-   * standing beside them — not the theme's swatch, which read as pink
-   * furniture in a brown cavern. */
   let rs = 0, gs = 0, bs = 0, n = 0;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 8) continue;
     const sum = d[i] + d[i + 1] + d[i + 2];
-    /* Hard black goes entirely; the near-black shoulder fades, so a
-     * crevice the artist meant as depth does not turn into a hole. */
     if (sum < 42) { d[i + 3] = 0; continue; }
     if (sum < 96) d[i + 3] = Math.round(d[i + 3] * ((sum - 42) / 54));
     rs += d[i]; gs += d[i + 1]; bs += d[i + 2]; n++;
   }
-  cx.putImageData(px, 0, 0);
+  sx.putImageData(px, 0, 0);
+  const out = document.createElement('canvas');
+  out.width = r.w; out.height = r.h;
+  out.getContext('2d').drawImage(scratch, 0, 0);
   const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
-  const avg = n ? '#' + hex(rs / n) + hex(gs / n) + hex(bs / n) : null;
-  const made = { name: base.name, img: c, def: base.def, avg };
-  sheetCache.set(key, made);
+  const made = { img: out, w: r.w, h: r.h, ox: r.ox, oy: r.oy,
+    avg: n ? '#' + hex(rs / n) + hex(gs / n) + hex(bs / n) : null };
+  keyedPieces.set(key, made);
   return made;
+}
+
+/* The colour a faceless wall mass wears: the average of the stone this
+ * set's own wall pieces are painted in, taken from the keyed pieces that
+ * are already built. Cached per set, since it never changes. */
+const rockTones = new Map();
+function rockToneOf(tset) {
+  if (!tset || !WALL_VOCAB[tset.name]) return null;
+  if (rockTones.has(tset.name)) return rockTones.get(tset.name);
+  const v = WALL_VOCAB[tset.name];
+  const ids = [...(v.x || []), ...(v.y || []), ...(v.corner || []), ...(v.inner || [])];
+  let rs = 0, gs = 0, bs = 0, n = 0;
+  for (const id of ids) {
+    const kp = getKeyedPiece(tset, id);
+    if (!kp || !kp.avg) continue;
+    const h = kp.avg;
+    rs += parseInt(h.slice(1, 3), 16);
+    gs += parseInt(h.slice(3, 5), 16);
+    bs += parseInt(h.slice(5, 7), 16);
+    n++;
+  }
+  const hex = (x) => Math.round(x).toString(16).padStart(2, '0');
+  const tone = n ? '#' + hex(rs / n) + hex(gs / n) + hex(bs / n) : null;
+  rockTones.set(tset.name, tone);
+  return tone;
 }
 
 /* Which atlas dresses which theme: the masonry sets for built places, the
@@ -2126,8 +2153,7 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
   /* Cut stone is still stone: a stub wears the colour of the set's own
    * rock, not the theme's swatch, or the cutaway leaves pale blocks
    * standing in a dark cavern — which is the whole complaint. */
-  const keyedHere = tset && WALL_VOCAB[tset.name] ? getKeyedTileset(tset.name) : null;
-  const tone = (keyedHere && keyedHere.avg) || theme.wall;
+  const tone = rockToneOf(tset) || theme.wall;
   const { sx, sy } = isoToScreen(t.x, t.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   const ctx = els.ctx;
@@ -2188,15 +2214,14 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
          * was the box: a row of flat pink blocks standing behind the
          * stone. Where the art paints, the art is the wall; where it does
          * not, the tile behind it is the honest answer. */
-        const keyed = getKeyedTileset(tset.name) || tset;
         for (const id of ids) {
-          const r = tset.def.tiles[id];
-          if (!r) continue;
+          const kp = getKeyedPiece(tset, id);
+          if (!kp) continue;
           /* grounded: the piece's base may not cross its tile's front
            * vertex (ay + TH/2) — see the vocab comment. Lift, never sink. */
-          const lift = vocab.grounded ? Math.max(0, (r.h - r.oy) * s - ISO.TH / 2) : 0;
-          ctx.drawImage(keyed.img, r.x, r.y, r.w, r.h,
-            ax - r.ox * s, ay - r.oy * s - lift, r.w * s, r.h * s);
+          const lift = vocab.grounded ? Math.max(0, (kp.h - kp.oy) * s - ISO.TH / 2) : 0;
+          ctx.drawImage(kp.img, 0, 0, kp.w, kp.h,
+            ax - kp.ox * s, ay - kp.oy * s - lift, kp.w * s, kp.h * s);
           drew = true;
         }
         ctx.globalAlpha = ga;
@@ -2429,8 +2454,7 @@ function renderIsoScene(g, sa) {
   /* What colour a faceless wall mass wears: the average of the stone the
    * set actually paints, so a block reads as the same rock seen without
    * its lit face — never as a swatch from a different palette. */
-  const keyedSet = wtset && WALL_VOCAB[wtset.name] ? getKeyedTileset(wtset.name) : null;
-  const rockTone = (keyedSet && keyedSet.avg) || theme.wall;
+  const rockTone = rockToneOf(wtset) || theme.wall;
   /* The cutaway's reach is a screen distance, so it scales with the art. */
   const riseRaw = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const rise = wtset && WALL_VOCAB[wtset.name] ? riseRaw * atlasScale(wtset) : riseRaw;
