@@ -1171,7 +1171,8 @@ function takeStep(step, next) {
   const flags = { dx, dy };
   if (next) { flags.exitDx = next.x - step.x; flags.exitDy = next.y - step.y; }
   const acted = g.handleKey(null, flags);
-  if (currentTab === 'gear') renderGear(g);
+  /* A step can pick something up on landing, so the pack repaints too. */
+  renderGear(g);
   saveGame();
   return acted;
 }
@@ -1710,11 +1711,23 @@ try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-
 let wallMode = 'up';
 try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'; } catch { /* private mode */ }
 
+/* A wheel sends notches faster than a scene can be drawn, and each notch
+ * was repainting the whole floor synchronously — which is what made
+ * zooming feel like dragging. Coalesce to one repaint per animation
+ * frame, and write the preference once the wheel goes quiet. */
+let zoomFrame = null, zoomSave = null;
 function setIsoZoom(z) {
   isoZoom = Math.min(1.4, Math.max(0.4, Math.round(z * 100) / 100));
-  try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
   lastTiles = '';
-  if (game) renderGame(game);
+  if (zoomFrame) return;
+  zoomFrame = requestAnimationFrame(() => {
+    zoomFrame = null;
+    if (game) renderGame(game);
+  });
+  clearTimeout(zoomSave);
+  zoomSave = setTimeout(() => {
+    try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
+  }, 200);
 }
 const ISO_UNIT = 46;   /* what "one tile tall" means for a body in the scene */
 
@@ -2208,9 +2221,10 @@ function drawIsoDoor(ctx, ax, ay, theme, f, g, t) {
       const q = tiles[y] && tiles[y][x];
       return q !== undefined && q !== T.WALL && q !== T.SECRET;
     };
-    /* Floor north and south of it: you walk N-S through it, so the leaf
-     * shows on the south-EAST face. Otherwise the south-west. */
-    west = !(walk(t.x, t.y - 1) && walk(t.x, t.y + 1));
+    /* Screen-left is the tile's SOUTH face, screen-right its EAST. A
+     * passage running north-south is closed by a door you see on the
+     * south face — the left one. East-west, and it is the right. */
+    west = walk(t.x, t.y - 1) && walk(t.x, t.y + 1);
   }
   /* The jamb: the masonry the door is set into, at full wall height so the
    * wall line stays unbroken from across the room. */
@@ -2391,13 +2405,26 @@ function renderIsoScene(g, sa) {
   const riseRaw = (wtset && WALL_VOCAB[wtset.name] && WALL_VOCAB[wtset.name].rise) || ISO.WALL_H;
   const rise = wtset && WALL_VOCAB[wtset.name] ? riseRaw * atlasScale(wtset) : riseRaw;
   const depth = Math.ceil(rise / (ISO.TH / 2));
+  /* THE CUTAWAY CUTS FOR THE COMPANY, NOT FOR THE FLOOR.
+   *
+   * Every seen tile of ground used to cast the cone, which meant nearly
+   * every wall facing the camera was cut to a stub — a room of standing
+   * stone read as a room of kerbs, and walls vanished for no reason the
+   * player could see ("if it is on screen, it should be visible"). Only
+   * bodies need to be seen through a wall: the company, and whatever is
+   * awake and looking at them. Everything else keeps its full height. */
   const shadow = new Set();
-  for (const t of seenTiles) {
-    const tt = floor.tiles[t.y][t.x];
-    if (tt === T.WALL || tt === T.SECRET) continue;
-    const sum = t.x + t.y, diff = t.x - t.y;
+  const watchers = [];
+  for (const m of g.state.party.members) {
+    if (m && m.hp > 0 && m.floorIdx === p.floorIdx && m.dungeonId === p.dungeonId) watchers.push(m);
+  }
+  for (const mo of floor.monsters || []) {
+    if (mo.hp > 0 && !mo.submerged && g.vis[mo.y] && g.vis[mo.y][mo.x]) watchers.push(mo);
+  }
+  for (const w of watchers) {
+    const sum = w.x + w.y, diff = w.x - w.y;
     for (let s = 1; s <= depth; s++) {
-      for (let d = -2; d <= 2; d++) shadow.add((sum + s) * 512 + (diff + d));
+      for (let d = -1; d <= 1; d++) shadow.add((sum + s) * 512 + (diff + d));
     }
   }
   const ghosts = (wx, wy) => shadow.has((wx + wy) * 512 + (wx - wy));
@@ -3139,9 +3166,13 @@ function onKey(e) {
     return;
   }
   if (k === 'g' && !cardUp && game) {
-    /* Loot lands in the pack of the character whose sheet is in focus. */
+    /* Loot lands in the pack of the character whose sheet is in focus.
+     * Both panels repaint whichever tab is up: a scroll that is really in
+     * a pack but absent from the open panel is indistinguishable from one
+     * that was never taken, and that mystery has now cost two reports. */
     game.handleKey('g', { lootTo: viewedIdx === null ? undefined : viewedIdx });
-    if (currentTab === 'gear') renderGear(game);
+    renderGear(game);
+    renderStats(game);
     saveGame();
     e.preventDefault();
     return;

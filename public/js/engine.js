@@ -1718,7 +1718,10 @@ export class Game {
       }
     }
     const idk = !it.identified ? ' unknown' : '';
-    this.uiLog((me ? 'You take: ' : p.name + ' takes: ') + it.name + idk + '.');
+    /* Name the pack, always. "You take: Scroll of Cartography" and then
+     * not finding it is a mystery; "it goes in Porter's pack" is not. */
+    this.uiLog((me ? 'You take: ' : p.name + ' takes: ') + it.name + idk + '.' +
+      (me ? '' : ' (' + p.name + '\u2019s pack)'));
     return true;
   }
 
