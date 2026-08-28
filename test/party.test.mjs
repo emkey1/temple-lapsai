@@ -15,8 +15,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame, savedPlayer, legacyShape } from './helpers.mjs';
-import { installParty, adoptParty, makePlayer } from '../public/js/engine.js';
-import { initialStats } from '../public/js/engine.js';
+import { installParty, adoptParty, makePlayer, initialStats, assignTints } from '../public/js/engine.js';
 
 test('a new game has a party of one, and state.player is its member', () => {
   const g = newGame('party-one');
@@ -166,4 +165,33 @@ test('a reorder that goes nowhere changes nothing', () => {
   assert.equal(g.reorderParty(1, 1), false);
   assert.equal(g.reorderParty(0, 9), false, 'a drop past the end was accepted');
   assert.deepEqual(g.state.party.members.map((m) => m.name), before);
+});
+
+test('a member keeps their colour when the line is redrawn', () => {
+  /* The tint used to come from the roster index, so dragging a nameplate
+   * repainted half the company — and the one question colour exists to
+   * answer, "which of these is which", stopped being answerable. */
+  const g = newGame('order-tint');
+  for (const n of ['Ash', 'Bru', 'Cad']) {
+    g.state.party.members.push(makePlayer(n, 'fighter', initialStats('fighter')));
+  }
+  assignTints(g.state);
+  const before = new Map(g.state.party.members.map((m) => [m.name, m.tint]));
+  assert.equal(new Set(before.values()).size, before.size, 'two members share a colour');
+  g.reorderParty(3, 0);
+  for (const m of g.state.party.members) {
+    assert.equal(m.tint, before.get(m.name), m.name + ' changed colour in the shuffle');
+  }
+});
+
+test('a save from before colours were owned gets them assigned once', () => {
+  const g = newGame('order-tint-legacy');
+  g.state.party.members.push(makePlayer('Ash', 'thief', initialStats('thief')));
+  const raw = JSON.parse(JSON.stringify(g.save()));
+  for (const m of raw.party.members) delete m.tint;
+  const g2 = newGame('order-tint-legacy-2');
+  g2.restore(raw);
+  const tints = g2.state.party.members.map((m) => m.tint);
+  assert.ok(tints.every((t) => Number.isInteger(t)), 'a member came back colourless: ' + tints);
+  assert.equal(new Set(tints).size, tints.length, 'the retrofit doubled up a colour');
 });

@@ -159,6 +159,27 @@ export function installParty(state) {
  * round trip stores the purse ONCE, on the party, and never as a copy per
  * sheet that could drift.
  */
+/* A MEMBER'S COLOUR IS THEIRS, NOT THEIR SLOT'S.
+ *
+ * The tint was taken from the roster index, so dragging a nameplate into
+ * a different place in the line repainted half the company — the ring on
+ * the map, the chip, the name in the top bar — and the one thing the
+ * colours exist to answer ("which of these is which") stopped being
+ * answerable. Each member claims the lowest free tint when they join and
+ * keeps it for life. */
+export function assignTints(state) {
+  const list = (state.party && state.party.members) || [];
+  const taken = new Set(list.filter(Boolean).map((m) => m.tint).filter((t) => Number.isInteger(t)));
+  for (const m of list) {
+    if (!m || Number.isInteger(m.tint)) continue;
+    let t = 0;
+    while (taken.has(t)) t++;
+    m.tint = t;
+    taken.add(t);
+  }
+  return state;
+}
+
 export function linkPurse(state) {
   const party = state.party;
   if (!party) return state;
@@ -196,6 +217,7 @@ export function adoptParty(state) {
     state.party = { members: legacy ? [legacy] : [], active: 0 };
   }
   installParty(state);
+  assignTints(state);
   return linkPurse(state);
 }
 
@@ -639,6 +661,7 @@ export class Game {
     /* The founding handful opens the company purse — linkPurse sweeps the
      * fresh sheet's raw gold in and hands it the accessor. */
     linkPurse(this.state);
+    assignTints(this.state);
     this.applyBackground(this.state.player, backgroundId);
     this.outfitMember(this.state.player, 1);
     this.state.player.maxpower = this.computeMaxPower();
@@ -2042,6 +2065,7 @@ export class Game {
    * able to say what that order is. `active` and any pinned view follow
    * the MEMBER, not the slot, or reordering would quietly hand the reins
    * to somebody else. */
+  /* Tints ride with their owners, so the line can be redrawn freely. */
   reorderParty(from, to) {
     const party = this.state.party;
     const list = party && party.members;

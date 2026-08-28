@@ -14,7 +14,7 @@
 
 import { getItemTemplate, CLASSES, BACKGROUNDS } from './base.js';
 import { deepItem } from './dice.js';
-import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from './engine.js';
+import { PACK_LIMIT, makePlayer, initialStats, linkPurse, assignTints } from './engine.js';
 
 export const PRICES = {
   buyMarkup: 2,      /* the shop sells at twice an item's worth — it is a shop */
@@ -287,6 +287,7 @@ export function hireMember(game, clsId) {
   b.gold = 0;
   party.members.push(b);
   linkPurse(game.state);   /* the new sheet reads the one company purse */
+  assignTints(game.state);   /* and claims a colour of their own */
   if (game.currentFloor) game.placePartyAround(game.currentFloor, leader);
   game.log(name + ' the ' + c.name + ' takes your coin and the road down. (' + cost + ' gold)');
   if (game.journal) game.journal(name + ' the ' + c.name + ' joined the company for ' + cost + ' gold.');

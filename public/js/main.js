@@ -184,6 +184,15 @@ const CONTROLS = [
 /* ---------------- state ---------------- */
 let game = null;
 let currentTab = 'stats';
+/* A member's colour follows the MEMBER. `partyTint` still maps a slot to a
+ * hue, but which slot belongs to whom is decided once, when they join, and
+ * carried on the character — so redrawing the line does not repaint the
+ * company. Falls back to position for anything that predates the field. */
+function tintOf(m, fallbackIdx) {
+  const slot = m && Number.isInteger(m.tint) ? m.tint : fallbackIdx;
+  return partyTint(slot || 0);
+}
+
 /* Which member the sheets show. null follows whoever holds the reins; a
  * number is the player having pinned someone — arranging a companion's straps
  * mid-round is exactly what the strip is for. */
@@ -469,7 +478,7 @@ function showShop(g, sellIdx) {
    * the counter. */
   const chips = party.map((m, i) => m
     ? '<button class="mini" data-seller="' + i + '"' + (i === sellIdx ? ' disabled' : '') +
-      ' style="color:' + partyTint(i) + ';border-color:' + partyTint(i) + '">' +
+      ' style="color:' + tintOf(m, i) + ';border-color:' + tintOf(m, i) + '">' +
       esc(m.name) + (m.hp > 0 ? '' : ' †') + '</button>'
     : '').join(' ');
   /* Grouped like the pack: eight healing draughts are one row — sell one,
@@ -1389,7 +1398,7 @@ function renderInitiative(g) {
     if (e.member) {
       const idx = g.state.party.members.indexOf(e.ref);
       out.push('<span class="ini-chip' + (now ? ' now' : done ? ' done' : '') +
-        '" style="color:' + partyTint(idx) + ';border-color:' + partyTint(idx) + '">' +
+        '" style="color:' + tintOf(e.ref, idx) + ';border-color:' + tintOf(e.ref, idx) + '">' +
         esc(e.ref.name) + '</span>');
     } else {
       out.push('<span class="ini-chip hostile' + (done ? ' done' : '') + '">' +
@@ -1699,9 +1708,9 @@ function renderClassic(g, sa) {
     g.state.party.members.forEach((m, i) => {
       if (!m || m === p) return;
       if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
-      drawMember(m, partyTint(i), false);
+      drawMember(m, tintOf(m, i), false);
     });
-    drawMember(p, partyTint(g.state.party.members.indexOf(p)), true);
+    drawMember(p, tintOf(p, g.state.party.members.indexOf(p)), true);
   }
   drawMouseOverlay(g);
 }
@@ -2637,8 +2646,8 @@ function renderIsoScene(g, sa) {
     if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
     standers.push({ x: m.x, y: m.y, draw: () => {
       const a = isoToScreen(m.x, m.y);
-      const drew = drawMemberAt(a.sx - isoCamX, a.sy - isoCamY + 4, ISO_UNIT, ISO.TW * 0.30, ISO.TW * 0.15, m, partyTint(i), m === p);
-      if (!drew) drawIsoGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? partyTint(i) : '#7a3a30', 0);
+      const drew = drawMemberAt(a.sx - isoCamX, a.sy - isoCamY + 4, ISO_UNIT, ISO.TW * 0.30, ISO.TW * 0.15, m, tintOf(m, i), m === p);
+      if (!drew) drawIsoGlyph(m.x, m.y, PLAYER_GLYPH, m.hp > 0 ? tintOf(m, i) : '#7a3a30', 0);
     } });
   });
   standers.sort(paintOrder);
@@ -2653,7 +2662,7 @@ function renderIsoScene(g, sa) {
     if (m.floorIdx !== p.floorIdx || m.dungeonId !== p.dungeonId) return;
     const a = isoToScreen(m.x, m.y);
     drawRingAt(a.sx - isoCamX, a.sy - isoCamY + 4, ISO.TW * 0.30, ISO.TW * 0.15,
-      partyTint(i), { dim: true, bold: m === p });
+      tintOf(m, i), { dim: true, bold: m === p });
   });
 
   /* WHOSE TURN IT IS, on the board: in a fight a chevron hangs over the
@@ -2669,7 +2678,7 @@ function renderIsoScene(g, sa) {
     ctx.lineTo(ax + 7, ay - 44);
     ctx.lineTo(ax, ay - 33);
     ctx.closePath();
-    ctx.fillStyle = partyTint(g.state.party.members.indexOf(p));
+    ctx.fillStyle = tintOf(p, g.state.party.members.indexOf(p));
     ctx.fill();
     ctx.strokeStyle = 'rgba(5, 7, 5, 0.85)';
     ctx.lineWidth = 1.5;
@@ -2779,7 +2788,7 @@ function renderHud(g) {
     els.hpWound.style.display = lost > 0 ? '' : 'none';
   }
   const slot = g.state.party.members.indexOf(p);
-  els.topstatus.innerHTML = '<b style="color:' + partyTint(slot) + '">' + esc(p.name) + '</b> · Lv ' + p.level +
+  els.topstatus.innerHTML = '<b style="color:' + tintOf(p, slot) + '">' + esc(p.name) + '</b> · Lv ' + p.level +
     ' · ' + p.hp + '/' + p.maxhp + ' hp' +
     (p.wounds > 0 ? ' (' + p.wounds + ' wounded)' : '') +
     ' · ' + p.power + '/' + p.maxpower + ' pwr · ' + g.purse() + ' gp';
@@ -2804,7 +2813,7 @@ function renderPartyStrip(g) {
   const shown = viewedMember(g);
   els.partyStrip.innerHTML = g.state.party.members.map((m, i) => {
     if (!m) return '';
-    const tint = partyTint(i);
+    const tint = tintOf(m, i);
     const reins = m === g.state.player ? ' ●' : '';
     /* The nameplate carries the health: the same red bar as the HUD, in
      * miniature, so the whole company's blood is one glance up. */
@@ -3040,7 +3049,7 @@ function renderGear(g) {
     const giveIdx = free === undefined ? grp.indices[0] : free;
     const handing = givingUid && inv[giveIdx] && inv[giveIdx].uid === givingUid;
     const verbs = handing
-      ? others.map((m) => '<button data-give-to="' + g.state.party.members.indexOf(m) + '" data-give="' + giveIdx + '" style="color:' + partyTint(g.state.party.members.indexOf(m)) + '">&rarr; ' + esc(m.name) + '</button>').join('') +
+      ? others.map((m) => '<button data-give-to="' + g.state.party.members.indexOf(m) + '" data-give="' + giveIdx + '" style="color:' + tintOf(m, g.state.party.members.indexOf(m)) + '">&rarr; ' + esc(m.name) + '</button>').join('') +
         '<button data-give-cancel="1">&times;</button>'
       : (it.slot === 'consumable' || it.kind === 'wand'
           ? '<button data-inv="' + grp.indices[0] + '"' + (own || g.outOfCombat() ? '' : ' disabled title="on their turn"') + '>' + itemVerb(it) + '</button>'
