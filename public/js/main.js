@@ -1711,23 +1711,38 @@ try { isoZoom = Math.min(1.4, Math.max(0.4, Number(localStorage.getItem('lapsai-
 let wallMode = 'up';
 try { wallMode = localStorage.getItem('lapsai-walls') === 'down' ? 'down' : 'up'; } catch { /* private mode */ }
 
-/* A wheel sends notches faster than a scene can be drawn, and each notch
- * was repainting the whole floor synchronously — which is what made
- * zooming feel like dragging. Coalesce to one repaint per animation
- * frame, and write the preference once the wheel goes quiet. */
-let zoomFrame = null, zoomSave = null;
+/* ZOOM GLIDES, IT DOES NOT STEP.
+ *
+ * A repaint of the whole floor measures under six milliseconds, so the
+ * jerkiness was never cost — it was the SIZE OF THE STEP: every notch
+ * moved the scene ten percent at once, and the eye reads a stack of
+ * instant jumps as stutter. The wheel now sets a TARGET and each frame
+ * eases toward it, so a gesture is one continuous movement. The
+ * preference is written when the gliding stops. */
+let zoomTarget = isoZoom, zoomFrame = null, zoomSave = null;
 function setIsoZoom(z) {
-  isoZoom = Math.min(1.4, Math.max(0.4, Math.round(z * 100) / 100));
-  lastTiles = '';
+  zoomTarget = Math.min(1.4, Math.max(0.4, Math.round(z * 1000) / 1000));
   if (zoomFrame) return;
-  zoomFrame = requestAnimationFrame(() => {
-    zoomFrame = null;
+  const step = () => {
+    const gap = zoomTarget - isoZoom;
+    /* Close enough to land: snap, stop, and remember. */
+    if (Math.abs(gap) < 0.004) {
+      isoZoom = zoomTarget;
+      zoomFrame = null;
+      lastTiles = '';
+      if (game) renderGame(game);
+      clearTimeout(zoomSave);
+      zoomSave = setTimeout(() => {
+        try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
+      }, 150);
+      return;
+    }
+    isoZoom = Math.round((isoZoom + gap * 0.28) * 1000) / 1000;
+    lastTiles = '';
     if (game) renderGame(game);
-  });
-  clearTimeout(zoomSave);
-  zoomSave = setTimeout(() => {
-    try { localStorage.setItem('lapsai-zoom', String(isoZoom)); } catch { /* private mode */ }
-  }, 200);
+    zoomFrame = requestAnimationFrame(step);
+  };
+  zoomFrame = requestAnimationFrame(step);
 }
 const ISO_UNIT = 46;   /* what "one tile tall" means for a body in the scene */
 
@@ -2012,7 +2027,7 @@ const WALL_VOCAB = {
    * never shows and this renderer never asks for. The near pair of each
    * variety is what belongs here, and having two varieties is what stops
    * a long wall repeating one silhouette down its length. */
-  tileset_cave: { x: [65, 69], y: [64, 68], corner: [64, 65], rise: 300, grounded: true },
+  tileset_cave: { x: [65, 69], y: [64, 68], corner: [96], rise: 300, grounded: true },
   /* tileset_cave WAS absent, and cave themes drew NO wall art
    * at all — the painted prisms in the theme's own colours are the walls.
    * Every art route was tried and audited first: the cave set's walls are
@@ -2188,7 +2203,7 @@ function drawIsoWall(g, t, tile, theme, sa, tset, stub) {
        * `const f` in this block put the whole block in the dead zone.) */
       const sf = vis ? 1 : 0.7;
       drawPrism(ctx, ax, ay, STUB_H,
-        shade(theme.wallHi, 1.1 * sf), shade(theme.wall, 0.9 * sf), shade(theme.wall, 0.62 * sf));
+        shade(theme.wall, 0.26 * sf), shade(theme.wall, 0.2 * sf), shade(theme.wall, 0.14 * sf));
       return;
     }
   }
@@ -2483,8 +2498,13 @@ function renderIsoScene(g, sa) {
       standers.push({ x: t.x, y: t.y, draw: () => {
         const a = isoToScreen(t.x, t.y);
         const f = vis ? 1 : 0.75;
+        /* THE BACK OF A WALL IS ROCK, NOT UPHOLSTERY. This mass used to
+         * wear the theme's own wall colour at half strength, which beside
+         * real painted stone read as slabs of pink furniture standing in
+         * the cavern. Unlit rock is nearly black with a hint of the
+         * theme, which is what the back of a wall looks like. */
         drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
-          shade(theme.wall, 0.5 * f), shade(theme.wall, 0.42 * f), shade(theme.wall, 0.3 * f));
+          shade(theme.wall, 0.22 * f), shade(theme.wall, 0.17 * f), shade(theme.wall, 0.12 * f));
       } });
     }
   }
@@ -2509,7 +2529,7 @@ function renderIsoScene(g, sa) {
         standers.push({ x: nx, y: ny, draw: () => {
           const a = isoToScreen(nx, ny);
           drawPrism(ctx, a.sx - isoCamX, a.sy - isoCamY, STUB_H,
-            shade(theme.wall, 0.42), shade(theme.wall, 0.34), shade(theme.wall, 0.26));
+            shade(theme.wall, 0.2), shade(theme.wall, 0.15), shade(theme.wall, 0.11));
         } });
       }
     }
