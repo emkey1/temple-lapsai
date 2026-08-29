@@ -300,6 +300,21 @@ h3.pane {
   font-size: 12px;
 }
 .ability-card b { color: var(--amb); }
+/* The reach box: a tick and the colour its ring will wear on the ground. */
+.ability-card .reach {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+.ability-card .reach input { margin: 0; cursor: pointer; }
+.ability-card .reach .swatch {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--ink-faint);
+  display: inline-block;
+}
 .ability-card .desc { color: var(--ink-dim); font-size: 11px; }
 .ability-card.regen { animation: glow 1.6s infinite; }
 @keyframes glow { 50% { box-shadow: 0 0 8px rgba(95,168,216,.4); } }

@@ -3,7 +3,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CLASSES, XP_FOR_LEVEL } from '../public/js/base.js';
+import { CLASSES, XP_FOR_LEVEL, ABILITIES } from '../public/js/base.js';
+import { abilityReach } from '../public/js/contract.js';
 import { newGame, floorOf } from './helpers.mjs';
 import { W, H } from '../public/js/mapgen.js';
 
@@ -236,4 +237,66 @@ test('what stands at a fighter’s elbow is lit by standing there', () => {
   p.power = 99;
   g.activateAbility('whirlwind');
   assert.ok(m.hp < m.maxhp, 'the dance missed the foe it was touching');
+});
+
+/* WHAT THE RING ON THE GROUND PROMISES.
+ *
+ * The reach overlay is drawn from abilityReach, and the working is resolved
+ * by damageTargets. If those two ever disagree the indicator is worse than no
+ * indicator — it is a drawn promise the engine will not keep. These pin the
+ * agreement, and in particular the METRIC, which is the half that is easy to
+ * get wrong and impossible to notice: picking a target measures in king moves
+ * and a blast measures in steps, so a ring drawn as the wrong one is a tile
+ * and a half out on exactly the diagonals a player checks it on.
+ */
+
+test('a working with no ground reach offers nothing to draw', () => {
+  for (const id of ['sharp-keen', 'ebb-flow', 'hide-shadows']) {
+    const a = ABILITIES.find((x) => x.id === id);
+    if (a) assert.equal(abilityReach(a), null, id + ' offered a ring it cannot draw');
+  }
+});
+
+test('aiming measures in king moves, blasting and turning in steps', () => {
+  const reach = (id) => abilityReach(ABILITIES.find((x) => x.id === id));
+  assert.deepEqual(reach('firebolt'), { shape: 'aim', metric: 'chebyshev', radius: 7, blast: 0 });
+  assert.deepEqual(reach('fireball'), { shape: 'aim', metric: 'chebyshev', radius: 5, blast: 3 });
+  /* Whirlwind and Judgment turn on the spot and measure in steps. */
+  assert.deepEqual(reach('whirlwind'), { shape: 'aura', metric: 'manhattan', radius: 2 });
+  assert.deepEqual(reach('judgment'), { shape: 'aura', metric: 'manhattan', radius: 5 });
+  assert.deepEqual(reach('turn-undead'), { shape: 'aura', metric: 'manhattan', radius: 6 });
+  /* Fatal Flurry has no boundary but the light. */
+  assert.deepEqual(reach('fatal-flurry'), { shape: 'sight' });
+});
+
+test('the ring is drawn where the engine would actually reach', () => {
+  /* The claim under the whole feature: every tile the ring encloses is one
+   * the working can touch, and every tile outside it is one it cannot. */
+  const cases = [
+    ['fighter', 'whirlwind'],
+    ['cleric', 'judgment'],
+    ['mage', 'firebolt'],
+  ];
+  for (const [cls, id] of cases) {
+    const a = ABILITIES.find((x) => x.id === id);
+    const reach = abilityReach(a);
+    const spots = [[1, 0], [0, 1], [2, 2], [3, 3], [4, 0], [5, 0], [6, 6], [0, 7]];
+    const { g, p, monsters } = fightAt(9, cls, 'ring-' + id, spots);
+    p.power = 999;
+    const hit = new Set(g.damageTargets(a).map((m) => `${m.x},${m.y}`));
+    for (const m of monsters) {
+      const dx = Math.abs(m.x - p.x), dy = Math.abs(m.y - p.y);
+      const d = reach.metric === 'manhattan' ? dx + dy : Math.max(dx, dy);
+      const inside = d <= reach.radius;
+      /* An aim-shaped working strikes ONE of the things inside its ring, so
+       * the honest claim is one-directional: nothing outside is ever hit. */
+      if (!inside) {
+        assert.ok(!hit.has(`${m.x},${m.y}`),
+          `${id}: struck a foe at ${dx},${dy} from outside the ring it draws`);
+      } else if (reach.shape === 'aura') {
+        assert.ok(hit.has(`${m.x},${m.y}`),
+          `${id}: drew a ring over a foe at ${dx},${dy} and then spared it`);
+      }
+    }
+  }
 });

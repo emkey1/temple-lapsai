@@ -107,6 +107,43 @@ export const SLOT_FOR_KIND = {
 
 export const WEARABLE_SLOTS = ['weapon', 'body', 'shield', 'ring', 'amulet'];
 
+/* HOW FAR A WORKING REACHES, in one place because three parts of the game now
+ * ask: the card that describes it, the overlay that draws it on the ground,
+ * and — through the shapes below — the engine that resolves it. An indicator
+ * that disagreed with the resolution would be worse than none, so the shapes
+ * here are the ones abilityDamage actually branches on, and the metrics are
+ * the ones it actually measures with.
+ *
+ *   sight   everything the light shows; no boundary but the field of view
+ *   aura    a ball centred on the caster
+ *   aim     a ball you may pick a target inside, with an optional blast that
+ *           opens around the TARGET rather than around you
+ *
+ * The metric matters as much as the radius. Picking a target measures in KING
+ * moves (dist8, a square); a blast and a turning measure in steps (dist1, a
+ * diamond). Drawing one as the other would put the ring a tile and a half
+ * wrong on the diagonals, which is exactly where a player checks it.
+ *
+ * Null means the working does not reach across ground at all — a passive, a
+ * buff worn on yourself — and null is what suppresses the checkbox. */
+export function abilityReach(a) {
+  if (!a || a.kind === 'passive') return null;
+  if (a.kind === 'damage') {
+    if (a.sight) return { shape: 'sight' };
+    if (a.aura && !a.range) return { shape: 'aura', metric: 'manhattan', radius: a.aura };
+    /* No reach named and no aura is the engine's thousand-tile default: it
+     * hits the nearest thing in the light, so the light IS the boundary. */
+    if (!a.range) return { shape: 'sight' };
+    return { shape: 'aim', metric: 'chebyshev', radius: a.range, blast: a.aura || 0 };
+  }
+  if (a.kind === 'turn') return { shape: 'aura', metric: 'manhattan', radius: a.range || 6 };
+  /* Teleport rolls each axis on its own, which is a square and not a ball. */
+  if (a.kind === 'teleport') return { shape: 'aura', metric: 'chebyshev', radius: a.teleportRng || 6 };
+  /* A healing touch finds the worst hurt within arm's length. */
+  if (a.kind === 'heal') return a.selfOnly ? null : { shape: 'aura', metric: 'chebyshev', radius: 1 };
+  return null;
+}
+
 /* KIND BEFORE SLOT, and one copy of the rule for everyone who needs it.
  *
  * A wand's slot is `weapon`, because a staff can be wielded and an equipped

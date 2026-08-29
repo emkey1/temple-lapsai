@@ -11,7 +11,7 @@ import { T, W, H, isTravelable } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD } from './world.js';
-import { WEARABLE_SLOTS as WEARABLE, isWorn, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
+import { WEARABLE_SLOTS as WEARABLE, isWorn, abilityReach, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
   CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef, parseTilesetDef,
@@ -1749,6 +1749,27 @@ function renderClassic(g, sa) {
  * classic top-down grid stays one V away — it is the tactical map now,
  * not the whole game. */
 
+/* WHICH WORKINGS ARE SHOWING THEIR REACH. A set of ability ids, remembered
+ * across sessions, because a player who wants to see where Firebolt stops
+ * wants to see it tomorrow as well. Ticked one at a time so a Mage can
+ * compare two spells' reach at once without reading numbers. */
+let rangeRings = new Set();
+try { rangeRings = new Set(JSON.parse(localStorage.getItem('lapsai-rings') || '[]')); } catch { /* private mode */ }
+function saveRings() {
+  try { localStorage.setItem('lapsai-rings', JSON.stringify([...rangeRings])); } catch { /* private mode */ }
+}
+
+/* A stable colour per working, so a ring you learned to recognise keeps its
+ * colour, and two rings on the ground at once can be told apart. Chosen to
+ * sit on grass, rock and dark floor alike without reading as a monster tint
+ * (nothing here is red — red on this map always means something alive). */
+const RING_COLOURS = ['#e8b44a', '#5fd0e8', '#84dd7a', '#c98ae8', '#e8a06a'];
+function ringColour(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return RING_COLOURS[h % RING_COLOURS.length];
+}
+
 let viewMode = 'iso';
 try { viewMode = localStorage.getItem('lapsai-view') || 'iso'; } catch { /* private mode */ }
 let isoCamX = 0, isoCamY = 0;
@@ -2406,6 +2427,59 @@ function drawIsoMonster(g, m, p) {
   drawIsoGlyph(m.x, m.y, m.t.glyph, dim ? shade(tint, 0.7) : tint, 0);
 }
 
+/* The tiles a working reaches, as a test rather than a list, so the caller
+ * can ask about a tile's neighbour without building the set twice. */
+function reachTest(g, p, reach) {
+  if (reach.shape === 'sight') {
+    return (x, y) => !!(g.vis && g.vis[y] && g.vis[y][x]);
+  }
+  const r = reach.radius;
+  if (reach.metric === 'manhattan') {
+    return (x, y) => Math.abs(x - p.x) + Math.abs(y - p.y) <= r;
+  }
+  return (x, y) => Math.max(Math.abs(x - p.x), Math.abs(y - p.y)) <= r;
+}
+
+function drawIsoReach(g, p) {
+  if (!rangeRings.size || !p) return;
+  const ctx = els.ctx;
+  const floor = g.currentFloor;
+  if (!floor) return;
+  for (const a of g.allAbilities(p)) {
+    if (!rangeRings.has(a.id)) continue;
+    const reach = abilityReach(a);
+    if (!reach) continue;
+    const inside = reachTest(g, p, reach);
+    /* Only as far as the ring could possibly go: the whole floor for a
+     * sight-bounded working, a box around the caster for the rest. */
+    const rad = reach.shape === 'sight' ? Math.max(W, H) : reach.radius + 1;
+    const x0 = Math.max(0, p.x - rad), x1 = Math.min(W - 1, p.x + rad);
+    const y0 = Math.max(0, p.y - rad), y1 = Math.min(H - 1, p.y + rad);
+    ctx.save();
+    ctx.strokeStyle = ringColour(a.id);
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.85;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (!inside(x, y)) continue;
+        const s = isoToScreen(x, y);
+        const c = diamondPath(s.sx - isoCamX, s.sy - isoCamY);
+        /* The diamond's corners run top, right, bottom, left — so the edge
+         * shared with the neighbour one step along world x is right-to-
+         * bottom, and along world y is bottom-to-left. */
+        if (!inside(x + 1, y)) { ctx.moveTo(c[1][0], c[1][1]); ctx.lineTo(c[2][0], c[2][1]); }
+        if (!inside(x, y + 1)) { ctx.moveTo(c[2][0], c[2][1]); ctx.lineTo(c[3][0], c[3][1]); }
+        if (!inside(x - 1, y)) { ctx.moveTo(c[3][0], c[3][1]); ctx.lineTo(c[0][0], c[0][1]); }
+        if (!inside(x, y - 1)) { ctx.moveTo(c[0][0], c[0][1]); ctx.lineTo(c[1][0], c[1][1]); }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function renderIsoScene(g, sa) {
   const ctx = els.ctx;
   const floor = g.currentFloor;
@@ -2489,6 +2563,20 @@ function renderIsoScene(g, sa) {
       ctx.globalAlpha = ga;
     }
   }
+
+  /* THE REACH OF A WORKING, on the ground where the decision is made.
+   *
+   * Outlined, never filled: a filled disc of nine tiles' radius washes out
+   * the floor it is supposed to help you read, and the only line that
+   * carries information is the last one — where the working stops. So the
+   * region is walked and an edge drawn wherever a tile inside it touches a
+   * tile outside, which draws the true shape of whatever metric the
+   * ability measures with, diagonals and all, rather than an ellipse that
+   * happens to be about right.
+   *
+   * Centred on the member whose card is open, since that is whose reach
+   * you ticked — not on whoever holds the reins. */
+  drawIsoReach(g, viewedMember(g));
 
   /* the route, drawn on the ground so the standing world occludes it */
   const preview = !(walkPath && walkPath.length) && hoverPath && hoverPath.length;
@@ -3018,7 +3106,18 @@ function renderStats(g) {
       intMod: abilityMod(effV.int), strMod: abilityMod(effV.str),
       practice: Math.floor((p.level - 1) / 3), level: p.level,
     });
-    el.innerHTML = '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
+    /* THE REACH BOX. Only on workings that reach across ground — a passive
+     * or a mantle worn on yourself has no boundary to draw, and an empty
+     * checkbox beside one is a promise the map cannot keep. The swatch is
+     * the colour its ring will be, so two ticked at once can be told apart
+     * on the floor without counting tiles. */
+    const reach = abilityReach(a);
+    const box = reach
+      ? '<span class="reach" title="Show this working\u2019s reach on the ground">' +
+        '<input type="checkbox" data-ring="' + esc(a.id) + '"' + (rangeRings.has(a.id) ? ' checked' : '') + '>' +
+        '<i class="swatch" style="background:' + ringColour(a.id) + '"></i></span>'
+      : '';
+    el.innerHTML = box + '<b>[' + (i + 1) + '] ' + esc(a.name) + '</b>' +
       (a.kind === 'passive' ? ' <span class="tiny">passive</span>'
         /* "0 pwr" reads as broken. A working that costs nothing is at will. */
         : ' <span class="tiny">' + (a.powerCost ? a.powerCost + ' pwr' : 'at will') +
@@ -3030,6 +3129,20 @@ function renderStats(g) {
       (heals ? ' <span class="tiny">(' + esc(heals) + ')</span>' : '') +
       (renews ? ' <span class="tiny">(' + esc(renews) + ')</span>' : '') + '</div>';
     if ((!can || !usable) && a.kind !== 'passive') el.style.opacity = 0.55;
+    /* The box lives inside the card, and the card fires the working when
+     * clicked. Ticking a box must not also cast the spell. */
+    const tick = el.querySelector('.reach');
+    if (tick) {
+      tick.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const input = tick.querySelector('input');
+        if (ev.target !== input) return;
+        if (input.checked) rangeRings.add(a.id); else rangeRings.delete(a.id);
+        saveRings();
+        lastTiles = '';
+        if (game) renderGame(game);
+      });
+    }
     el.onclick = () => {
       if (!game || game.dying || a.kind === 'passive') return;
       if (own) game.activateAbility(a.id);
