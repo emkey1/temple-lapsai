@@ -1879,6 +1879,13 @@ export class Game {
   killMonster(m) {
     const p = this.state.player;
     const floor = this.currentFloor;
+    /* Dead is dead on the creature as well as on the floor. Every caller
+     * until now arrived through applyDamageToMonster, which had already
+     * taken the hp below zero, so this was true by luck rather than by
+     * rule — and a finisher that kills WITHOUT rolling damage is the first
+     * caller that does not. Anything still holding the reference (a round
+     * order, a shift debt, a quest tally) reads hp, not the floor list. */
+    if (m.hp > 0) m.hp = 0;
     this.state.totalKills = (this.state.totalKills || 0) + 1;
     const cleaves = this.hasPassive('cleave') && !this.actorTurn().cleaved;
     if (m.boss) this.onBossSlain(m);
@@ -3284,8 +3291,13 @@ export class Game {
         dist1(m, p) <= (a.range || 6));
       if (!answers) return 'Nothing unholy is near enough to answer — you hold the working.';
     } else if (a.kind === 'heal') {
-      const mark = this.healTarget(a);
-      if (mark.hp >= mark.maxhp) return (mark === p ? 'You are' : mark.name + ' is') + ' whole — you hold the working.';
+      if (a.party) {
+        const any = this.livingMembers().some((m) => dist1(m, p) <= a.party && m.hp < m.maxhp);
+        if (!any) return 'Nobody within reach is hurt — you hold the working.';
+      } else {
+        const mark = this.healTarget(a);
+        if (mark.hp >= mark.maxhp) return (mark === p ? 'You are' : mark.name + ' is') + ' whole — you hold the working.';
+      }
     }
     return null;
   }
@@ -3346,11 +3358,30 @@ export class Game {
     if (!hit.length) { this.log(a.name + ' finds no target in the light.'); return; }
     const bonus = this.abilityBonus(a.damage, der);
     const spread = !!(a.aura || a.sight);
+    let held = 0;
     for (const m of hit) {
+      /* FINISHING. A foe already down to its last share does not get rolled
+       * for — the working is the finish, not another blow. Measured before
+       * the damage, so "already down to a third" means what it says. */
+      if (a.execute && m.hp <= Math.max(1, Math.round(m.maxhp * a.execute))) {
+        this.log(a.name + ' finds the seam — the ' + m.t.name + ' stops.');
+        this.killMonster(m);
+        if (this.dying) return;
+        continue;
+      }
       const dmg = Math.max(1, this.rollDamage(this.casterDice(a.damage)) + bonus);
       this.log(a.name + (spread ? ' blasts the ' : ' strikes the ') + m.t.name + ' for ' + dmg + '!');
       this.applyDamageToMonster(m, dmg, false, der);
       if (this.dying) return;
+      /* HOLDING. monsterTakeTurn has read `stunned` since the Wand of Frost;
+       * this is the first thing that sets it for more than a heartbeat. */
+      if (a.stun && m.hp > 0) {
+        m.stunned = Math.max(m.stunned || 0, a.stun);
+        held++;
+      }
+    }
+    if (held) {
+      this.log('The cold closes: ' + held + (held === 1 ? ' of them stands still.' : ' of them stand still.'));
     }
   }
 
@@ -3477,9 +3508,24 @@ export class Game {
 
   abilityHeal(a) {
     /* Hand-authored abilities carry "3d6"; generated ones carry {dice,sides}. */
-    const rolled = (a.heal && typeof a.heal === 'object') ? this.rollDamage(a.heal) : evaluateDice(a.heal, this.rngOfTurn());
+    const roll = () => ((a.heal && typeof a.heal === 'object')
+      ? this.rollDamage(a.heal)
+      : evaluateDice(a.heal, this.rngOfTurn()));
+    const fraction = healFractionForAbility(a);
+    /* Mending for the company: everyone hurt within reach, each rolling
+     * their own dice and each with their own floor, because a quarter of a
+     * mage is not a quarter of a fighter. */
+    if (a.party) {
+      const p = this.state.player;
+      const marks = this.livingMembers().filter((m) => dist1(m, p) <= a.party && m.hp < m.maxhp);
+      let total = 0;
+      for (const m of marks) total += this.applyHeal(roll(), fraction, m);
+      this.log('The old gods answer for all of you: ' + total + ' hit points across ' +
+        marks.length + (marks.length === 1 ? ' of you.' : ' of you.'));
+      return;
+    }
     const mark = this.healTarget(a);
-    const mended = this.applyHeal(rolled, healFractionForAbility(a), mark);
+    const mended = this.applyHeal(roll(), fraction, mark);
     this.log('Old forces knit ' + (mark === this.state.player ? 'your' : mark.name + '’s') +
       ' wounds for ' + mended + ' hit points.');
   }
@@ -3516,12 +3562,28 @@ export class Game {
       return;
     }
     const kind = a.buff === 'ward' ? 'ward' : 'might';
-    p.buffs[kind] = turns;
-    if (!p.buffLevels) p.buffLevels = {};
-    p.buffLevels[kind] = bonus;
+    /* A mantle worn for the company rather than for yourself: `party` is a
+     * radius in steps, and everyone standing inside it wears the same one.
+     * Their countdowns tick on their own turns — tickMemberStatus already
+     * runs for every living member, which is why this needs nothing else. */
+    const marks = a.party
+      ? this.livingMembers().filter((m) => dist1(m, p) <= a.party)
+      : [p];
+    for (const m of marks) {
+      if (!m.buffs) m.buffs = {};
+      if (!m.buffLevels) m.buffLevels = {};
+      m.buffs[kind] = turns;
+      m.buffLevels[kind] = bonus;
+    }
+    const many = marks.length > 1;
     this.log(kind === 'ward'
-      ? 'A skin of cold air closes over you: ' + bonus + ' turned aside from every blow, ' + turns + ' turns.'
-      : 'Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.');
+      ? (many
+        ? 'You plant, and the company plants with you: ' + bonus + ' turned aside from every blow against ' +
+          marks.length + ' of you, ' + turns + ' turns.'
+        : 'A skin of cold air closes over you: ' + bonus + ' turned aside from every blow, ' + turns + ' turns.')
+      : (many
+        ? 'Every arm here steadies: +' + bonus + ' to hit for ' + marks.length + ' of you, ' + turns + ' turns.'
+        : 'Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.'));
   }
 
   abilityReveal(a) {

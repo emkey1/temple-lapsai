@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CLASSES, XP_FOR_LEVEL, ABILITIES } from '../public/js/base.js';
 import { abilityReach } from '../public/js/contract.js';
+import { validateAbility } from '../lib/expansion.js';
 import { newGame, floorOf } from './helpers.mjs';
 import { W, H } from '../public/js/mapgen.js';
 
@@ -267,6 +268,12 @@ test('aiming measures in king moves, blasting and turning in steps', () => {
   assert.deepEqual(reach('turn-undead'), { shape: 'aura', metric: 'manhattan', radius: 6 });
   /* Fatal Flurry has no boundary but the light. */
   assert.deepEqual(reach('fatal-flurry'), { shape: 'sight' });
+  /* And the twelfth level: a ward and a mending thrown over the company
+   * reach ground too, so both draw a ring like anything else. */
+  assert.deepEqual(reach('hold-the-line'), { shape: 'aura', metric: 'manhattan', radius: 2 });
+  assert.deepEqual(reach('intercession'), { shape: 'aura', metric: 'manhattan', radius: 2 });
+  assert.deepEqual(reach('rimebind'), { shape: 'aim', metric: 'chebyshev', radius: 5, blast: 2 });
+  assert.deepEqual(reach('quiet-word'), { shape: 'aim', metric: 'chebyshev', radius: 1, blast: 0 });
 });
 
 test('the ring is drawn where the engine would actually reach', () => {
@@ -298,5 +305,123 @@ test('the ring is drawn where the engine would actually reach', () => {
           `${id}: drew a ring over a foe at ${dx},${dy} and then spared it`);
       }
     }
+  }
+});
+
+/* THE TWELFTH LEVEL.
+ *
+ * The last dungeon is tuned for levels 11-13 and the ladder stopped at nine,
+ * so the approach to the Wyrm was bigger numbers and no new tools. These four
+ * are each a verb their class did not have — protect, mend the company,
+ * control, finish — and between them they add three fields the engine had
+ * never seen: `party`, `stun` and `execute`.
+ */
+
+test('Hold the Line wards the company, not just the man who plants', () => {
+  const { g, p } = fightAt(12, 'fighter', 'htl', [[1, 0]]);
+  const mates = g.livingMembers().filter((m) => m !== p);
+  mates.forEach((m, i) => { m.x = p.x + (i ? 2 : 1); m.y = p.y; });
+  const far = mates[mates.length - 1];
+  if (far) { far.x = p.x + 9; far.y = p.y; }
+  p.power = 99;
+  g.activateAbility('hold-the-line');
+  assert.ok(p.buffs.ward > 0, 'the fighter did not ward himself');
+  const near = g.livingMembers().filter((m) => m !== p && Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2);
+  for (const m of near) assert.ok(m.buffs.ward > 0, m.name + ' stood beside him and got nothing');
+  if (far && Math.abs(far.x - p.x) > 2) {
+    assert.ok(!(far.buffs.ward > 0), 'the ward reached someone nine tiles away');
+  }
+});
+
+test('and every warded member turns the same amount aside', () => {
+  const { g, p } = fightAt(12, 'fighter', 'htl-amt', [[1, 0]]);
+  const mate = g.livingMembers().find((m) => m !== p);
+  if (!mate) return;
+  mate.x = p.x + 1; mate.y = p.y;
+  p.power = 99;
+  g.activateAbility('hold-the-line');
+  /* bonus 2, plus floor((12-1)/4) = 2, so four turned aside from each blow. */
+  assert.equal(p.buffLevels.ward, 4);
+  assert.equal(mate.buffLevels.ward, 4, 'the company wore a thinner ward than its captain');
+});
+
+test('Intercession mends everyone in reach, each to their own floor', () => {
+  const { g, p } = fightAt(12, 'cleric', 'inter', [[1, 0]]);
+  const mates = g.livingMembers().filter((m) => m !== p);
+  mates.forEach((m, i) => { m.x = p.x + 1; m.y = p.y + i; });
+  const far = mates[mates.length - 1];
+  if (far) { far.x = p.x + 9; }
+  for (const m of g.livingMembers()) m.hp = 1;
+  p.power = 99;
+  g.activateAbility('intercession');
+  const near = g.livingMembers().filter((m) => Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2);
+  for (const m of near) {
+    assert.ok(m.hp >= Math.round(m.maxhp / 4), m.name + ' was left under their own quarter');
+  }
+  if (far && Math.abs(far.x - p.x) > 2) assert.equal(far.hp, 1, 'the answer carried nine tiles');
+});
+
+test('and it is refused, unspent, when nobody in reach is hurt', () => {
+  const { g, p } = fightAt(12, 'cleric', 'inter-whole', [[1, 0]]);
+  g.livingMembers().forEach((m) => { m.x = p.x; m.y = p.y; m.hp = m.maxhp; });
+  p.power = 99;
+  const power = p.power;
+  g.activateAbility('intercession');
+  assert.equal(p.power, power, 'a whole company still paid for the working');
+  assert.equal(p.cooldowns['intercession'] || 0, 0, 'and it went on cooldown');
+});
+
+test('Rimebind holds what it catches still', () => {
+  const { g, p, monsters } = fightAt(12, 'mage', 'rime', [[4, 0], [5, 0], [0, 9]]);
+  p.power = 99;
+  g.activateAbility('rimebind');
+  assert.ok(monsters[0].stunned >= 2, 'the bloom did not hold what it was aimed at');
+  assert.ok(monsters[1].stunned >= 2, 'a foe beside the target went unfrozen');
+  assert.ok(!(monsters[2].stunned > 0), 'the cold reached nine tiles');
+});
+
+test('a frozen foe actually loses its turn', () => {
+  /* monsterTakeTurn has read `stunned` since the Wand of Frost; this is the
+   * first thing that sets it for longer than a heartbeat, so it is worth
+   * checking the two ends meet. */
+  const { g, p, monsters } = fightAt(12, 'mage', 'rime-turn', [[4, 0]]);
+  p.power = 99;
+  g.activateAbility('rimebind');
+  const m = monsters[0];
+  const before = m.stunned;
+  const wasAt = { x: m.x, y: m.y };
+  g.monsterTakeTurn(m);
+  assert.equal(m.stunned, before - 1, 'the freeze did not count down on its turn');
+  assert.deepEqual({ x: m.x, y: m.y }, wasAt, 'it moved while frozen');
+});
+
+test('The Quiet Word finishes a foe already down to a third', () => {
+  const { g, p, monsters } = fightAt(12, 'thief', 'qw', [[1, 0]]);
+  const m = monsters[0];
+  m.maxhp = 120; m.hp = 30;            /* a quarter left: under the third */
+  p.power = 99;
+  g.activateAbility('quiet-word');
+  assert.ok(m.hp <= 0, 'a foe on its last third walked away from the finish');
+  assert.ok(!g.currentFloor.monsters.includes(m), 'it died and stayed on the floor');
+});
+
+test('but rolls honestly against one that is not', () => {
+  const { g, p, monsters } = fightAt(12, 'thief', 'qw-high', [[1, 0]]);
+  const m = monsters[0];
+  m.maxhp = 120; m.hp = 119;           /* barely scratched */
+  p.power = 99;
+  g.activateAbility('quiet-word');
+  assert.ok(m.hp > 0, 'a foe at full health was executed');
+  assert.ok(m.hp < 119, 'and it took no damage either');
+});
+
+test('the Library cannot write itself a finisher, a freeze or a company ward', () => {
+  const written = validateAbility({
+    type: 'ability', cls: 'thief', name: 'Everything Dies', level: 12, kind: 'damage',
+    powerCost: 1, cooldown: 1, range: 9, damage: { dice: 1, sides: 2, bonus: 0 },
+    execute: 0.99, stun: 9, party: 9, sight: true,
+  });
+  for (const key of ['execute', 'stun', 'party', 'sight']) {
+    assert.equal(written[key], undefined, 'the oracle was allowed to write ' + key);
   }
 });

@@ -128,6 +128,10 @@ export const WEARABLE_SLOTS = ['weapon', 'body', 'shield', 'ring', 'amulet'];
  * buff worn on yourself — and null is what suppresses the checkbox. */
 export function abilityReach(a) {
   if (!a || a.kind === 'passive') return null;
+  /* A working that reaches the COMPANY reaches ground, whatever its kind —
+   * a ward thrown over everyone within two tiles has a boundary worth
+   * drawing even though nothing about it is an attack. */
+  if (a.party) return { shape: 'aura', metric: 'manhattan', radius: a.party };
   if (a.kind === 'damage') {
     if (a.sight) return { shape: 'sight' };
     if (a.aura && !a.range) return { shape: 'aura', metric: 'manhattan', radius: a.aura };

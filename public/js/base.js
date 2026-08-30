@@ -157,6 +157,23 @@ export const ABILITIES = [
    * the old 5 power it would have been four castings and two full bars. */
   { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', selfOnly: true, powerCost: 8, cooldown: 0, heal: '3d6', healFraction: 0.5, description: 'Breathe deep and shake off the dark: heal 3d6. Your own breath — no one else’s.' },
   { cls: 'fighter', level: 9, id: 'whirlwind', name: 'Whirlwind', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 6, bonus: 3, dice: 2, n: 'str' }, description: 'A dance of death: deal 2d6 + your STR bonus to every foe around you.' },
+  /* THE TWELFTH LEVEL, and why there is one.
+   *
+   * The last dungeon is tuned for levels 11-13 and the ladder stopped at
+   * nine, so the whole approach to the Wyrm was bigger numbers and no new
+   * tools. And the nine tier is four flavours of "hit an area" — a second
+   * one of those is not a tier. Each of these is a verb its class does not
+   * otherwise have: the fighter PROTECTS, the cleric MENDS THE COMPANY, the
+   * mage CONTROLS, the thief FINISHES.
+   *
+   * `party` is a radius in steps around the caster that a buff or a heal
+   * reaches, and it is the first thing in the game that touches the whole
+   * company at once. `stun` and `execute` are the other two new fields.
+   * None of the three may be written by the Library — validateAbility
+   * copies by name and does not know them, the fence `sight` stands behind,
+   * because a model with no ceiling writing "kills outright below a
+   * threshold" is not an ability, it is a floor clear. */
+  { cls: 'fighter', level: 12, id: 'hold-the-line', name: 'Hold the Line', kind: 'buff', buff: 'ward', bonus: 2, turns: 5, party: 2, powerCost: 8, cooldown: 4, description: 'Plant your feet and the company plants with you: every blow against anyone within two tiles is blunted, for five turns.' },
 
   /* Thief */
   { cls: 'thief', level: 1, id: 'sharp-keen', name: 'Sharp & Keen', kind: 'passive', critBonus: 0.10, findsSecrets: true, description: 'You strike where it tells: +10% to wound critically, and your hands find seams other people walk past.' },
@@ -164,6 +181,7 @@ export const ABILITIES = [
   { cls: 'thief', level: 3, id: 'backstab', name: 'Backstab', kind: 'damage', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 4, dice: 1 }, description: 'Find the unguarded flank: deal 1d6+4 to a foe and vanish one tile.' },
   { cls: 'thief', level: 6, id: 'shadow-blink', name: 'Shadow Blink', kind: 'teleport', powerCost: 5, cooldown: 4, teleportRng: 6, description: 'Fold into the dark and reappear up to 6 tiles away. Monsters lose your trail.' },
   { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, sight: true, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
+  { cls: 'thief', level: 12, id: 'quiet-word', name: 'The Quiet Word', kind: 'damage', powerCost: 7, cooldown: 4, range: 1, execute: 1 / 3, damage: { sides: 6, bonus: 3, dice: 3 }, description: 'Finish it: 3d6+3 to one foe — and a foe already down to a third of itself simply stops.' },
 
   /* Mage */
   /* The reserve is a tide, not a cup. This is the half of the answer that
@@ -188,6 +206,7 @@ export const ABILITIES = [
   { cls: 'mage', level: 3, id: 'reveal', name: 'Light & Reveal', kind: 'reveal', powerCost: 2, cooldown: 0, description: 'Reveal all secret doors and traps on this floor until you leave it.' },
   { cls: 'mage', level: 6, id: 'blink', name: 'Blink', kind: 'teleport', powerCost: 4, cooldown: 4, teleportRng: 6, description: 'Rend the veil: teleport to a random spot up to 6 tiles away.' },
   { cls: 'mage', level: 9, id: 'fireball', name: 'Fireball', kind: 'damage', powerCost: 9, cooldown: 3, aura: 3, range: 5, damage: { sides: 6, bonus: 0, dice: 3, int: true }, description: 'Ball of doom: 3d6 + your INT bonus to the target and everything within a 3-tile blast.' },
+  { cls: 'mage', level: 12, id: 'rimebind', name: 'Rimebind', kind: 'damage', powerCost: 9, cooldown: 4, range: 5, aura: 2, stun: 2, damage: { sides: 6, bonus: 0, dice: 2, int: true }, description: 'The air closes to ice: 2d6 + your INT in a two-tile bloom, and what it catches stands still for two turns.' },
 
   /* Cleric */
   /* A third, not a quarter: at a quarter this was the same integer as a 15gp
@@ -201,6 +220,7 @@ export const ABILITIES = [
    * range as how far off it may pick its one target — so this was written as
    * a five-tile reach to hit a single foe, and read on its card as a blast. */
   { cls: 'cleric', level: 9, id: 'judgment', name: 'Judgment', kind: 'damage', powerCost: 8, cooldown: 3, aura: 5, damage: { sides: 6, bonus: 0, dice: 3 }, description: 'Scythe of the temple: 3d6 to every foe in a 5-tile blast.' },
+  { cls: 'cleric', level: 12, id: 'intercession', name: 'Intercession', kind: 'heal', powerCost: 9, cooldown: 4, heal: '3d6', healFraction: 1 / 4, party: 2, description: 'The old gods answer for all of you: 3d6 to every member within two tiles, and never less than a quarter of their own health.' },
 ];
 
 export function abilitiesFor(clsId, level) {
