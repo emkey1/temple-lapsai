@@ -222,6 +222,36 @@ let registry = {
   abilities: [],
 };
 
+/* A CHARACTER'S REGISTRY IS A SNAPSHOT, NOT THE TRUTH.
+ *
+ * Every save writes the whole registry into the character's record, and
+ * loading one used to REPLACE the live registry with that snapshot — then
+ * persist it over the top of localStorage. So: commission a dungeon, the
+ * Library certifies it and prints its blurb, reload, press CONTINUE, and the
+ * save's older snapshot overwrites it in the game AND on disk. The server
+ * still has it in data/expansions.json, so the next boot installs it again
+ * and the next CONTINUE wipes it again, for ever. That is the playtest's
+ * dungeon that "is not visible even after reloading".
+ *
+ * Registry entries are keyed by id and are only ever added, so the honest
+ * operation is a union. What is already known wins on a collision, because it
+ * came from the server or from a later boot; anything only the save has is
+ * kept, because it may be the one machine that ever saw it. */
+function mergeRegistry(base, extra) {
+  const out = { items: [], monsters: [], dungeons: [], abilities: [] };
+  for (const key of Object.keys(out)) {
+    const seen = new Set();
+    for (const list of [base && base[key], extra && extra[key]]) {
+      for (const e of (Array.isArray(list) ? list : [])) {
+        if (!e || !e.id || seen.has(e.id)) continue;
+        seen.add(e.id);
+        out[key].push(e);
+      }
+    }
+  }
+  return out;
+}
+
 function loadRegistry() {
   try {
     const raw = localStorage.getItem(REGISTRY_KEY);
@@ -3818,7 +3848,7 @@ function openCharacter(id) {
     return;
   }
   try {
-    if (data.registry) registry = data.registry;
+    if (data.registry) registry = mergeRegistry(registry, data.registry);
     persistRegistry();
     const g = makeGame();
     g.restore(data.state);
@@ -4131,6 +4161,11 @@ function installExpansion(exp) {
       monsterWeights: [...monsters.map((m) => m.id), boss ? boss.id : null].filter(Boolean),
       bossId: boss ? boss.id : null,
       requires: exp.requires || 'temple',
+      /* The strength it was cut for. The validator derives this from the
+       * boss's tier and the installer used to drop it on the floor, which
+       * left the gate unable to fire and the mouth unable to say what it
+       * asks of you. */
+      minLevel: exp.minLevel || 0,
     });
     return true;
   }
@@ -4211,6 +4246,9 @@ async function doExpand(action) {
     const exp = data.expansion;
     if (installExpansion(exp)) {
       persistRegistry();
+      /* Into the character's own record too, so the next CONTINUE carries it
+       * even if the server file is ever cleared. */
+      saveGame();
       logLine('The Library certifies a new work: ' + (exp.name || exp.type || 'a binding'), 'good');
       els.libResult.innerHTML = '<div class="expansion-card"><b>' + esc(exp.name || 'New ' + (exp.type || 'content')) + '</b>' +
         '<p class="flavor">' + esc(exp.flavor || exp.description || '') + '</p></div>';

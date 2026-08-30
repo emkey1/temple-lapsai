@@ -951,3 +951,52 @@ test('a company is its average, not its best or its worst', () => {
   for (let i = 1; i < 11; i++) g.levelUp(g.state.player);   /* 11 and 1 */
   assert.equal(g.companyLevel(), 6, 'a veteran and a hireling did not average to six');
 });
+
+/* A REGISTRY IS ADDED TO, NEVER REPLACED.
+ *
+ * Every save writes the whole registry into the character's record, and
+ * loading one replaced the live registry with that snapshot, then persisted it
+ * over localStorage. Commission a dungeon, reload, press CONTINUE, and the
+ * older snapshot wiped it from the game and from disk — while the server kept
+ * serving it, so every boot reinstalled it and every CONTINUE wiped it again.
+ * This is the shape of that, at the level the engine can see.
+ */
+
+test('a dungeon the world knows about survives a save that predates it', () => {
+  const world = {
+    items: [], abilities: [], monsters: [{ id: 'm1', name: 'New Thing' }],
+    dungeons: [{ id: 'exp-new', name: 'The Tithing Vault', requires: 'temple' }],
+  };
+  const older = {
+    items: [{ id: 'i0', name: 'Old Trinket' }], abilities: [], monsters: [],
+    dungeons: [{ id: 'exp-old', name: 'An Earlier Work', requires: 'temple' }],
+  };
+  /* The union the loader now performs. */
+  const merged = { items: [], monsters: [], dungeons: [], abilities: [] };
+  for (const key of Object.keys(merged)) {
+    const seen = new Set();
+    for (const list of [world[key], older[key]]) {
+      for (const e of (list || [])) {
+        if (!e || !e.id || seen.has(e.id)) continue;
+        seen.add(e.id); merged[key].push(e);
+      }
+    }
+  }
+  assert.deepEqual(merged.dungeons.map((d) => d.id), ['exp-new', 'exp-old'],
+    'loading an older save dropped a dungeon the world already knew');
+  assert.equal(merged.items.length, 1, 'the save’s own work was lost instead');
+});
+
+test('and a written dungeon reaches the green with the level it asks for', () => {
+  const g = newGame('written-mouth');
+  g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
+  g.registry.dungeons.push({
+    id: 'exp-vault', type: 'dungeon', name: 'The Tithing Vault',
+    floors: 10, theme: 'tomb', threat: 12, requires: 'temple',
+    monsterWeights: [], bossId: null, minLevel: 13,
+  });
+  g.enterTown();
+  const mouth = (g.currentFloor.mouths || []).find((m) => m.dungeonId === 'exp-vault');
+  assert.ok(mouth, 'a written dungeon got no way in');
+  assert.match(mouth.name, /Lv 13\+/, 'the mouth does not say what it asks of you');
+});
