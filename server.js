@@ -123,7 +123,9 @@ async function handleExpand(action, context) {
   const prompt = buildPrompt(action, context);
   const text = await callOracle(oracle, prompt, { timeoutMs: PATIENCE[action] || 300_000 });
   const parsed = extractJSON(text);
-  const expansion = validateExpansion(parsed);
+  /* The floor under a written sanctum's threat comes from the client, which
+   * is the only side that knows what the company has already finished. */
+  const expansion = validateExpansion(parsed, { minThreat: context && context.minThreat });
   return await appendExpansion(expansion);
 }
 

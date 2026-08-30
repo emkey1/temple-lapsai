@@ -4178,6 +4178,13 @@ async function doExpand(action) {
      * from a copy of it, so a briefing cannot go stale when the writing
      * grows — and sent every time, because the register is the part a model
      * gets wrong first. */
+    /* A written sanctum may not be gentler than the last thing the company
+     * cleared — the model does not know what that was, so the floor is sent
+     * rather than asked for. */
+    if (game) {
+      const cleared = game.availableDungeons().filter((d) => d && game.isDungeonCleared(d.id));
+      bodyContext.minThreat = cleared.reduce((n, d) => Math.max(n, (d.threat || 0) + 2), 0);
+    }
     bodyContext.lore = loreBriefing({
       dungeons: game ? game.availableDungeons().map((x) => x && x.name).filter(Boolean) : [],
     });

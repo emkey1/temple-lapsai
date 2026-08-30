@@ -869,12 +869,25 @@ export function generateTownFloor(dungeons) {
 
   /* The mouths: one stair down per way the world offers, in a row along
    * the east field. */
+  /* THE EAST FIELD HOLDS MORE THAN FIVE NOW.
+   *
+   * One column spaced five apart ran out of field at the sixth mouth and
+   * dropped it silently — three founding sanctums plus two written ones and
+   * the next one you commissioned was reachable by id and by nothing else.
+   * Two columns, spaced four: eleven ways down before anything is lost. */
   const mouths = [];
   (dungeons || []).forEach((d, i) => {
-    const x = 52, y = 12 + i * 5;
-    if (y > 36) return;
+    const col = Math.floor(i / 6);
+    const x = 52 - col * 4, y = 10 + (i % 6) * 4;
+    if (y > 36 || col > 1) return;
     tiles[y][x] = T.DOWN;
-    mouths.push({ x, y, dungeonId: d.id, name: d.name });
+    /* The name carries the strength the place was cut for, so the choice is
+     * made at the mouth rather than one floor down. */
+    mouths.push({
+      x, y, dungeonId: d.id,
+      name: d.minLevel ? `${d.name} (Lv ${d.minLevel}+)` : d.name,
+      minLevel: d.minLevel || 0,
+    });
   });
 
   /* Furniture (standing) and paths (flat, laid under feet). */

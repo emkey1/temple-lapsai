@@ -289,3 +289,20 @@ test('the defaults sit near the shipped bestiary rather than inventing a curve',
       `at tier ${real.tier} the default is ${guess.hpMax} hp against ${real.name}'s ${real.hpMax}`);
   }
 });
+
+test('a written sanctum may not be gentler than what the company has cleared', () => {
+  const raw = { name: 'A Stroll', threat: 1, boss: { name: 'Something', tier: 13 } };
+  assert.equal(validateDungeon(raw).threat, 1, 'the floor applies when nobody asked for one');
+  assert.equal(validateDungeon(raw, { minThreat: 6 }).threat, 6, 'a generous model handed a post-game party a stroll');
+  /* And a dramatic one cannot be talked up past the ceiling either. */
+  assert.ok(validateDungeon({ ...raw, threat: 999 }, { minThreat: 6 }).threat <= 20);
+});
+
+test('the minimum level is derived from the boss, not claimed by the model', () => {
+  const d = validateDungeon({ name: 'X', minLevel: 1, boss: { name: 'B', tier: 13 } });
+  assert.equal(d.minLevel, 12, 'a model talked its way past the level gate');
+  /* Against the shipped three: bosses at tier 7, 9 and 12, measured as tuned
+   * for levels 5-7, 8-10 and 11-13. */
+  assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 9 } }).minLevel, 8);
+  assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 12 } }).minLevel, 11);
+});

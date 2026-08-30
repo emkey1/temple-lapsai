@@ -763,9 +763,36 @@ export class Game {
     this.advanceQueue();
   }
 
+  /* THE COMPANY'S LEVEL, for a door that has an opinion about it.
+   *
+   * The average of the living, not the best of them: a level-13 fighter
+   * dragging three fresh hirelings is not a level-13 company, and taking the
+   * highest would let one veteran walk everyone into something that kills
+   * them. Nor the lowest — one hireling should not bar the door. */
+  companyLevel() {
+    const live = this.livingMembers();
+    if (!live.length) return (this.state.player && this.state.player.level) || 1;
+    return Math.floor(live.reduce((n, m) => n + (m.level || 1), 0) / live.length);
+  }
+
+  /* A written sanctum states the strength it was built for, and holds the
+   * door until the company has it. The founding three are never gated: they
+   * are unlocked in order by what you have killed, and a level gate on top of
+   * that could only ever strand somebody between the two rules. */
+  dungeonBarred(d) {
+    if (!d || !d.minLevel) return null;
+    if (this.baseDungeonIds().includes(d.id)) return null;
+    const have = this.companyLevel();
+    if (have >= d.minLevel) return null;
+    return `${d.name} is shut to you. The way down is cut for a company of level ` +
+      `${d.minLevel}; yours averages ${have}.`;
+  }
+
   enterDungeon(id) {
     const d = this.dungeonById(id);
     if (!d) { this.log('That path is not written yet.'); return; }
+    const barred = this.dungeonBarred(d);
+    if (barred) { this.log(barred); return; }
     this.state.player.dungeonId = id;
     this.state.player.floorIdx = 0;
     if (!this.state.player.visitedDungeons[id]) {

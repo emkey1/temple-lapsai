@@ -870,3 +870,84 @@ test('the two leaves are side by side, so they can meet at a ridge', () => {
   assert.equal(doors[0] - towers[0], 1, 'the west turret does not touch the gate');
   assert.equal(towers[1] - doors[1], 1, 'the east turret does not touch the gate');
 });
+
+/* THE EAST FIELD, AND WHAT IT WILL LET YOU WALK INTO.
+ *
+ * Two things the Library exposed. The mouths ran down one column spaced five
+ * apart and were dropped past the edge of the field, so the sixth way down —
+ * three founding sanctums plus three written ones — existed, was "available",
+ * and had no stairs. And nothing scaled a written sanctum to the company:
+ * monsters take their numbers from depth and threat by design, which left a
+ * generous model free to hand a post-game party a stroll and a dramatic one
+ * free to hand a level-3 company four hundred hit points with no warning.
+ */
+
+test('the east field holds every way down, not the first five', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: 'd' + i, name: 'Sanctum ' + i }));
+  const f = generateTownFloor(many);
+  assert.equal(f.mouths.length, many.length, 'ways down were silently dropped');
+  const seen = new Set(f.mouths.map((m) => m.x + ',' + m.y));
+  assert.equal(seen.size, many.length, 'two mouths were placed on the same tile');
+});
+
+test('and every one of them is a staircase you can walk to', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: 'd' + i, name: 'Sanctum ' + i }));
+  const f = generateTownFloor(many);
+  const seen = Array.from({ length: TH2 }, () => Array(TW2).fill(false));
+  const q = [f.entry];
+  seen[f.entry.y][f.entry.x] = true;
+  while (q.length) {
+    const c = q.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = c.x + dx, y = c.y + dy;
+      if (x < 0 || y < 0 || x >= TW2 || y >= TH2 || seen[y][x]) continue;
+      if (!trav(f.tiles[y][x])) continue;
+      seen[y][x] = true; q.push({ x, y });
+    }
+  }
+  for (const m of f.mouths) {
+    assert.equal(f.tiles[m.y][m.x], TT.DOWN, m.name + ' has no stairs at ' + m.x + ',' + m.y);
+    assert.ok(seen[m.y][m.x], m.name + ' cannot be walked to');
+  }
+});
+
+test('a written sanctum wears the strength it was cut for', () => {
+  const f = generateTownFloor([{ id: 'w', name: 'The Debtor’s Bastion', minLevel: 12 }]);
+  assert.match(f.mouths[0].name, /Lv 12\+/, 'the mouth does not say what it asks of you');
+});
+
+test('and the door is shut until the company has it', () => {
+  const g = newGame('gate-level');
+  g.registry.dungeons.push({
+    id: 'bastion', name: 'The Debtor’s Bastion', floors: 3, theme: 'halls',
+    threat: 8, minLevel: 12, monsters: [], items: [], boss: null,
+  });
+  const p = g.state.player;
+  p.bossesSlain = { temple: true, upper: true, serpent: true };
+  g.logs.length = 0;
+  g.enterDungeon('bastion');
+  assert.notEqual(p.dungeonId, 'bastion', 'a level-1 company walked into a level-12 sanctum');
+  assert.ok(g.logs.some((l) => /shut to you/.test(l)), 'and was told nothing about why');
+
+  for (let i = 1; i < 12; i++) g.levelUp();
+  g.enterDungeon('bastion');
+  assert.equal(p.dungeonId, 'bastion', 'a company that met the mark was still refused');
+});
+
+test('the founding three are never level-gated, whatever else is', () => {
+  /* They unlock in order by what you have killed; a level gate on top could
+   * only strand somebody between the two rules. */
+  const g = newGame('gate-base');
+  for (const id of g.baseDungeonIds()) {
+    const d = g.dungeonById(id);
+    assert.equal(g.dungeonBarred({ ...d, minLevel: 99 }), null, id + ' was barred by level');
+  }
+});
+
+test('a company is its average, not its best or its worst', () => {
+  const g = newGame('company-level');
+  const mate = makePlayer('Hireling', 'thief', initialStats('thief'));
+  g.state.party.members.push(mate);
+  for (let i = 1; i < 11; i++) g.levelUp(g.state.player);   /* 11 and 1 */
+  assert.equal(g.companyLevel(), 6, 'a veteran and a hireling did not average to six');
+});
