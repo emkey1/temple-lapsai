@@ -237,3 +237,55 @@ test('no world and no source leaves the prompt as it was', () => {
   assert.ok(!p.includes('THE WORLD THIS BELONGS TO'));
   assert.ok(!p.includes('DRAW ON:'));
 });
+
+/* A NAME ALONE IS NOT A MONSTER.
+ *
+ * The dungeon prompt asked for "MONSTER objects" and never said what one was
+ * — those schemas were only ever emitted for their own commissions. So the
+ * model wrote {name} and nothing else, the validator filled the rest with
+ * flat defaults, and the first dungeon generated came back with a tier-12
+ * boss on ten hit points, a d6, and no flavour: every stat a default wearing
+ * a magnificent name.
+ */
+
+test('the dungeon prompt defines the objects it asks for', () => {
+  const p = buildPrompt('dungeon', {});
+  for (const field of ['"hpMax":int', '"ac":int', '"props":', '"flavor":string']) {
+    assert.ok(p.includes(field), 'the dungeon prompt never defines a monster: missing ' + field);
+  }
+  for (const field of ['"acBonus":int', '"cursed":bool', '"effects":']) {
+    assert.ok(p.includes(field), 'the dungeon prompt never defines an item: missing ' + field);
+  }
+  assert.ok(/FILL IN EVERY FIELD/i.test(p), 'nothing tells it a name is not a monster');
+});
+
+test('and an under-specified monster still arrives at the depth it claimed', () => {
+  /* Only what a terse model actually wrote: a name and a tier. */
+  const boss = validateMonster({ name: 'The Garrison Commander', tier: 12 });
+  assert.ok(boss.hpMax > 90, `a tier-12 boss came back on ${boss.hpMax} hit points`);
+  assert.ok(boss.ac <= 4, `a tier-12 boss came back at AC ${boss.ac}`);
+  assert.ok(boss.damage.dice > 1, 'a tier-12 boss came back swinging one die');
+  assert.ok(boss.xp > 300, `a tier-12 boss was worth ${boss.xp} experience`);
+
+  const rat = validateMonster({ name: 'Something Small', tier: 0 });
+  assert.ok(rat.hpMax <= 6, `a tier-0 creature came back on ${rat.hpMax} hit points`);
+  assert.ok(rat.hpMax < boss.hpMax / 10, 'the curve does not separate a rat from a wyrm');
+});
+
+test('but anything the model DID say still beats the default', () => {
+  const m = validateMonster({ name: 'Glass Thing', tier: 12, hpMax: 4, ac: 12, xp: 7 });
+  assert.equal(m.hpMax, 4, 'the validator overrode a deliberate choice');
+  assert.equal(m.ac, 12);
+  assert.equal(m.xp, 7);
+});
+
+test('the defaults sit near the shipped bestiary rather than inventing a curve', async () => {
+  const { MONSTERS } = await import('../public/js/base.js');
+  for (const id of ['rat', 'goblin', 'ettin']) {
+    const real = MONSTERS.find((x) => x.id === id);
+    const guess = validateMonster({ name: 'x', tier: real.tier });
+    const ratio = guess.hpMax / real.hpMax;
+    assert.ok(ratio > 0.6 && ratio < 1.8,
+      `at tier ${real.tier} the default is ${guess.hpMax} hp against ${real.name}'s ${real.hpMax}`);
+  }
+});
