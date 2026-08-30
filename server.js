@@ -119,9 +119,23 @@ function appendExpansion(expansion) {
  * model reads as slow rather than as broken. */
 const PATIENCE = { dungeon: 900_000, monster: 300_000, item: 300_000, ability: 300_000 };
 
+/* And how much room to finish in. A dungeon is a boss, three monsters, two
+ * items and five sentences, in one strict-JSON reply, AFTER however long the
+ * model spends thinking about it out loud.
+ *
+ * Set for a model on your own hardware, where output tokens are free and the
+ * only real cost of asking for too few is a reply cut off mid-object — which
+ * is the failure this whole pass exists to fix. Hosted endpoints cap their
+ * output and will refuse a ceiling above it, so callOracle retries once at a
+ * conservative figure when one says so. */
+const ROOM = { dungeon: 32_000, monster: 16_000, item: 16_000, ability: 16_000 };
+
 async function handleExpand(action, context) {
   const prompt = buildPrompt(action, context);
-  const text = await callOracle(oracle, prompt, { timeoutMs: PATIENCE[action] || 300_000 });
+  const text = await callOracle(oracle, prompt, {
+    timeoutMs: PATIENCE[action] || 300_000,
+    maxTokens: ROOM[action] || 8_000,
+  });
   const parsed = extractJSON(text);
   /* The floor under a written sanctum's threat comes from the client, which
    * is the only side that knows what the company has already finished. */

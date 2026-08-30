@@ -7,7 +7,7 @@ import {
   validateMonster, validateItem, validateAbility, validateDungeon,
   validateExpansion, buildPrompt, extractJSON, dice, glyph, color,
 } from '../lib/expansion.js';
-import { PALETTE, COLORS, MONSTER_PROPS, ITEM_KINDS, DUNGEON_THEMES, ABILITY_KINDS, CLASS_IDS } from '../public/js/contract.js';
+import { PALETTE, COLORS, MONSTER_PROPS, ITEM_KINDS, DUNGEON_THEMES, ABILITY_KINDS, CLASS_IDS, LIMITS } from '../public/js/contract.js';
 
 /* ---- the drift that made generated content inert ---- */
 
@@ -305,4 +305,57 @@ test('the minimum level is derived from the boss, not claimed by the model', () 
    * for levels 5-7, 8-10 and 11-13. */
   assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 9 } }).minLevel, 8);
   assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 12 } }).minLevel, 11);
+});
+
+/* READING A MODEL THAT THINKS OUT LOUD.
+ *
+ * "Output STRICT JSON only" does not stop a reasoning model reasoning. The
+ * one on the playtest's own fleet opens with a page and a half of design
+ * notes — "Floors: 4? Or 5? Let's go 4." — measured at five and a half
+ * thousand characters before the object starts. That broke extraction three
+ * ways, and the player was told only that the oracle was silent.
+ */
+
+test('an object after a page of thinking is still found', () => {
+  const raw = 'We are creating a dungeon for a level 12 party. Floors: 4? Or 5? ' +
+    'Let us go 4. The boss should be a demonic auditor.\n{"type":"item","name":"Grimjaw"}';
+  assert.equal(extractJSON(raw).name, 'Grimjaw');
+});
+
+test('and prose AFTER the object does not swallow it', () => {
+  /* First-brace-to-LAST-brace used to take the trailing chatter with it. */
+  const raw = '{"type":"item","name":"Quill"}\nThat should fit the theme nicely. {not json}';
+  assert.equal(extractJSON(raw).name, 'Quill');
+});
+
+test('think-blocks are dropped, closed or not', () => {
+  assert.equal(extractJSON('<think>hmm</think>{"type":"item","name":"A"}').name, 'A');
+  assert.equal(extractJSON('<think>cut off mid-thought</think>\n{"type":"item","name":"B"}').name, 'B');
+});
+
+test('a brace inside a string is not the end of the object', () => {
+  assert.equal(extractJSON('{"type":"item","name":"E {not a brace}"}').name, 'E {not a brace}');
+});
+
+test('a reply cut off mid-object says so, and says what came back', () => {
+  /* This is the one the playtest hit: the model reasoned until it ran out of
+   * room. "The oracle is silent" sent them looking at their endpoint. */
+  let err;
+  try { extractJSON('Let us design a dungeon.\n{"type":"dungeon","name":"Half a'); } catch (e) { err = e; }
+  assert.ok(err, 'a truncated reply parsed as something');
+  assert.match(err.message, /cut off/i, 'the error does not say the reply was cut off');
+  assert.match(err.message, /Let us design/, 'the error does not show what came back');
+});
+
+test('and a reply with no object at all is distinguished from a truncated one', () => {
+  let err;
+  try { extractJSON('I cannot help with that request.'); } catch (e) { err = e; }
+  assert.match(err.message, /no JSON in the reply/i);
+  assert.match(err.message, /I cannot help/, 'the error does not quote the refusal');
+});
+
+test('a ten-floor dungeon is a thing that can be asked for', () => {
+  /* The playtest asked for ten levels and was given six without being told. */
+  assert.equal(validateDungeon({ name: 'Deep', floors: 10 }).floors, 10);
+  assert.equal(validateDungeon({ name: 'Deeper', floors: 99 }).floors, LIMITS.floors[1]);
 });

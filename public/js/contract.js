@@ -183,7 +183,11 @@ export const LIMITS = {
   tier: [0, 15],
   dice: [1, 10],
   sides: [1, 100],
-  floors: [2, 6],
+  /* Ten, because the playtest asked for a ten-level dungeon and got six
+   * without being told. Depth scaling stays sane down there: a monster on
+   * floor nine carries about three times its card, which is the same curve
+   * the founding four floors already ride. */
+  floors: [2, 10],
   threat: [-4, 12],
   abilityLevel: [1, 20],
 };
