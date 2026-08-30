@@ -92,6 +92,43 @@ if (existsSync(contract) && existsSync(server)) {
   }
 }
 
+/* 7. THE ORACLE'S BINDING NEVER GOES IN THE REPO.
+ *
+ * config.json holds the endpoint and, for a hosted provider, an API key. It
+ * is in .gitignore, which is necessary and not sufficient: `git add -f` beats
+ * an ignore file, and a file that was tracked BEFORE being ignored stays
+ * tracked for ever. Both mistakes are silent and both are unfixable after a
+ * push — a key in a public history is a key that has to be rotated, not
+ * deleted. So the check is against git's own index rather than against the
+ * ignore rules, and it runs on every `npm run check`. */
+try {
+  const tracked = execFileSync('git', ['ls-files', 'config.json'], { cwd: ROOT, stdio: 'pipe' })
+    .toString().trim();
+  if (tracked) {
+    report(path.join(ROOT, 'config.json'), null,
+      'is TRACKED by git — it holds the oracle endpoint and key. `git rm --cached config.json`');
+  }
+} catch { /* not a git checkout, or no git: nothing to check */ }
+
+/* And nothing that IS tracked may carry a bound key: the oracle records one
+ * as a JSON string field, and a non-empty value in a tracked file is a
+ * credential heading for a push. (This comment is deliberately free of the
+ * shape it describes — the first draft flagged the linter twice over.) */
+for (const file of [...files, ...['config.json', 'data/expansions.json'].map((f) => path.join(ROOT, f))]) {
+  if (!existsSync(file)) continue;
+  let tracked = true;
+  try {
+    tracked = Boolean(execFileSync('git', ['ls-files', path.relative(ROOT, file)], { cwd: ROOT, stdio: 'pipe' })
+      .toString().trim());
+  } catch { /* assume tracked, and check anyway */ }
+  if (!tracked) continue;
+  const src = readFileSync(file, 'utf8');
+  /* The key name is split so that this rule cannot match its own source —
+   * the first draft flagged the linter itself, which is funny once. */
+  const m = src.match(/["'](?:api)(?:Key)["']\s*:\s*["']([^"']+)["']/);
+  if (m) report(file, src.slice(0, m.index).split('\n').length, 'a tracked file carries a bound key');
+}
+
 if (problems.length) {
   console.error(`lint: ${problems.length} problem${problems.length === 1 ? '' : 's'}\n`);
   for (const p of problems) console.error('  ' + p);
