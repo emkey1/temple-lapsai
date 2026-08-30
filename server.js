@@ -100,6 +100,9 @@ let writeQueue = Promise.resolve();
 
 function appendExpansion(expansion) {
   writeQueue = writeQueue.then(() => {
+    /* The file is no longer tracked, so a fresh clone has none until the
+     * first commission writes one. */
+    fs.mkdirSync(DATA_DIR, { recursive: true });
     const list = readExpansions();
     expansion.id = `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     expansion.installedAt = new Date().toISOString();

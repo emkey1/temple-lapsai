@@ -6,3 +6,8 @@ config.json
 
 # Upstream art downloads for scripts/repack-flare-art.mjs
 .art-cache/
+
+# What the Library writes belongs to the player, not to the repo. It was a
+# tracked, empty file, so every commission showed up as an uncommitted diff —
+# which is how a session of testing came to revert one away.
+data/expansions.json
