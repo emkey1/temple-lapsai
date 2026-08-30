@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt, extractJSON, validateExpansion } from './lib/expansion.js';
 import {
-  loadOracle, writeOracle, describeOracle, applySettings, callOracle, probeOracle,
+  loadOracle, writeOracle, describeOracle, applySettings, callOracle, probeOracle, listModels, settingsForListing,
 } from './lib/oracle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -247,7 +247,8 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, describeOracle(oracle));
     }
 
-    if (req.method === 'POST' && (pathname === '/api/oracle' || pathname === '/api/oracle/test')) {
+    if (req.method === 'POST' && (pathname === '/api/oracle' || pathname === '/api/oracle/test' ||
+        pathname === '/api/oracle/models')) {
       if (!sameOrigin(req)) return sendJSON(res, 403, { error: 'cross-origin requests are not accepted' });
       if (!isJson(req)) return sendJSON(res, 415, { error: 'send application/json' });
       let body;
@@ -255,6 +256,27 @@ const server = http.createServer(async (req, res) => {
         body = await readBody(req);
       } catch (err) {
         return sendJSON(res, 400, { error: 'could not read that request: ' + (err.message || 'bad JSON') });
+      }
+
+      /* ASK THE ENDPOINT WHAT IT SERVES. Answered from the settings in the
+       * FORM, not from the bound ones, so a player can point at a machine on
+       * their own network and pick the model off its own list before binding
+       * anything — which is the whole difficulty with a local server: the
+       * name on the tin is rarely the id the API files it under. Costs no
+       * tokens, so it is outside the call budget. */
+      if (pathname === '/api/oracle/models') {
+        let trial;
+        try {
+          trial = settingsForListing(oracle, body);
+        } catch (err) {
+          return sendJSON(res, 200, { ok: false, error: err.message || 'that endpoint cannot be asked' });
+        }
+        try {
+          const models = await listModels(trial.settings, trial.apiKey);
+          return sendJSON(res, 200, { ok: true, models, endpoint: trial.settings.baseUrl });
+        } catch (err) {
+          return sendJSON(res, 200, { ok: false, error: err.message || 'the endpoint did not answer' });
+        }
       }
 
       if (pathname === '/api/oracle/test') {

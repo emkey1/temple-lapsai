@@ -108,6 +108,7 @@ const els = {
   oracleNote: $('oracle-note'),
   btnOracleSave: $('btn-oracle-save'),
   btnOracleTest: $('btn-oracle-test'),
+  btnOracleModels: $('btn-oracle-models'),
   btnOracleForget: $('btn-oracle-forget'),
   libResult: $('lib-result'),
   btnLibClose: $('btn-library-close'),
@@ -3502,15 +3503,31 @@ function renderLibrary(g) {
   const done = (id) => g.isDungeonCleared(id);
   const cleared = ['temple', 'upper', 'serpent'].filter(done).length;
   const scrambled = allThatCleared(cleared, registry);
+  /* THE SIGNPOST. "No oracle is bound" was true, and useless: it named a
+   * problem beside a button whose label ("OPEN THE BLACK LIBRARY") reads as
+   * flavour rather than as the place the problem gets solved. Somebody who
+   * wants to choose a model has no reason to think that door is the one.
+   *
+   * So the state says what to do, and the button says what it does. When an
+   * oracle IS bound it says which one, because the other question this panel
+   * never answered is "am I about to spend somebody's tokens, and whose". */
+  const bound = oracle && oracle.ready;
+  const who = bound
+    ? [oracle.provider, oracle.model].filter(Boolean).join(' · ')
+    : '';
   els.libraryBlock.innerHTML =
     '<h3 class="pane">THE BLACK LIBRARY</h3>' +
     '<div class="lib-status">Base chronicle: ' + cleared + '/3 sanctums conquered. ' +
     (scrambled ? scrambled : 'Press the sigil below to petition the oracle.') +
-    (oracle && oracle.ready ? '' : ' <b>No oracle is bound.</b>') +
     '</div>' +
-    '<div class="row"><button id="btn-open-library">OPEN THE BLACK LIBRARY</button></div>';
+    (bound
+      ? '<div class="lib-status">Bound to <b>' + esc(who) + '</b>.</div>'
+      : '<div class="lib-status"><b>No oracle is bound.</b> Choose which model writes the depths — ' +
+        'a hosted one, or a machine on your own network.</div>') +
+    '<div class="row"><button id="btn-open-library">' +
+    (bound ? 'OPEN THE BLACK LIBRARY' : 'CHOOSE A MODEL &rarr;') + '</button></div>';
   const b = els.libraryBlock.querySelector('#btn-open-library');
-  if (b) b.onclick = () => openLibrary();
+  if (b) b.onclick = () => openLibrary(!bound);
 }
 
 /* ---------------- keyboard & actions ---------------- */
@@ -3893,12 +3910,15 @@ const EXP_ACTIONS = [
   ['ability', 'GRANT AN ABILITY'],
 ];
 
-function openLibrary() {
+function openLibrary(openTheOracle) {
   els.libResult.innerHTML = '';
   els.libActions.innerHTML = EXP_ACTIONS.map(([a, label]) =>
     '<button data-act="' + a + '">' + label + '</button>').join('');
   paintOracle();
   overlayShow(els.libOverlay);
+  /* Arriving with nothing bound, the fold opens itself: the settings ARE the
+   * errand, and a collapsed <details> is one more thing to find. */
+  if (openTheOracle && els.oraclePanel) els.oraclePanel.open = true;
   /* Ask again on the way in: the oracle may have been bound from a different
    * tab, or the server restarted since boot. */
   refreshOracle();
@@ -4027,6 +4047,41 @@ async function testOracle() {
     const data = await postOracle('/api/oracle/test', {});
     if (data.ok) note('It answers: "' + String(data.reply || '').slice(0, 60) + '"', 'good');
     else note(data.error || 'no answer', 'bad');
+  } catch (e) {
+    note(e.message || String(e), 'bad');
+  }
+}
+
+/* ASK THE ENDPOINT WHAT IT SERVES.
+ *
+ * Binding a hosted provider is a menu choice. Binding a box on your own
+ * network is not: nobody remembers the exact id a local server files a model
+ * under, and one character wrong reads as a dead endpoint rather than as a
+ * typo. So type the host, press this, and pick the model off the machine's
+ * own list — the answers land in the MODEL field's suggestions, and if there
+ * is only one it is filled in for you.
+ *
+ * Sent from the form rather than from what is bound, so it works BEFORE you
+ * commit to anything. It costs no tokens; it is a listing, not a call. */
+async function askWhatItServes() {
+  note('asking the endpoint…', '');
+  try {
+    const data = await postOracle('/api/oracle/models', {
+      provider: els.oracleProvider.value,
+      model: els.oracleModel.value.trim(),
+      baseUrl: els.oracleBase.value.trim(),
+      apiKey: els.oracleKey.value,
+    });
+    if (!data.ok) { note(data.error || 'the endpoint did not answer', 'bad'); return; }
+    const models = data.models || [];
+    els.oracleModels.innerHTML = models.map((m) =>
+      '<option value="' + esc(m) + '"></option>').join('');
+    /* A machine serving exactly one model does not need you to choose. */
+    if (models.length === 1) els.oracleModel.value = models[0];
+    else if (!models.includes(els.oracleModel.value.trim())) els.oracleModel.value = '';
+    note(models.length === 1
+      ? 'It serves ' + models[0] + ' — filled in for you.'
+      : 'It serves ' + models.length + ' models: open the MODEL field and pick one.', 'good');
   } catch (e) {
     note(e.message || String(e), 'bad');
   }
@@ -4257,6 +4312,7 @@ async function boot() {
   els.oracleProvider.onchange = () => onProviderPicked();
   els.btnOracleSave.onclick = () => bindOracle();
   els.btnOracleTest.onclick = () => testOracle();
+  els.btnOracleModels.onclick = () => askWhatItServes();
   els.btnOracleForget.onclick = () => forgetOracle();
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {

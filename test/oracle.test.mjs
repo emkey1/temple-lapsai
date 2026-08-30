@@ -209,3 +209,67 @@ test('an empty answer reads as empty rather than as "undefined"', () => {
   }
   assert.equal(extractText('openai', { choices: [] }), '');
 });
+
+/* ASKING AN ENDPOINT WHAT IT SERVES.
+ *
+ * Binding a hosted provider is a menu choice. Binding a box on your own
+ * network is not: nobody remembers the exact id a local server files a model
+ * under — "Ornith-1.5" on the tin can be `ornith-1.5-instruct-q5` to the API
+ * — and one character wrong reads as a dead endpoint rather than as a typo.
+ */
+
+import http from 'node:http';
+import { listModels, settingsForListing } from '../lib/oracle.js';
+
+function stub(handler) {
+  return http.createServer(handler);
+}
+
+test('a listing can be asked for before a model is named', () => {
+  /* The whole point: applySettings refuses a blank model, and this is the
+   * one moment you cannot possibly have one yet. */
+  const got = settingsForListing({ apiKey: '' },
+    { provider: 'custom', baseUrl: 'http://127.0.0.1:1/v1', model: '' });
+  assert.equal(got.settings.baseUrl, 'http://127.0.0.1:1/v1');
+  assert.throws(() => settingsForListing({ apiKey: '' }, { provider: 'custom', baseUrl: '' }),
+    /endpoint/, 'asked an endpoint that was never named');
+});
+
+test('an OpenAI-shaped listing is read', async () => {
+  const s = stub((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ id: 'Ornith-1.5' }, { id: 'something-else' }] }));
+  });
+  await new Promise((r) => s.listen(0, r));
+  const port = s.address().port;
+  try {
+    const models = await listModels({ baseUrl: `http://127.0.0.1:${port}/v1`, dialect: 'openai' }, '');
+    assert.deepEqual(models, ['Ornith-1.5', 'something-else'].sort());
+  } finally { s.close(); }
+});
+
+test('and so is Ollama’s own, when the /v1 path has nothing to say', async () => {
+  const s = stub((req, res) => {
+    if (req.url === '/api/tags') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ models: [{ name: 'ornith-1.5:latest' }] }));
+      return;
+    }
+    res.writeHead(404); res.end('{}');
+  });
+  await new Promise((r) => s.listen(0, r));
+  const port = s.address().port;
+  try {
+    const models = await listModels({ baseUrl: `http://127.0.0.1:${port}/v1`, dialect: 'openai' }, '');
+    assert.deepEqual(models, ['ornith-1.5:latest']);
+  } finally { s.close(); }
+});
+
+test('an endpoint that does not answer says WHICH endpoint', async () => {
+  /* "fetch failed" sends a player looking at the wrong problem; with a box on
+   * your own network the answer is nearly always a wrong port. */
+  await assert.rejects(
+    () => listModels({ baseUrl: 'http://127.0.0.1:1/v1', dialect: 'openai' }, ''),
+    /127\.0\.0\.1:1/,
+    'the failure did not name the address it tried');
+});
