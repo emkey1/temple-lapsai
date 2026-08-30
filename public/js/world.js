@@ -36,6 +36,10 @@ export function registerWorldContent(content) {
   if (Array.isArray(content.storyArcs)) WORLD.storyArcs.push(...content.storyArcs);
 }
 
+export function getFaction(id) {
+  return WORLD.factions.find((f) => f.id === id) || null;
+}
+
 export function getNPC(id) {
   return WORLD.npcs.find((n) => n.id === id) || null;
 }

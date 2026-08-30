@@ -178,3 +178,91 @@ test('the deep entrance is a choice, so a hand-in is never a climb', () => {
   assert.deepEqual(asked, { id: 'temple', known: 3 }, 'the player was never asked');
   assert.equal(p.floorIdx, 0, 'the choice was ignored');
 });
+
+/* THE POWERS OF THE WORLD, and where you stand with them.
+ *
+ * Seven factions were written at depth, three of them with a person you can
+ * actually meet, and not one of them meant anything: the Codex printed the
+ * notes and the game never asked who you had done right by. Standing is
+ * company-wide — the seventh time that distinction has mattered — because a
+ * favour owed to the woman who carried the idols is not owed to her alone.
+ */
+
+test('the people you can meet belong to orders that exist', async () => {
+  const { WORLD, getFaction } = await import('../public/js/world.js');
+  for (const n of WORLD.npcs) {
+    assert.ok(n.faction, n.id + ' belongs to nobody');
+    assert.ok(getFaction(n.faction), n.id + ' belongs to an order the world does not have: ' + n.faction);
+  }
+});
+
+/* Ogil's first undertaking is three carved godlings; the simplest one to
+ * satisfy honestly, since it asks only that the company be carrying them. */
+function closeOgilsFirst(g) {
+  const q = questById('idols-for-ogil');
+  g.acceptQuest(q.id);
+  const p = g.state.player;
+  for (let i = 0; i < q.objective.count; i++) p.inventory.push(deepItem(getItemTemplate(q.objective.item)));
+  g.refreshQuestProgress();
+  return g.completeQuest(q.id);
+}
+
+test('closing an undertaking earns standing with whoever asked', () => {
+  const { g } = rig('standing');
+  assert.equal(g.standing('carriers-ubtao'), 0, 'known to them before doing anything');
+  assert.ok(closeOgilsFirst(g), 'the undertaking would not close');
+  assert.equal(g.standing('carriers-ubtao'), 1, 'the favour landed with nobody');
+  assert.equal(g.standingRank('carriers-ubtao'), 'noticed');
+});
+
+test('and it is the COMPANY that is owed, not the one who spoke', () => {
+  const { g } = rig('standing-company');
+  const mate = makePlayer('Second', 'thief', initialStats('thief'));
+  g.state.party.members.push(mate);
+  closeOgilsFirst(g);
+  assert.ok(g.state.standing && g.state.standing['carriers-ubtao'] > 0,
+    'the reputation went into somebody\u2019s pocket instead of the company\u2019s');
+  for (let i = 0; i < g.state.party.members.length; i++) {
+    g.state.party.active = i;
+    assert.equal(g.standing('carriers-ubtao'), 1, 'standing changed with who was holding the reins');
+  }
+});
+
+test('the Carriers pay above scrap once they count you', async () => {
+  const { sellPrice } = await import('../public/js/town.js');
+  const { g } = rig('carriers');
+  const goods = deepItem(getItemTemplate('statuette'));
+  const before = sellPrice(goods, g);
+  g.earnStanding('carriers-ubtao', 2);
+  assert.ok(sellPrice(goods, g) > before,
+    'the four families count you their own and still pay scrap');
+});
+
+test('the Sisters name the channels, and black water stops costing ground', () => {
+  const { g, p } = rig('sisters');
+  const wades = () => { g.clearActorTurn(p); g.wadeInto(p.x, p.y); return !!g.actorTurn(p).wading; };
+  assert.ok(wades(), 'black water was already free before anyone taught anything');
+  g.earnStanding('drowned-sisters');
+  assert.ok(!wades(), 'the Sisters named the channels and the water still dragged');
+});
+
+test('the Keepers keep the survey open, and seams give sooner', async () => {
+  const { T } = await import('../public/js/mapgen.js');
+  const { g, p } = rig('keepers');
+  /* The odds are private, so read them the way the game does: run the same
+   * search many times over and count what gives. */
+  const found = () => {
+    let n = 0;
+    for (let t = 0; t < 400; t++) {
+      g.currentFloor.tiles[p.y][p.x + 1] = T.SECRET;
+      g.turn = t;
+      g.searchSecretAt(p.x + 1, p.y);
+      if (g.currentFloor.tiles[p.y][p.x + 1] !== T.SECRET) n++;
+    }
+    return n;
+  };
+  const cold = found();
+  g.earnStanding('keepers-coils', 3);
+  const warm = found();
+  assert.ok(warm > cold, `standing bought nothing: ${cold} found before, ${warm} after`);
+});

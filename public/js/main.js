@@ -3419,14 +3419,33 @@ function renderCodex(g) {
     chronicle += '<div class="tiny">The later pages are still sealed. Conquer a sanctum to break the seal.</div>';
   }
 
+  /* THE POWERS, and where you stand with them. The notes were always here;
+   * what was missing was any sign that the seven orders had noticed you.
+   * An order you have done right by says what that has bought — because a
+   * standing you cannot feel is a number, and this game has enough of
+   * those. */
+  const FAVOURS = {
+    'carriers-ubtao': 'The four families pay above scrap for everything you haul up.',
+    'drowned-sisters': 'The Sisters have named you the safe channels: black water no longer costs you the ground.',
+    'keepers-coils': 'Venn keeps the survey open to you: hidden seams give themselves up sooner.',
+  };
   const cleared = g.baseDungeonIds().filter((id) => g.isDungeonCleared(id)).length;
+  const anyStanding = WORLD.factions.some((f) => g.standing(f.id) > 0);
   let powers = '';
-  if (!cleared) {
+  if (!cleared && !anyStanding) {
     powers = '<div class="tiny">You have not yet come to anyone\'s attention. Give it time.</div>';
   } else {
-    powers = WORLD.factions.map((f) =>
-      '<div class="codex-item"><b>' + esc(f.name) + '</b> <span class="tiny">· ' + esc(f.stance) + '</span>' +
-      '<p class="flavor">' + esc(f.note) + '</p></div>').join('');
+    powers = WORLD.factions.map((f) => {
+      const n = g.standing(f.id);
+      const rank = g.standingRank(f.id);
+      const favour = n > 0 ? FAVOURS[f.id] : '';
+      return '<div class="codex-item' + (n > 0 ? '' : ' unread') + '"><b>' + esc(f.name) + '</b> ' +
+        '<span class="tiny">· ' + esc(f.stance) + '</span>' +
+        '<div class="tiny">They count you <b>' + esc(rank) + '</b>' +
+        (n > 0 ? ' <span class="qty">&times;' + n + '</span>' : '') + '</div>' +
+        (favour ? '<p class="flavor" style="color:var(--grn)">' + esc(favour) + '</p>' : '') +
+        '<p class="flavor">' + esc(f.note) + '</p></div>';
+    }).join('');
   }
 
   const met = WORLD.npcs.filter((n) => p.npcsMet && p.npcsMet[n.id]);

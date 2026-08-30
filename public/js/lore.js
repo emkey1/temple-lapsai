@@ -312,7 +312,7 @@ export const LORE = {
   ],
   npcs: [
     {
-      id: 'hermit-ogil',
+      id: 'hermit-ogil', faction: 'carriers-ubtao',
       name: 'Ogil the Whetstone',
       title: 'a hermit with one good eye',
       dungeon: 'temple',
@@ -446,7 +446,7 @@ export const LORE = {
       ]
     },
     {
-      id: 'priestess-eilyth',
+      id: 'priestess-eilyth', faction: 'drowned-sisters',
       name: 'Eilyth, Drowned Sister',
       title: 'a priestess of the old sea-god',
       dungeon: 'upper',
@@ -574,7 +574,7 @@ export const LORE = {
       ]
     },
     {
-      id: 'keeper-venn',
+      id: 'keeper-venn', faction: 'keepers-coils',
       name: 'Keeper Venn',
       title: 'the last keeper of the serpent halls',
       dungeon: 'serpent',

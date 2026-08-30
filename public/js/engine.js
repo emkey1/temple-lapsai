@@ -15,7 +15,7 @@ import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
-import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC } from './world.js';
+import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
 import { WEARABLE_SLOTS, isWorn } from './contract.js';
 import { itemStackKey } from './base.js';
@@ -45,6 +45,11 @@ const STRENGTH_BUFF = 4;
  * power never regenerated at all, so a spent caster stayed spent for the rest
  * of the run. Out of combat both come back, slowly, which is what makes
  * retreating a tactic instead of a longer death. */
+/* What a standing is called, at each step. Four rungs is enough: the game has
+ * five quests, and a ladder longer than the content that climbs it is a number
+ * pretending to be a relationship. */
+const STANDING_RANKS = ['a stranger', 'noticed', 'owed a favour', 'a friend of the order', 'one of their own'];
+
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
 /* How far a heavy door carries. Deliberately inside CALM_RADIUS: what a door
  * wakes should be something the company then has to deal with, not something
@@ -1599,14 +1604,23 @@ export class Game {
   /* Water is crossable, but you flounder: the turn costs double and the noise
    * carries. Making it impassable was severing whole sewer floors. */
   wadeInto(x, y) {
-    this.log('You wade into black water — slow going, and loud.');
+    /* THE DROWNED SISTERS stand in cold water twice a day and will warn
+     * anyone off the deep channels for nothing. A company they have taken to
+     * has been told which ones those are: the water is still loud, and it
+     * still wakes what is lying in it, but it no longer costs the ground. */
+    const taught = this.standing('drowned-sisters') > 0;
+    this.log(taught
+      ? 'You take the channel the Sisters named — loud, but sure-footed.'
+      : 'You wade into black water — slow going, and loud.');
     /* MID-FIGHT the cost is GROUND, not the turn: a step into water eats a
      * second tile of the mover's speed, so a fighter's three tiles carry
      * them two through the drains and a thief's five carry two and a half.
      * Nothing here touches the standard action — you may still swing from
      * the water at no penalty. Out of combat the old surcharge stands:
      * everything hostile moves twice while you flounder. */
-    if (!this.outOfCombat()) {
+    if (taught) {
+      /* Nothing is added to the cost — but the noise below still carries. */
+    } else if (!this.outOfCombat()) {
       const at = this.actorTurn();
       at.moved = (at.moved || 0) + 1;
     } else {
@@ -1642,7 +1656,13 @@ export class Game {
     const keen = this.passives().some((a) => a.findsSecrets);
     /* Fieldcraft: hidden doors give themselves up sooner under practiced
      * hands — a tenth per rank, on top of whatever the calling knows. */
-    const odds = Math.min(0.9, (keen ? 0.35 : 0.12) + p.level * 0.03 + this.skillRank(p, 'fieldcraft') * 0.10);
+    /* THE KEEPERS OF THE COILS will teach the halls to anybody who asks —
+     * honestly, at length, and with the survey open. Standing with Venn's
+     * office is thirty years of somebody else's measuring, and it shows in
+     * the hands: a seam you would have walked past gives itself up. */
+    const surveyed = this.standing('keepers-coils') * 0.12;
+    const odds = Math.min(0.9, (keen ? 0.35 : 0.12) + p.level * 0.03 +
+      this.skillRank(p, 'fieldcraft') * 0.10 + surveyed);
     if (!this.rngOfTurn().chance(odds)) {
       this.log('You run your hands over the stone and find nothing — yet.');
       return true;   /* the search itself costs the turn */
@@ -3188,6 +3208,46 @@ export class Game {
     return this.activeQuests().filter((q) => q.giver === npcId && this.questSatisfied(q));
   }
 
+  /* STANDING WITH THE POWERS OF THE WORLD.
+   *
+   * Seven factions were written at depth, three of them with a person you can
+   * actually meet, and not one of them meant anything: the Codex printed the
+   * notes and the game never asked who you had done right by.
+   *
+   * The ledger lives on the STATE, not on a member. This is the seventh time
+   * that distinction has mattered — healing, loot, the purse, expedition
+   * knowledge, the standing cast, the quests — and the rule has not changed:
+   * a company earns a reputation together, and a favour owed to the woman who
+   * carried the idols is not owed to her alone. */
+  standing(faction) {
+    if (!faction) return 0;
+    return (this.state.standing && this.state.standing[faction]) || 0;
+  }
+
+  /* What they call you, for anything that needs to print it. */
+  standingRank(faction) {
+    return STANDING_RANKS[Math.min(STANDING_RANKS.length - 1, this.standing(faction))];
+  }
+
+  earnStanding(faction, n = 1) {
+    if (!faction || !n) return;
+    if (!this.state.standing) this.state.standing = {};
+    const was = this.standing(faction);
+    this.state.standing[faction] = was + n;
+    const f = getFaction(faction);
+    if (!f) return;
+    const rank = STANDING_RANKS[Math.min(STANDING_RANKS.length - 1, was + n)];
+    this.log('Word travels: ' + f.name + ' now count you ' + rank + '.');
+    this.journal(f.name + ' count you ' + rank + '.');
+  }
+
+  /* Who a working of this kind answers to — the faction whose door the
+   * favour was done at, or null for the quests nobody is behind. */
+  factionOfNpc(npcId) {
+    const n = npcId && getNPC(npcId);
+    return (n && n.faction) || null;
+  }
+
   completeQuest(id) {
     const q = questById(id);
     if (!q || this.questState(id) !== 'active' || !this.questSatisfied(q)) return false;
@@ -3207,6 +3267,9 @@ export class Game {
       }
     }
     this.questLedger()[id] = { state: 'done', got: this.questProgressOf(q) };
+    /* The favour lands with whoever asked for it, and through them with the
+     * order standing behind them. */
+    this.earnStanding(this.factionOfNpc(q.giver));
     const r = q.reward || {};
     if (r.gold) { this.earnGold(r.gold); this.log('Paid: ' + r.gold + ' gold.'); }
     if (r.xp) this.gainXP(r.xp);

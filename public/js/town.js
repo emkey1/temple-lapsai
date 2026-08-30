@@ -38,7 +38,14 @@ export function haggleRank(game) {
 }
 
 function buyCut(game) { return 1 - 0.06 * haggleRank(game); }
-function sellLift(game) { return 1 + 0.08 * haggleRank(game); }
+/* THE CARRIERS OF UBTAO pay above scrap, cash, no questions — which is the
+ * one thing the faction note has always promised and the shop never did. A
+ * company they count as their own gets the good price on everything it hauls
+ * up, because the four families are the buyer standing behind the counter. */
+function sellLift(game) {
+  const owed = game.standing ? game.standing('carriers-ubtao') : 0;
+  return 1 + 0.08 * haggleRank(game) + 0.07 * owed;
+}
 
 export function shopStock(game) {
   const p = game.state.player;
