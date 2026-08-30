@@ -2050,12 +2050,53 @@ function drawIsoStairs(g, t, theme, down) {
   }
 }
 
+/* GROUND YOU HAVE ONLY READ ABOUT.
+ *
+ * A chart tells you a room is there; it does not tell you what is on the
+ * floor of it, and after reading one there was no way to tell the drawn part
+ * of the map from the walked part — which for a floor you are halfway
+ * through is the entire use of a map.
+ *
+ * So charted ground is not painted at all: no tileset art, no theme cast,
+ * just the cold outline of the diamond on near-black, the way the log has
+ * always described it ("ghost-lines crawl across the floor map"). Nothing
+ * about it can be mistaken for a place you have stood, and the moment
+ * anyone lays eyes on the tile the engine clears the flag and the real
+ * floor arrives underfoot. */
+const CHART_INK = '#6fa9c8';
+
+function drawIsoChart(ctx, ax, ay) {
+  fillDiamond(ctx, ax, ay, '#0a0f14', 0.85);
+  const pts = diamondPath(ax, ay);
+  ctx.save();
+  ctx.strokeStyle = CHART_INK;
+  ctx.globalAlpha = 0.42;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawIsoGround(g, t, tset, theme, sa) {
   const ctx = els.ctx;
   const floor = g.currentFloor;
   const tile = floor.tiles[t.y][t.x];
   if (tile === T.WALL || tile === T.SECRET) return;   /* prisms, not ground */
   const vis = g.vis && g.vis[t.y] && g.vis[t.y][t.x];
+  if (!vis && g.charted && g.charted[t.y] && g.charted[t.y][t.x]) {
+    const c = isoToScreen(t.x, t.y);
+    drawIsoChart(ctx, c.sx - isoCamX, c.sy - isoCamY);
+    /* The stairs still announce themselves — knowing where the way down is
+     * is most of why anyone reads a chart. */
+    if (tile === T.DOWN || tile === T.UP) {
+      ctx.fillStyle = CHART_INK;
+      ctx.fillText(tile === T.DOWN ? '>' : '<', c.sx - isoCamX, c.sy - isoCamY);
+    }
+    return;
+  }
   const { sx, sy } = isoToScreen(t.x, t.y);
   const ax = sx - isoCamX, ay = sy - isoCamY;
   let painted = false;
@@ -2516,12 +2557,20 @@ function renderIsoScene(g, sa) {
   }
   seenTiles.sort(paintOrder);
 
+  /* Ground known only from a chart. Nothing that belongs to the real floor
+   * may be drawn on it — not the stair art, not the bones in the corners,
+   * not the rock caps that seal a wall mass — or the chart quietly starts
+   * claiming to know things a chart cannot tell you. */
+  const hearsay = (t) => !!(g.charted && g.charted[t.y] && g.charted[t.y][t.x]) &&
+    !(g.vis && g.vis[t.y] && g.vis[t.y][t.x]);
+
   for (const t of seenTiles) drawIsoGround(g, t, tset, theme, sa);
 
   /* The stairs draw AFTER all the ground: the painterly floor pieces bleed
    * over their neighbours by design, and a flight drawn in the ground pass
    * was buried under the next tile's stone. Still under every body. */
   for (const t of seenTiles) {
+    if (hearsay(t)) continue;
     const tt = floor.tiles[t.y][t.x];
     if (tt === T.UP || tt === T.DOWN) drawIsoStairs(g, t, theme, tt === T.DOWN);
   }
@@ -2548,6 +2597,7 @@ function renderIsoScene(g, sa) {
   if (tset && tset.name === 'tileset_dungeon' && !town) {
     const BONES = [176, 177, 180, 181, 182, 183];
     for (const t of seenTiles) {
+      if (hearsay(t)) continue;
       if (floor.tiles[t.y][t.x] !== T.FLOOR) continue;
       const h = ((t.x * 92821) ^ (t.y * 68917)) >>> 0;
       if (h % 25 !== 0) continue;
@@ -2711,6 +2761,17 @@ function renderIsoScene(g, sa) {
         }
       }
     }
+    /* A wall you have only read about is a line on a chart, not masonry —
+     * the same rule the ground follows, so a charted room reads as an
+     * outline rather than as somewhere you have walked the perimeter of. */
+    if (!town && g.charted && g.charted[t.y] && g.charted[t.y][t.x] &&
+        !(g.vis && g.vis[t.y] && g.vis[t.y][t.x])) {
+      standers.push({ x: t.x, y: t.y, draw: () => {
+        const c = isoToScreen(t.x, t.y);
+        drawIsoChart(ctx, c.sx - isoCamX, c.sy - isoCamY);
+      } });
+      continue;
+    }
     if (faces) {
       /* In town the cutaway does not apply: daylight makes every tile
        * "seen", which stubbed every building into a flat ring — a hamlet
@@ -2743,6 +2804,7 @@ function renderIsoScene(g, sa) {
    * walls-up illegible. */
   const sealed = new Set();
   for (const t of seenTiles) {
+    if (hearsay(t)) continue;
     const tt = floor.tiles[t.y][t.x];
     if (tt !== T.WALL && tt !== T.SECRET) continue;
     for (let dy = -1; dy <= 1; dy++) {
@@ -2887,15 +2949,19 @@ function renderIsoScene(g, sa) {
   for (const t of seenTiles) {
     const tile = floor.tiles[t.y][t.x];
     if (tile !== T.UP && tile !== T.DOWN) continue;
+    /* This marker is the one thing a chart SHOULD carry over — where the
+     * stairs are is most of why anyone reads one — so it stays, in the
+     * chart's own ink until somebody has actually stood on it. */
+    const known = !hearsay(t);
     const a = isoToScreen(t.x, t.y);
     const ax = a.sx - isoCamX, ay = a.sy - isoCamY;
     ctx.beginPath();
     ctx.arc(ax, ay - 24, 11, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(5, 7, 5, 0.75)';
     ctx.fill();
-    ctx.strokeStyle = theme.accent;
+    ctx.strokeStyle = known ? theme.accent : CHART_INK;
     ctx.stroke();
-    ctx.fillStyle = theme.accent;
+    ctx.fillStyle = known ? theme.accent : CHART_INK;
     ctx.fillText(tile === T.DOWN ? '>' : '<', ax, ay - 23);
     /* A town mouth wears its NAME, always — a second descent that opened
      * five tiles south of the first went unfound behind a hover. */

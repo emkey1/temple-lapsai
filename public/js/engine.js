@@ -305,7 +305,7 @@ export class Game {
     if (!this.state.floors) this.state.floors = {};
     const key = this.floorKey(dungeonId, floorIdx);
     if (!this.state.floors[key] && create) {
-      this.state.floors[key] = { killed: [], taken: [], doors: [], dropped: [], seen: null };
+      this.state.floors[key] = { killed: [], taken: [], doors: [], dropped: [], seen: null, charted: null };
     }
     return this.state.floors[key] || null;
   }
@@ -354,6 +354,14 @@ export class Game {
     const memo = this.currentMemo();
     if (!memo) return;
     memo.seen = this.seen.map((row) => row.map((v) => (v ? '1' : '0')).join(''));
+    /* Kept apart from `seen` rather than folded into it as a third value:
+     * every read of seen in the game is a truthiness test, and widening it
+     * would have meant auditing all of them to find the ones that meant
+     * "walked" rather than "known". A save written before charts existed has
+     * no charted row, reads as all-false, and draws exactly as it used to. */
+    if (this.charted) {
+      memo.charted = this.charted.map((row) => row.map((v) => (v ? '1' : '0')).join(''));
+    }
   }
 
   applyFloorMemo(floor, memo) {
@@ -378,6 +386,12 @@ export class Game {
     for (let y = 0; y < H && y < memo.seen.length; y++) {
       const row = memo.seen[y] || '';
       for (let x = 0; x < W; x++) this.seen[y][x] = row[x] === '1';
+    }
+    if (Array.isArray(memo.charted) && this.charted) {
+      for (let y = 0; y < H && y < memo.charted.length; y++) {
+        const row = memo.charted[y] || '';
+        for (let x = 0; x < W; x++) this.charted[y][x] = row[x] === '1';
+      }
     }
     return true;
   }
@@ -735,6 +749,7 @@ export class Game {
     p.x = spot.x; p.y = spot.y;
     this.placePartyAround(floor, p);
     for (const m of this.livingMembers()) { m.dungeonId = TOWN_ID; m.floorIdx = 0; }
+    this.charted = Array.from({ length: H }, () => Array(W).fill(false));
     this.seen = Array.from({ length: H }, () => Array(W).fill(true));
     this.computeVisibility();
     if (this.ui.setLocation) this.ui.setLocation('The Whetstone');
@@ -844,6 +859,7 @@ export class Game {
     });
     this.seen = Array.from({ length: H }, () => Array(W).fill(false));
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
+    this.charted = Array.from({ length: H }, () => Array(W).fill(false));
     this.restoreSeen(memo);   /* the map you drew stays drawn */
     this.secretsRevealed = false;
     this.turn = 0;
@@ -1054,6 +1070,8 @@ export class Game {
     if (this.inTown()) {
       this.vis = Array.from({ length: H }, () => Array(W).fill(true));
       this.seen = Array.from({ length: H }, () => Array(W).fill(true));
+      /* Daylight hides nothing and hearsay has no place in it. */
+      this.charted = Array.from({ length: H }, () => Array(W).fill(false));
       return;
     }
     this.vis = Array.from({ length: H }, () => Array(W).fill(false));
@@ -1070,7 +1088,11 @@ export class Game {
         for (let x = sx; x <= ex; x++) {
           if (this.vis[y][x]) continue;
           this.vis[y][x] = this.los(e.x, e.y, x, y, sight);
-          if (this.vis[y][x]) this.seen[y][x] = true;
+          if (this.vis[y][x]) {
+            this.seen[y][x] = true;
+            /* Seen with your own eyes: it stops being hearsay. */
+            if (this.charted) this.charted[y][x] = false;
+          }
         }
       }
     }
@@ -1169,6 +1191,11 @@ export class Game {
           });
         if (!near && !edge) continue;
         this.seen[y][x] = true;
+        /* KNOWN, NOT WALKED. A chart is hearsay until you stand on it, and
+         * after reading one there was no way to tell the two apart — "it is
+         * impossible to know where you have been", which for a floor you are
+         * halfway through is the whole use of a map. */
+        if (this.charted) this.charted[y][x] = true;
         drawn++;
       }
     }
