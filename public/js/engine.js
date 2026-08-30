@@ -1077,6 +1077,37 @@ export class Game {
     if (this.monstersBurning !== false) {
       for (const m of (floor.monsters || [])) if (m && m.revealed) { this.vis[m.y][m.x] = true; this.seen[m.y][m.x] = true; }
     }
+    this.hearTheDen();
+  }
+
+  /* THE DEN IS NOT SILENT.
+   *
+   * A last floor's boss stands behind one hidden door in the same place
+   * every time — the west wall of the den frame, one step off the lane that
+   * runs back to the stairs — and a search is a roll you have to think to
+   * make against a wall that looks like every other wall.
+   *
+   * Everything else a secret gates is optional. The cache is loot, and
+   * missing loot costs a player a shrug. This one gates the boss, and behind
+   * the boss is the quest, the next dungeon and the end of the run: a roll
+   * that never comes up, or a wall nobody thought to push, is not a puzzle
+   * there. It is a save that cannot be finished, which is what the playtest
+   * walked into on the fourth floor of the third dungeon.
+   *
+   * So the thing on the other side gives itself away. Come within a couple
+   * of tiles of the only way in and you hear it through the rock — better
+   * fiction than a blind roll against masonry, and every OTHER secret in the
+   * game stays exactly as hard to find as it was. */
+  hearTheDen() {
+    const floor = this.currentFloor;
+    const den = floor && floor.den;
+    if (!den) return;
+    const x = den.x - 1, y = den.y + Math.floor(den.h / 2);
+    if (!this.inBounds(x, y) || floor.tiles[y][x] !== T.SECRET) return;
+    if (!this.livingMembers().some((m) => dist8(m, { x, y }) <= 2)) return;
+    floor.tiles[y][x] = T.DOOR_O;
+    this.rememberDoor(x, y);
+    this.log('Something on the far side of this wall draws breath. The seam gives.');
   }
 
   los(ax, ay, bx, by, radius) {

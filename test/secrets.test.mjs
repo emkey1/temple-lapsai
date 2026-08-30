@@ -80,3 +80,65 @@ test('a found door stays found after leaving and returning', () => {
   g.loadFloor(0);
   assert.equal(g.currentFloor.tiles[spot.y][spot.x], T.DOOR_O, 'the door hid itself again');
 });
+
+/* THE ONE SECRET THAT MUST NOT BE MISSABLE.
+ *
+ * Every last floor puts its boss behind a hidden door in the same fixed
+ * place: the west wall of the den frame, one step off the lane back to the
+ * stairs. Everything else a secret gates is optional — the cache is loot, and
+ * missing loot costs a shrug. That one gates the boss, and behind the boss is
+ * the quest, the next dungeon and the end of the run. The playtest walked the
+ * fourth floor of the third dungeon and could not get in.
+ */
+
+import { DUNGEONS, getMonster } from '../public/js/base.js';
+
+function lastFloorOf(id, seed = 'den') {
+  const g = newGame(seed);
+  const d = DUNGEONS.find((x) => x.id === id);
+  g.enterDungeon(id);
+  g.loadFloor(d.floors - 1);
+  return { g, d, floor: g.currentFloor };
+}
+
+test('every dungeon puts its boss behind that one door', () => {
+  for (const d of DUNGEONS) {
+    const { floor } = lastFloorOf(d.id);
+    assert.ok(floor.den, d.id + ' has no den on its last floor');
+    const x = floor.den.x - 1, y = floor.den.y + Math.floor(floor.den.h / 2);
+    assert.ok(floor.tiles[y][x] === T.DOOR_O || floor.tiles[y][x] === T.SECRET,
+      d.id + ': the den door is neither hidden nor a door');
+    assert.ok((floor.monsters || []).some((m) => m.boss), d.id + ' placed no boss');
+  }
+});
+
+test('and the company hears it through the wall before it can walk past', () => {
+  for (const d of DUNGEONS) {
+    const { g, floor } = lastFloorOf(d.id, 'hear-' + d.id);
+    const x = floor.den.x - 1, y = floor.den.y + Math.floor(floor.den.h / 2);
+    if (floor.tiles[y][x] !== T.SECRET) continue;   /* already open, nothing to prove */
+    /* The lane runs one column west of the door; stand on it, two north. */
+    const p = g.state.player;
+    p.x = x - 1; p.y = y - 2;
+    g.computeVisibility();
+    assert.equal(floor.tiles[y][x], T.DOOR_O,
+      d.id + ': walked within two tiles of the only way in and heard nothing');
+  }
+});
+
+test('but a hidden cache keeps its secret, because missing loot is only a shrug', () => {
+  const { g, floor } = lastFloorOf('temple', 'cache-quiet');
+  if (!floor.cache) return;
+  const walls = [];
+  for (let y = floor.cache.y - 1; y <= floor.cache.y + floor.cache.h; y++) {
+    for (let x = floor.cache.x - 1; x <= floor.cache.x + floor.cache.w; x++) {
+      if (floor.tiles[y] && floor.tiles[y][x] === T.SECRET) walls.push({ x, y });
+    }
+  }
+  if (!walls.length) return;
+  const p = g.state.player;
+  p.x = walls[0].x - 1; p.y = walls[0].y;
+  g.computeVisibility();
+  assert.equal(floor.tiles[walls[0].y][walls[0].x], T.SECRET,
+    'standing beside a cache gave its door away — the rule was meant to be narrow');
+});

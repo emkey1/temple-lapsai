@@ -270,7 +270,7 @@ test('aiming measures in king moves, blasting and turning in steps', () => {
   assert.deepEqual(reach('fatal-flurry'), { shape: 'sight' });
   /* And the twelfth level: a ward and a mending thrown over the company
    * reach ground too, so both draw a ring like anything else. */
-  assert.deepEqual(reach('hold-the-line'), { shape: 'aura', metric: 'manhattan', radius: 2 });
+  assert.deepEqual(reach('hold-the-line'), { shape: 'aura', metric: 'manhattan', radius: 3 });
   assert.deepEqual(reach('intercession'), { shape: 'aura', metric: 'manhattan', radius: 2 });
   assert.deepEqual(reach('rimebind'), { shape: 'aim', metric: 'chebyshev', radius: 5, blast: 2 });
   assert.deepEqual(reach('quiet-word'), { shape: 'aim', metric: 'chebyshev', radius: 1, blast: 0 });
@@ -326,9 +326,10 @@ test('Hold the Line wards the company, not just the man who plants', () => {
   p.power = 99;
   g.activateAbility('hold-the-line');
   assert.ok(p.buffs.ward > 0, 'the fighter did not ward himself');
-  const near = g.livingMembers().filter((m) => m !== p && Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2);
+  const R = ABILITIES.find((a) => a.id === 'hold-the-line').party;
+  const near = g.livingMembers().filter((m) => m !== p && Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= R);
   for (const m of near) assert.ok(m.buffs.ward > 0, m.name + ' stood beside him and got nothing');
-  if (far && Math.abs(far.x - p.x) > 2) {
+  if (far && Math.abs(far.x - p.x) > R) {
     assert.ok(!(far.buffs.ward > 0), 'the ward reached someone nine tiles away');
   }
 });
@@ -354,11 +355,12 @@ test('Intercession mends everyone in reach, each to their own floor', () => {
   for (const m of g.livingMembers()) m.hp = 1;
   p.power = 99;
   g.activateAbility('intercession');
-  const near = g.livingMembers().filter((m) => Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2);
+  const R = ABILITIES.find((a) => a.id === 'intercession').party;
+  const near = g.livingMembers().filter((m) => Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= R);
   for (const m of near) {
     assert.ok(m.hp >= Math.round(m.maxhp / 4), m.name + ' was left under their own quarter');
   }
-  if (far && Math.abs(far.x - p.x) > 2) assert.equal(far.hp, 1, 'the answer carried nine tiles');
+  if (far && Math.abs(far.x - p.x) > R) assert.equal(far.hp, 1, 'the answer carried nine tiles');
 });
 
 test('and it is refused, unspent, when nobody in reach is hurt', () => {
@@ -440,8 +442,9 @@ test('a company working says WHO it covered, by name', () => {
   g.activateAbility('hold-the-line');
   const line = g.logs.find((l) => /plants with you|closes over you/.test(l));
   assert.ok(line, 'the working said nothing at all');
+  const R = ABILITIES.find((a) => a.id === 'hold-the-line').party;
   for (const m of g.livingMembers()) {
-    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2;
+    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= R;
     if (m === p) continue;
     assert.equal(line.includes(m.name), covered,
       covered ? `${m.name} was warded and went unnamed` : `${m.name} was out of reach and was named anyway`);
@@ -456,9 +459,10 @@ test('and a company mending says what each of them got', () => {
   g.activateAbility('intercession');
   const line = g.logs.find((l) => /old gods answer/.test(l));
   assert.ok(line, 'the mending said nothing');
+  const R = ABILITIES.find((a) => a.id === 'intercession').party;
   for (const m of g.livingMembers()) {
     if (m === p) continue;
-    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2;
+    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= R;
     assert.equal(line.includes(m.name), covered, m.name + ' was reported wrongly');
   }
 });

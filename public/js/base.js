@@ -173,7 +173,7 @@ export const ABILITIES = [
    * copies by name and does not know them, the fence `sight` stands behind,
    * because a model with no ceiling writing "kills outright below a
    * threshold" is not an ability, it is a floor clear. */
-  { cls: 'fighter', level: 12, id: 'hold-the-line', name: 'Hold the Line', kind: 'buff', buff: 'ward', bonus: 2, turns: 5, party: 2, powerCost: 8, cooldown: 4, description: 'Plant your feet and the company plants with you: every blow against anyone within two tiles is blunted, for five turns.' },
+  { cls: 'fighter', level: 12, id: 'hold-the-line', name: 'Hold the Line', kind: 'buff', buff: 'ward', bonus: 2, turns: 5, party: 3, powerCost: 8, cooldown: 4, description: 'Plant your feet and the company plants with you: every blow against anyone within three tiles is blunted, for five turns.' },
 
   /* Thief */
   { cls: 'thief', level: 1, id: 'sharp-keen', name: 'Sharp & Keen', kind: 'passive', critBonus: 0.10, findsSecrets: true, description: 'You strike where it tells: +10% to wound critically, and your hands find seams other people walk past.' },
