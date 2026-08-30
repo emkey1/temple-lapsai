@@ -111,9 +111,17 @@ function appendExpansion(expansion) {
   return writeQueue.then(() => expansion);
 }
 
+/* How long to wait, by how much is being asked for. Measured against a 35B
+ * on a GPU on the far side of a proxy: one item takes over two minutes, and
+ * a dungeon is a boss, three monsters, two items and five sentences of
+ * flavour in one strict-JSON reply — several times the output. A hosted
+ * endpoint returns long before any of these fire; they exist so a local
+ * model reads as slow rather than as broken. */
+const PATIENCE = { dungeon: 900_000, monster: 300_000, item: 300_000, ability: 300_000 };
+
 async function handleExpand(action, context) {
   const prompt = buildPrompt(action, context);
-  const text = await callOracle(oracle, prompt);
+  const text = await callOracle(oracle, prompt, { timeoutMs: PATIENCE[action] || 300_000 });
   const parsed = extractJSON(text);
   const expansion = validateExpansion(parsed);
   return await appendExpansion(expansion);

@@ -176,3 +176,64 @@ test('the ability prompt asks for the class that is asking', () => {
   assert.match(buildPrompt('ability', { cls: 'cleric' }), /ABILITY for a cleric/);
   assert.match(buildPrompt('ability', { cls: 'bard' }), /ABILITY for a fighter/);
 });
+
+/* WHAT THE ORACLE IS TOLD ABOUT THE WORLD.
+ *
+ * The Library used to write for a generic 1982 module: the only world context
+ * it ever received was a comma-separated list of dungeon NAMES, while seven
+ * hundred lines of history, seven factions and three story arcs sat unread.
+ * These pin the briefing — that it is built FROM the lore rather than beside
+ * it, so it cannot go stale, and that it reaches the prompt.
+ */
+
+import { loreBriefing, WORLD } from '../public/js/world.js';
+
+test('the briefing is built from the lore, not written beside it', () => {
+  const b = loreBriefing();
+  for (const f of WORLD.factions) {
+    assert.ok(b.includes(f.name), 'the briefing does not mention ' + f.name);
+  }
+  for (const h of WORLD.history) {
+    assert.ok(b.includes(h.era), 'the briefing skips the era ' + h.era);
+  }
+  for (const n of WORLD.npcs) {
+    assert.ok(b.includes(n.name), 'the briefing forgets ' + n.name);
+  }
+});
+
+test('and it carries the REGISTER, which is the part a model gets wrong first', () => {
+  /* Facts without tone produce high fantasy written over the top of them. */
+  const b = loreBriefing().toLowerCase();
+  for (const word of ['debts', 'ledgers', 'owed']) {
+    assert.ok(b.includes(word), 'the briefing does not teach the voice: missing "' + word + '"');
+  }
+});
+
+test('it stays inside its budget, and trims whole entries', () => {
+  const b = loreBriefing({ budget: 400 });
+  assert.ok(b.length <= 400, `briefing ran to ${b.length} characters against a budget of 400`);
+  /* A briefing cut mid-sentence teaches a model to write mid-sentence. */
+  assert.ok(/\.$/.test(b.trim()), 'the briefing was cut mid-sentence');
+});
+
+test('the prompt carries the world, and says not to parrot it back', () => {
+  const p = buildPrompt('dungeon', { lore: loreBriefing() });
+  assert.ok(p.includes('THE WORLD THIS BELONGS TO'), 'the world never reached the prompt');
+  assert.ok(/do not restate this back/i.test(p), 'nothing stops it echoing the briefing as flavour');
+  assert.ok(p.includes('The Tallymen of the Whetstone'), 'the factions did not travel');
+});
+
+test('a named source borrows the logic and is forbidden the cast', () => {
+  /* "In the manner of Alice in Wonderland" should produce this world's
+   * version of that book's logic, not a crossover. */
+  const p = buildPrompt('dungeon', { source: 'Alice in Wonderland' });
+  assert.ok(p.includes('Alice in Wonderland'), 'the source never reached the prompt');
+  assert.ok(/NOT its characters, names or plot/i.test(p),
+    'nothing forbids it lifting the cast — a Cheshire Cat in the Whetstone is a costume');
+});
+
+test('no world and no source leaves the prompt as it was', () => {
+  const p = buildPrompt('item', {});
+  assert.ok(!p.includes('THE WORLD THIS BELONGS TO'));
+  assert.ok(!p.includes('DRAW ON:'));
+});

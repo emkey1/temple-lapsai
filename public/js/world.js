@@ -36,6 +36,58 @@ export function registerWorldContent(content) {
   if (Array.isArray(content.storyArcs)) WORLD.storyArcs.push(...content.storyArcs);
 }
 
+/* WHAT THE ORACLE NEEDS TO KNOW ABOUT THIS WORLD.
+ *
+ * The Library was writing dungeons for a generic 1982 module: the only world
+ * context it ever got was a comma-separated list of dungeon NAMES. Seven
+ * hundred lines of history, seven factions and three story arcs sat unread,
+ * which is why anything it wrote could have come from any game.
+ *
+ * A briefing, then — built FROM the lore rather than written beside it, so it
+ * cannot go stale when the lore grows. Deliberately compact: this rides in
+ * every prompt, and a local model's context is not free. One line per era,
+ * one clause per faction, and the names already taken so it does not write a
+ * second Ogil.
+ *
+ * `budget` is characters, not tokens, and the trim is by whole entries — a
+ * briefing cut mid-sentence teaches a model to write mid-sentence. */
+export function loreBriefing(opts = {}) {
+  const budget = opts.budget || 1600;
+  const line = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const parts = [];
+
+  if (WORLD.history.length) {
+    parts.push('HISTORY, oldest first: ' + WORLD.history
+      .map((h) => `${line(h.era)} — ${line(h.title)}`).join('; ') + '.');
+  }
+  if (WORLD.factions.length) {
+    parts.push('POWERS: ' + WORLD.factions
+      .map((f) => `${line(f.name)} (${line(f.stance)})`).join('; ') + '.');
+  }
+  if (WORLD.npcs.length) {
+    parts.push('PEOPLE already down there: ' + WORLD.npcs
+      .map((n) => `${line(n.name)}, ${line(n.title)}`).join('; ') + '.');
+  }
+  if (opts.dungeons && opts.dungeons.length) {
+    parts.push('SANCTUMS already written: ' + opts.dungeons.map(line).join('; ') + '.');
+  }
+
+  /* The register matters as much as the facts. Everything in this world is
+   * written as bookkeeping that outlived its clerks — debts, tallies,
+   * arrears, entries — and a model told the facts without the tone writes
+   * high fantasy over the top of them. */
+  parts.push('VOICE: this world is an accounting that outlived its clerks. ' +
+    'Debts, tithes, arrears, ledgers, entries, tolls. Dry, specific, unmagical language ' +
+    'about magical things. Nothing is called ancient or forgotten; somebody is still owed.');
+
+  let out = '';
+  for (const p of parts) {
+    if (out.length + p.length + 1 > budget) break;
+    out += (out ? ' ' : '') + p;
+  }
+  return out;
+}
+
 export function getFaction(id) {
   return WORLD.factions.find((f) => f.id === id) || null;
 }

@@ -10,7 +10,7 @@ import {
 import { T, W, H, isTravelable } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
-import { WORLD } from './world.js';
+import { WORLD, loreBriefing } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, isWorn, abilityReach, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
@@ -99,6 +99,7 @@ const els = {
   libStatus: $('lib-status'),
   libActions: $('lib-actions'),
   libFocus: $('lib-focus'),
+  libSource: $('lib-source'),
   oraclePanel: $('oracle-panel'),
   oracleProvider: $('oracle-provider'),
   oracleModel: $('oracle-model'),
@@ -4000,6 +4001,7 @@ function paintOracle() {
 function setExpandEnabled(on) {
   els.libActions.querySelectorAll('button').forEach((b) => { b.disabled = !on; });
   els.libFocus.disabled = !on;
+  els.libSource.disabled = !on;
 }
 
 async function refreshOracle() {
@@ -4167,9 +4169,18 @@ async function fetchExpansions() {
 async function doExpand(action) {
   els.libResult.innerHTML = '<div class="lib-status">The quills are scraping…</div>';
   const focus = (els.libFocus.value || '').trim();
+  const source = (els.libSource.value || '').trim();
   try {
     const p = game && game.state.player;
     const bodyContext = { focus };
+    if (source) bodyContext.source = source;
+    /* THE WORLD IT IS WRITING INTO. Built from the lore itself rather than
+     * from a copy of it, so a briefing cannot go stale when the writing
+     * grows — and sent every time, because the register is the part a model
+     * gets wrong first. */
+    bodyContext.lore = loreBriefing({
+      dungeons: game ? game.availableDungeons().map((x) => x && x.name).filter(Boolean) : [],
+    });
     /* Tell the oracle who is asking, so what it writes is worth meeting. */
     if (p) {
       bodyContext.depth = p.level;
