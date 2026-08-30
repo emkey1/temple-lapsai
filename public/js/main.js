@@ -2977,6 +2977,45 @@ function buffLines(p) {
 
 /* The company strip: click a chip to pin whose sheets you are looking at.
  * Rendered empty for a party of one — a strip of yourself is clutter. */
+/* WHAT IS STANDING ON A MEMBER, in the width of a nameplate.
+ *
+ * The strip carried blood and power and nothing else, which was survivable
+ * while every boon in the game was worn by whoever cast it — you knew, you
+ * had just cast it. A ward thrown over the whole company broke that: the
+ * playtest watched a priest take a blow and had no way to tell whether the
+ * ward had reached them, because nothing anywhere said who was carrying one.
+ *
+ * Short forms because a nameplate is narrow, and ONE number on each, always
+ * turns left — a boon with one turn on it is a different decision from one
+ * with five, and it is the only figure that changes while you watch. The
+ * magnitude is fixed at the moment of casting and lives in the tooltip and
+ * the log; printing both put "WRD 5 4" on a plate an inch wide, which is a
+ * riddle rather than a readout. `turn` is deliberately absent: it counts how
+ * long the unhallowed keep running, a fact about the floor and not about
+ * the person wearing it. */
+const BOONS = {
+  ward: { tag: 'WRD', label: 'Ward', amount: true, why: 'turned aside from every blow' },
+  might: { tag: 'MGT', label: 'Might', amount: true, why: 'to hit' },
+  shadow: { tag: 'HID', label: 'Hidden', why: 'nothing hunts what it cannot see' },
+  sanctuary: { tag: 'SNC', label: 'Sanctuary', why: 'the dark forgets your name' },
+  str: { tag: 'STR', label: 'Borrowed might', why: 'strength not your own' },
+};
+
+function boonChips(m) {
+  const buffs = m.buffs || {};
+  const out = [];
+  for (const key of Object.keys(BOONS)) {
+    const turns = buffs[key] || 0;
+    if (turns <= 0) continue;
+    const b = BOONS[key];
+    const mag = b.amount ? ((m.buffLevels && m.buffLevels[key]) || 0) : 0;
+    const title = b.label + (mag ? ': ' + mag + ' ' + b.why : ' — ' + b.why) +
+      ', ' + turns + (turns === 1 ? ' turn left' : ' turns left');
+    out.push('<i class="boon" title="' + esc(title) + '">' + b.tag + ' <b>' + turns + '</b></i>');
+  }
+  return out.length ? '<span class="boons">' + out.join('') + '</span>' : '';
+}
+
 function renderPartyStrip(g) {
   const members = g.state.party.members.filter(Boolean);
   if (members.length <= 1) { els.partyStrip.innerHTML = ''; return; }
@@ -2997,7 +3036,8 @@ function renderPartyStrip(g) {
       '<span class="pchip-row"><img class="portrait-xs" src="' + memberPortrait(m.name, heroSex(m)) + '" alt="">' +
       esc(m.name) + reins + '</span>' +
       '<span class="pbar"><i style="width:' + hp + '%"></i></span>' +
-      '<span class="pbar pwr"><i style="width:' + pwr + '%"></i></span></button>';
+      '<span class="pbar pwr"><i style="width:' + pwr + '%"></i></span>' +
+      boonChips(m) + '</button>';
   }).join('');
 }
 

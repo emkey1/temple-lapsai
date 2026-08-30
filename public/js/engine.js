@@ -3519,9 +3519,15 @@ export class Game {
       const p = this.state.player;
       const marks = this.livingMembers().filter((m) => dist1(m, p) <= a.party && m.hp < m.maxhp);
       let total = 0;
-      for (const m of marks) total += this.applyHeal(roll(), fraction, m);
-      this.log('The old gods answer for all of you: ' + total + ' hit points across ' +
-        marks.length + (marks.length === 1 ? ' of you.' : ' of you.'));
+      const said = [];
+      for (const m of marks) {
+        const mended = this.applyHeal(roll(), fraction, m);
+        total += mended;
+        said.push((m === p ? 'you' : m.name) + ' ' + mended);
+      }
+      this.log(marks.length
+        ? 'The old gods answer for all of you: ' + total + ' hit points — ' + said.join(', ') + '.'
+        : 'The old gods answer, and nobody here needs it.');
       return;
     }
     const mark = this.healTarget(a);
@@ -3575,14 +3581,22 @@ export class Game {
       m.buffs[kind] = turns;
       m.buffLevels[kind] = bonus;
     }
+    /* NAME THEM. "2 of you" is not an answer to the only question a
+     * protective working raises, which is whether it covered the person you
+     * cast it for — the playtest watched a priest take a blow and could not
+     * tell whether the ward had been on them or not. */
     const many = marks.length > 1;
+    const who = marks.map((m) => (m === p ? 'you' : m.name));
+    const list = who.length > 1
+      ? who.slice(0, -1).join(', ') + ' and ' + who[who.length - 1]
+      : who[0];
     this.log(kind === 'ward'
       ? (many
-        ? 'You plant, and the company plants with you: ' + bonus + ' turned aside from every blow against ' +
-          marks.length + ' of you, ' + turns + ' turns.'
+        ? 'You plant, and the company plants with you — ' + list + ': ' + bonus +
+          ' turned aside from every blow, ' + turns + ' turns.'
         : 'A skin of cold air closes over you: ' + bonus + ' turned aside from every blow, ' + turns + ' turns.')
       : (many
-        ? 'Every arm here steadies: +' + bonus + ' to hit for ' + marks.length + ' of you, ' + turns + ' turns.'
+        ? 'Every arm here steadies — ' + list + ': +' + bonus + ' to hit, ' + turns + ' turns.'
         : 'Your aim sharpens: +' + bonus + ' to hit for ' + turns + ' turns.'));
   }
 

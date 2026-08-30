@@ -299,6 +299,26 @@ h3.pane {
   background: var(--panel2);
   font-size: 12px;
 }
+/* Standing boons on a nameplate: short, dim, and out of the way until there
+ * is one, at which point it is the thing you are looking for. */
+.boons {
+  display: flex;
+  gap: 3px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.boons .boon {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 0 3px;
+  border: 1px solid var(--ink-faint);
+  color: var(--ink-dim);
+  background: rgba(95, 168, 216, 0.10);
+  white-space: nowrap;
+}
+.boons .boon b { color: var(--amb); margin-left: 3px; font-weight: normal; }
+
 .ability-card b { color: var(--amb); }
 /* The reach box: a tick and the colour its ring will wear on the ground. */
 .ability-card .reach {

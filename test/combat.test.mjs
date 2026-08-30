@@ -425,3 +425,40 @@ test('the Library cannot write itself a finisher, a freeze or a company ward', (
     assert.equal(written[key], undefined, 'the oracle was allowed to write ' + key);
   }
 });
+
+test('a company working says WHO it covered, by name', () => {
+  /* "2 of you" is not an answer to the only question a protective working
+   * raises. The playtest watched a priest take a blow and could not tell
+   * whether the ward had been on them — the log has to settle it. */
+  const { g, p } = fightAt(12, 'fighter', 'htl-named', [[1, 0]]);
+  const mates = g.livingMembers().filter((m) => m !== p);
+  mates.forEach((m, i) => { m.x = p.x + 1; m.y = p.y + i; });
+  const far = mates[mates.length - 1];
+  if (far) { far.x = p.x + 9; far.y = p.y; }
+  p.power = 99;
+  g.logs.length = 0;
+  g.activateAbility('hold-the-line');
+  const line = g.logs.find((l) => /plants with you|closes over you/.test(l));
+  assert.ok(line, 'the working said nothing at all');
+  for (const m of g.livingMembers()) {
+    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2;
+    if (m === p) continue;
+    assert.equal(line.includes(m.name), covered,
+      covered ? `${m.name} was warded and went unnamed` : `${m.name} was out of reach and was named anyway`);
+  }
+});
+
+test('and a company mending says what each of them got', () => {
+  const { g, p } = fightAt(12, 'cleric', 'inter-named', [[1, 0]]);
+  g.livingMembers().forEach((m, i) => { m.x = p.x; m.y = p.y + (i > 1 ? 9 : 0); m.hp = 1; });
+  p.power = 99;
+  g.logs.length = 0;
+  g.activateAbility('intercession');
+  const line = g.logs.find((l) => /old gods answer/.test(l));
+  assert.ok(line, 'the mending said nothing');
+  for (const m of g.livingMembers()) {
+    if (m === p) continue;
+    const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= 2;
+    assert.equal(line.includes(m.name), covered, m.name + ' was reported wrongly');
+  }
+});
