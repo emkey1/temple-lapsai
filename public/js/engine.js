@@ -1910,6 +1910,14 @@ export class Game {
         floor.camped = true;
         this.bedDown('in the fire ring by the road');
       }
+      /* The ruined shrine, once: a coin in the niche, and the road ahead shown. */
+      if (floor.shrine && x === floor.shrine.x && y === floor.shrine.y && !floor.shrined) {
+        floor.shrined = true;
+        this.log('A wayside shrine, its saint worn faceless by a hundred years of weather. You leave a coin, and the road ahead comes clear.');
+        this.revealMap();
+        for (const m of this.livingMembers()) this.mendWounds(1, m);
+        if (this.journal) this.journal('Left a coin at a faceless wayside shrine, and the road ahead lay plain.');
+      }
     }
     if (tile === T.DOWN) {
       /* In town, a stair down is a dungeon's mouth: step in and you are

@@ -1159,7 +1159,10 @@ export function generateRoadFloor(opts) {
   /* A camp: a fire ring off the road, where the company can bed down once. */
   const camp = findSpot(tiles, rooms, roadBack, rng, 6, null) || { x: mid.x, y: mid.y };
   props.push({ x: camp.x, y: camp.y, atlas: 102 });   /* the grassland campfire */
-  /* A pedlar who works the road both ways. */
+  /* A ruined wayside shrine, its saint worn faceless: a coin, and a clear road. */
+  const shrine = findSpot(tiles, rooms, roadBack, rng, 8, null) || { x: mid.x, y: mid.y - 1 };
+  props.push({ x: shrine.x, y: shrine.y, piece: 'stoneColumn_S' });
+  /* A pedlar who works the road both ways, and a toll-man at the crossing. */
   const pedlarSpot = findSpot(tiles, rooms, roadBack, rng, 6, null) || { x: mid.x, y: mid.y + 1 };
   const npcs = [{
     tpl: {
@@ -1177,10 +1180,30 @@ export function generateRoadFloor(opts) {
       ],
     }, x: pedlarSpot.x, y: pedlarSpot.y,
   }];
+  const tollAt = path.find((p) => p.x === fordX - 1) || path[Math.max(0, path.length - 2)] || mid;
+  npcs.push({ tpl: {
+    id: 'road-tollman', name: 'A Toll-Man', sex: 'male', title: 'of the high crossings', color: 'rust',
+    intro: 'You are at the crossing, so you are on the road, so you are on OUR road. The toll is mine to take and yours to pay. Or go round through the thorns and lose a boot. Talk.',
+    topics: [
+      { keys: ['toll', 'pay', 'price', 'cost'], replies: ['A few coins for a dry crossing. Cheaper than the thorns, cheaper than the water, cheaper than arguing with me.'] },
+      { keys: ['road', 'crossing', 'ford', 'bridge'], replies: ['Every road out of the Reach crosses water somewhere, and every crossing is crewed. That is not greed. That is geography, with a rate on it.'] },
+      { keys: ['chute', 'crews', 'wererat'], replies: ['The Chute crews run the low water; we take the high crossings. Same book, different page — and you reek of the other page.'] },
+      { keys: ['who are you', 'your name', 'yourself'], replies: ['A toll-man. The road is long, the water is cold, and somebody has to stand here. It may as well be somebody who charges.'] },
+      { keys: ['hello', 'hail', 'greet'], replies: ['Toll first. Then talk, if you have paid and still want to.'] },
+      { keys: ['help', 'advice'], replies: ['Pay the toll. It is the only advice on this road worth the coin, and the coin is the point.'] },
+      { keys: ['drowned', 'quarter', 'sea'], replies: ['The Far Reach is down the coast. We do not crew the sea. Nobody crews the sea.'] },
+      { keys: ['this place', 'where am i', 'crossing'], replies: ['The high crossing, halfway. Water one side, thorns the other, a toll in the middle.'] },
+    ],
+    fallbacks: [
+      'The toll-man taps his staff on the stone. “Toll.”',
+      '“You can pay me, or you can swim,” he says. “The rate is better than the swim.”',
+      'He looks past you down the road, at whoever is next. “Toll first. Everything else after.”',
+    ],
+  }, x: tollAt.x, y: tollAt.y });
 
   return {
     w: W, h: H, tiles, rooms: [], monsters, items, npcs,
     up: roadBack, down: roadExit, isLast: false, den: null, mouths: [], props,
-    road, roadBack, roadExit, camp, entry: roadBack,
+    road, roadBack, roadExit, camp, shrine, entry: roadBack,
   };
 }

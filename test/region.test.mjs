@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
+import { isTravelable } from '../public/js/mapgen.js';
 
 test('the region shows the town and the ways down, with you on it', () => {
   const g = newGame('region');
@@ -127,4 +128,20 @@ test('a pedlar works the road', () => {
   g.state.player.dungeonId = 'the-whetstone';
   g.travelTo('far-reach');
   assert.ok((g.currentFloor.npcs || []).some((n) => n.tpl.id === 'road-pedlar'), 'nobody works the road');
+});
+
+test('the road keeps a shrine that shows the way, and a toll-man who charges for it', () => {
+  const g = newGame('road-shrine');
+  g.state.player.dungeonId = 'the-whetstone';
+  g.travelTo('far-reach');
+  const f = g.currentFloor;
+  assert.ok(f.shrine, 'the road has no shrine to leave a coin at');
+  assert.ok(isTravelable(f.tiles[f.shrine.y][f.shrine.x]), 'the shrine is off the walkable road');
+  const toll = (f.npcs || []).find((n) => n.tpl.id === 'road-tollman');
+  assert.ok(toll, 'nobody crews the high crossing');
+  assert.ok(isTravelable(f.tiles[toll.y][toll.x]), 'the toll-man stands off the road');
+  /* The shrine charts the floor, once. */
+  g.seen = g.seen.map((row) => row.map(() => false));
+  g.stepOn(f.shrine.x, f.shrine.y);
+  assert.ok(g.seen.some((row) => row.some((v) => v)), 'the shrine did not show the way');
 });
