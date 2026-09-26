@@ -26,6 +26,7 @@ export const WORLD = {
   npcs: [],
   storyArcs: [],
   keeper: null,
+  region: null,
   flags: {},
 };
 
@@ -36,6 +37,7 @@ export function registerWorldContent(content) {
   if (Array.isArray(content.npcs)) WORLD.npcs.push(...content.npcs);
   if (Array.isArray(content.storyArcs)) WORLD.storyArcs.push(...content.storyArcs);
   if (content.keeper && typeof content.keeper === 'object') WORLD.keeper = content.keeper;
+  if (content.region && typeof content.region === 'object') WORLD.region = content.region;
 }
 
 /* WHAT THE ORACLE NEEDS TO KNOW ABOUT THIS WORLD.

@@ -18,9 +18,9 @@ built.
 
 **What is in it:** three hand-authored sanctums and an **endless descent** past them that needs no
 LLM key; a company of four with backgrounds, skills and ability ladders; the walkable Whetstone
-(buy, sell, read, unbind, **enchant**, hire, rest, raise the dead); seven factions that know you;
-twenty undertakings; a narrator who keeps the account; and a Hall of Accounts that remembers your
-dead. Optional LLM-driven expansion on top of all of it.
+(buy, sell, read, unbind, **enchant**, hire, rest, raise the dead); a **region map** for fast travel;
+seven factions that know you; twenty undertakings; a narrator who keeps the account; and a Hall of
+Accounts that remembers your dead. Optional LLM-driven expansion on top of all of it.
 
 ## Requirements
 
@@ -171,6 +171,12 @@ A few rules worth knowing before you go down:
 - **The Lower Ledger never ends.** Clear the three founding sanctums and the stair keeps going down:
   an endless descent drawn from the whole bestiary, a boss every fifth landing, no bottom — only how
   deep you got, and whether you came back to say so. It needs no LLM key.
+- **The region** (press **`M`**) is the world from above: the Whetstone at the foot of the hill, its
+  stairs, and the names the stories keep — the Chute, the Far Reach, the Drowned Quarter. **You are
+  here** is marked; click a place you have found and the company takes the road there. No walking the
+  green to reach a mouth.
+
+![The region map](docs/region.png)
 
 ### The undertakings
 

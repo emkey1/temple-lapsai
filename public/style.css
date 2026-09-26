@@ -606,3 +606,38 @@ kbd {
   color: var(--amb);
 }
 #help button { margin-top: 16px; }
+
+/* ---- THE REGION MAP: the world from above, and click-to-travel ---- */
+#region-map {
+  position: relative;
+  height: 380px;
+  margin: 4px 0 16px;
+  border: 1px solid var(--ink-dim);
+  background: radial-gradient(120% 90% at 50% 120%, #16200f 0%, #0a0d08 68%, #050705 100%);
+  overflow: hidden;
+}
+.region-water { position: absolute; inset: 0; width: 100%; height: 100%; }
+.region-water path { fill: none; stroke: #2e4a3a; stroke-width: 1.2; }
+.region-land {
+  position: absolute; transform: translate(-50%, -50%);
+  color: var(--ink-faint); font: 10px "Courier New", monospace;
+  letter-spacing: 3px; text-transform: uppercase; white-space: nowrap;
+  pointer-events: none;
+}
+.region-node {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: 11px "Courier New", monospace; color: var(--ink); white-space: nowrap;
+}
+.region-node .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ink-dim);
+}
+.region-node.town .dot { background: var(--amb-dim); }
+.region-node.endless .dot { background: #7a6aa8; }
+.region-node.here .dot { background: var(--amb); box-shadow: 0 0 12px rgba(216, 176, 74, .9); }
+.region-node .nm { text-shadow: 0 0 4px #050705, 0 0 4px #050705; }
+.region-node .you { color: var(--amb); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+.region-node:not(:disabled):hover .nm { color: var(--amb); }
+.region-node:disabled { cursor: default; }

@@ -15,7 +15,7 @@ import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
-import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction, keeperLine } from './world.js';
+import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction, keeperLine, WORLD } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
 import { WEARABLE_SLOTS, isWorn } from './contract.js';
 import { itemStackKey } from './base.js';
@@ -450,6 +450,55 @@ export class Game {
   isDungeonCleared(id) {
     const d = this.dungeonById(id);
     return !!(d && this.state.player && this.state.player.bossesSlain && this.state.player.bossesSlain[id]);
+  }
+
+  /* THE REGION, SEEN FROM ABOVE. Everywhere the company has a way into — the
+   * town and the ways down — laid on the world with the landmarks the stories
+   * name. Coordinates come from the lore; a written sanctum with none is
+   * scattered by a hash of its id, so it lands somewhere and stays there. */
+  regionPlaces() {
+    const spec = (WORLD.region && WORLD.region.places) || {};
+    const here = this.state.player.dungeonId;
+    const out = [];
+    const place = (id, kind) => {
+      const d = id === TOWN_ID ? null : this.dungeonById(id);
+      const s = spec[id] || {};
+      let h = 0;
+      for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      out.push({
+        id,
+        name: s.name || (d ? d.name : 'The Whetstone'),
+        note: s.note || (d ? (d.title || d.name) : 'the town at the top of the stairs'),
+        x: s.x != null ? s.x : 28 + (h % 44),
+        y: s.y != null ? s.y : 22 + ((h >> 5) % 56),
+        kind,
+        here: here === id,
+      });
+    };
+    place(TOWN_ID, 'town');
+    for (const d of this.availableDungeons()) place(d.id, d.endless ? 'endless' : 'dungeon');
+    return out;
+  }
+
+  regionLandmarks() {
+    return ((WORLD.region && WORLD.region.landmarks) || []).slice();
+  }
+
+  /* Fast travel, by the map. To the town is a climb out; to a sanctum, a road
+   * taken. Refuses a place with no way in, or the one you are already at. */
+  travelTo(id) {
+    if (id === TOWN_ID) {
+      if (this.inTown()) return false;
+      this.log('The company takes the road back to the Whetstone.');
+      this.enterTown(this.state.player.dungeonId);
+      return true;
+    }
+    const d = this.dungeonById(id);
+    if (!d || !this.availableDungeons().some((x) => x.id === id)) { this.log('There is no road there yet.'); return false; }
+    if (this.state.player.dungeonId === id && this.state.player.floorIdx === 0) return false;
+    this.log('The company takes the road to ' + d.name + '.');
+    this.enterDungeon(id);
+    return true;
   }
 
   derived(who) {

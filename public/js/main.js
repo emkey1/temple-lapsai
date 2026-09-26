@@ -100,6 +100,10 @@ const els = {
   dungeonCodex: $('dungeon-codex'),
   libraryBlock: $('library-block'),
   libOverlay: $('library-overlay'),
+  regionOverlay: $('region-overlay'),
+  regionMap: $('region-map'),
+  regionSub: $('region-sub'),
+  btnRegionClose: $('btn-region-close'),
   libStatus: $('lib-status'),
   libActions: $('lib-actions'),
   libFocus: $('lib-focus'),
@@ -179,6 +183,7 @@ const CONTROLS = [
     ['Shift + 1 – 4', 'Use what is on that belt loop. Bind something to the belt with BELT in the gear panel.'],
     ['C', 'Codex: the depths you know about.'],
     ['L', 'The Black Library, where new depths get written.'],
+    ['M', 'The region: where you are, and the roads out of it.'],
     ['Tab', 'Cycle those four panels.'],
   ]],
   ['Talking and dialogs', [
@@ -3841,7 +3846,13 @@ function onKey(e) {
   if (k === 'i' || k === 'e') { setTab('gear'); e.preventDefault(); return; }
   if (k === 'c') { setTab('codex'); e.preventDefault(); return; }
   if (k === 'l') { setTab('library'); e.preventDefault(); return; }
-  if (k === 'escape') { if (helpOpen) closeHelp(); else closeDialogue(); return; }
+  if (k === 'm') { openRegion(); e.preventDefault(); return; }
+  if (k === 'escape') {
+    if (els.regionOverlay && !els.regionOverlay.classList.contains('hidden')) closeRegion();
+    else if (helpOpen) closeHelp();
+    else closeDialogue();
+    return;
+  }
   if (k === 'enter') {
     if (dialogueOpen) { dlgSend(); }
     return;
@@ -4130,6 +4141,46 @@ const EXP_ACTIONS = [
   ['item', 'ENCHANT AN ITEM'],
   ['ability', 'GRANT AN ABILITY'],
 ];
+
+/* ---------------- the region map ---------------- *
+ *
+ * The world from above: the hill and its stairs, the town at the foot, and the
+ * names the stories keep promising. Click a place to take the road there, if
+ * you have found the way and are not already standing in it. */
+
+function openRegion() {
+  if (!game) return;
+  renderRegionMap(game);
+  overlayShow(els.regionOverlay);
+}
+
+function closeRegion() {
+  els.regionOverlay.classList.add('hidden');
+  canvasFocus();
+}
+
+function renderRegionMap(g) {
+  const places = g.regionPlaces();
+  const lands = g.regionLandmarks().map((l) =>
+    '<div class="region-land" style="left:' + l.x + '%;top:' + l.y + '%">' + esc(l.name) + '</div>').join('');
+  const here = g.state.player.dungeonId;
+  const where = here === 'the-whetstone' ? 'the Whetstone' : ((g.dungeonById(here) || {}).name || 'down below');
+  const nodes = places.map((p) =>
+    '<button class="region-node ' + p.kind + (p.here ? ' here' : '') + '" data-travel="' + esc(p.id) + '"' +
+    ' style="left:' + p.x + '%;top:' + p.y + '%"' + (p.here ? ' disabled' : '') + ' title="' + esc(p.note || '') + '">' +
+      '<span class="dot"></span>' +
+      '<span class="nm">' + esc(p.name) + '</span>' +
+      '<span class="you">' + (p.here ? 'you are here' : '') + '</span>' +
+    '</button>').join('');
+  els.regionMap.innerHTML = lands +
+    /* The coast the sea gives back, drawn once, low and flat. */
+    '<svg class="region-water" viewBox="0 0 100 100" preserveAspectRatio="none">' +
+      '<path d="M2,88 C24,80 34,74 50,76 C66,78 78,72 98,82" /></svg>' +
+    nodes;
+  if (els.regionSub) {
+    els.regionSub.textContent = 'You are in ' + where + '. Click a name to take the road there; the rest wait to be found.';
+  }
+}
 
 function openLibrary(openTheOracle) {
   els.libResult.innerHTML = '';
@@ -4632,6 +4683,13 @@ async function boot() {
   els.btnOracleTest.onclick = () => testOracle();
   els.btnOracleModels.onclick = () => askWhatItServes();
   els.btnOracleForget.onclick = () => forgetOracle();
+
+  if (els.btnRegionClose) els.btnRegionClose.onclick = () => closeRegion();
+  if (els.regionMap) els.regionMap.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-travel]');
+    if (!b || !game || b.disabled) return;
+    if (game.travelTo(b.dataset.travel)) { closeRegion(); renderAll(game); saveGame(); }
+  });
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);

@@ -325,6 +325,25 @@ export const LORE = {
     ],
     closing: 'Three sanctums quiet, and the book is not full — it is finished, which is a different thing and a worse one for whoever kept it. Above you a lid is set down on something that has stood open for four hundred years. You have closed an account that outlived every clerk who ever touched it.'
   },
+  /* THE REGION. What the world looks like from above: the hill and its stairs,
+   * the town at the foot, and the names the stories keep promising. Coordinates
+   * are percentages on the region map; a place with none is scattered by id. */
+  region: {
+    name: 'The Hill and the Reach',
+    places: {
+      'the-whetstone': { name: 'The Whetstone', x: 50, y: 70, note: 'the flat stone outside the lintel, and the town that grew up around it' },
+      temple: { name: 'The Temple of Lapsai', x: 34, y: 50, note: 'the swept stairs down, under the hill' },
+      upper: { name: 'The Upper Works', x: 66, y: 42, note: 'the warrens, and the toll road they call the Chute' },
+      serpent: { name: 'The Coils', x: 46, y: 24, note: 'the serpent halls beneath the last hill' },
+      deep: { name: 'The Lower Ledger', x: 54, y: 9, note: 'the stair that does not stop' }
+    },
+    landmarks: [
+      { name: 'The Hill', x: 43, y: 36 },
+      { name: 'The Chute', x: 76, y: 32 },
+      { name: 'The Far Reach', x: 85, y: 76 },
+      { name: 'The Drowned Quarter', x: 14, y: 80 }
+    ]
+  },
   npcs: [
     {
       id: 'hermit-ogil', faction: 'carriers-ubtao',

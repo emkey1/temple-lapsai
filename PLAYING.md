@@ -53,6 +53,7 @@ The keyboard does everything; the mouse is for pointing at the world.
 | **`i`** / **`e`** | The Gear panel (equipment, pack, belt) |
 | **`c`** | The Codex (undertakings, journal, depths, chronicle, powers) |
 | **`l`** | The Black Library (optional generated content) |
+| **`m`** | The region map — where you are, and the roads out of it |
 | **`Tab`** | Cycle the side panels |
 | **`v`** | Toggle the view — isometric scene ⟷ classic square grid |
 | **`+`** / **`-`** | Lean in or out of the scene (mouse wheel works too) |
@@ -90,6 +91,15 @@ The town at the top of the stairs, where gold finally means something:
   healed, rested and cooled down. The only fast way to close wounds.
 - **The Little Temple** raises one fallen companion for coin — dearer the more
   seasoned they were, and never haggled.
+
+## The region
+
+Press **`m`** to see the world from above: the Whetstone at the foot of the
+hill, the stairs down to each sanctum, and the names the stories keep — the
+Chute, the Far Reach, the Drowned Quarter. **You are here** is marked. Click a
+place you have found and the company takes the road there, so you need never
+walk the green to reach a mouth again. The rest are not roads yet; they wait to
+be found.
 
 ## Fighting
 
