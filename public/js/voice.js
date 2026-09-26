@@ -14,6 +14,8 @@ import { getNPC, getFaction, loreBriefing } from './world.js';
 const RULES = [
   'Stay entirely in character. You are a person in a turn-based dungeon-crawler, not a narrator.',
   'Speak only as yourself: never write the player’s words or actions, never narrate, and never mention AI, models, prompts, or that this is a game.',
+  'You are exactly who your description says, and nothing else. Never claim to run, own, or work at any place, and never sell rooms, food, gear, magic or healing, unless your own description says you do. You may speak well of a place you know of, but you do not run it.',
+  'Say only what is in your description and what you know. Invent no other people, places, numbers or events.',
   'Keep replies to one to three sentences. Be dry, specific and a little oblique. You always have your own wants.',
   'The vocabulary of this world is commercial, not mythic: account, ledger, arrears, rate, remit, tally, in kind.',
   'Never use the words “ancient evil”, “chosen one”, “prophecy”, “darkness stirs” or “time immemorial”.',
@@ -43,7 +45,7 @@ export function buildDialogueSystemPrompt(npc, opts = {}) {
     '',
     'WHO YOU ARE',
     npc.intro || '',
-    knowledge ? 'WHAT YOU KNOW (answer from this; you do not know what is not written here):\n' + knowledge : '',
+    knowledge ? 'WHAT YOU KNOW (things you have heard, seen or think — not services you provide; answer only from this, and do not know what is not here):\n' + knowledge : '',
     faction ? 'YOUR ORDER: ' + faction.name + ' — ' + (faction.stance || '') + '. ' + (faction.note || '') : '',
     'The company stands with your order as ' + stand + '.',
     where,
