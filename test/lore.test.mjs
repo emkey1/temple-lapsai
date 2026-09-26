@@ -19,7 +19,7 @@ const arc = (id) => LORE.storyArcs.find((a) => a.id === id);
 test('the world has real content in every category', () => {
   assert.ok(LORE.history.length >= 4, `only ${LORE.history.length} eras`);
   assert.ok(LORE.factions.length >= 4, `only ${LORE.factions.length} factions`);
-  assert.equal(LORE.storyArcs.length, 3);
+  assert.ok(LORE.storyArcs.length >= 3, `only ${LORE.storyArcs.length} arcs`);
   assert.ok(LORE.npcs.length >= 3);
 });
 

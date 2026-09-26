@@ -77,6 +77,16 @@ export function loreBriefing(opts = {}) {
   if (opts.dungeons && opts.dungeons.length) {
     parts.push('SANCTUMS already written: ' + opts.dungeons.map(line).join('; ') + '.');
   }
+  /* THE LAND ITSELF. The chart the player reads — the towns at the foot and on
+   * the coast, the hill, the reach, the landmarks the stories name — so a
+   * written place can be told WHERE it lies rather than hovering in a void. */
+  const land = [];
+  if (WORLD.region && WORLD.region.name) land.push(line(WORLD.region.name));
+  if (opts.places && opts.places.length) land.push(opts.places.map(line).join(', '));
+  if (WORLD.region && Array.isArray(WORLD.region.landmarks)) {
+    land.push(WORLD.region.landmarks.map((l) => line(l.name)).join(', '));
+  }
+  if (land.length) parts.push('THE LAND: ' + land.join('; ') + '.');
 
   /* The register matters as much as the facts. Everything in this world is
    * written as bookkeeping that outlived its clerks — debts, tallies,

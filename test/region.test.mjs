@@ -162,3 +162,100 @@ test('the toll is real: it takes the coin and shows the road', () => {
   assert.equal(g.purse(), purse - cost, 'the toll did not take the coin');
   assert.ok(g.seen.some((row) => row.some((v) => v)), 'paying the toll did not show the road');
 });
+
+test('the region inks an intended level beside every way down', () => {
+  const g = newGame('region-levels');
+  g.state.player.dungeonId = 'the-whetstone';
+  const byId = Object.fromEntries(g.regionPlaces().map((p) => [p.id, p]));
+  assert.equal(byId.temple.level, '1\u20134', 'the temple carries no level band');
+  assert.equal(byId['the-whetstone'].level, '', 'a town was given a danger level');
+});
+
+test('a level band reads as a range, or open-ended for the endless stair', async () => {
+  const { getDungeon } = await import('../public/js/base.js');
+  const g = newGame('level-bands');
+  assert.equal(g.levelBand(getDungeon('upper')), '5\u20138', 'the upper reaches band is wrong');
+  assert.equal(g.levelBand(getDungeon('serpent')), '9\u201312', 'the serpent band is wrong');
+  assert.equal(g.levelBand(getDungeon('deep')), '12+', 'the endless stair is not open-ended');
+  assert.equal(g.levelBand(getDungeon('drowned')), '12\u201315', 'the drowned quarter band is wrong');
+  assert.equal(g.levelLabel(getDungeon('serpent')), 'level 9\u201312', 'the label phrase is wrong');
+  assert.equal(g.levelBand(null), '', 'a missing place should carry no band');
+});
+
+test('a place with no written coordinate still lands inside the chart', () => {
+  const g = newGame('region-hash');
+  g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
+  /* This id's hash has its top bit set; a SIGNED shift put it at y = -4, off the
+   * top of the map, where the pane clipped its label. */
+  const id = 'exp-muhbdvug-0xyozm';
+  g.registry.dungeons.push({ id, name: 'The Arrears', floors: 1, threat: 0, monsterWeights: [], bossId: null, requires: 'serpent' });
+  const p = g.regionPlaces().find((x) => x.id === id);
+  assert.ok(p, 'the unwritten place never reached the map');
+  assert.ok(p.x >= 0 && p.x <= 100 && p.y >= 0 && p.y <= 100, 'placed off the map at ' + p.x + ',' + p.y);
+});
+
+test('a commissioned sanctum is filed on the chart, and a suggested spot is honoured', () => {
+  const g = newGame('region-written');
+  g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
+  const id = 'exp-written-1';
+  g.registry.dungeons.push({
+    id, name: 'The Arrears', title: 'a written sanctum', floors: 3, theme: 'temple', threat: 6,
+    monsterWeights: [], bossId: null, requires: 'serpent',
+    minLevel: 12, level: [12, 15], region: { x: 20, y: 30, note: 'west of the hill' }, regionNote: 'west of the hill',
+  });
+  const p = g.regionPlaces().find((x) => x.id === id);
+  assert.ok(p, 'the commissioned sanctum is not on the chart');
+  assert.equal(p.kind, 'written', 'a written sanctum is not marked as written');
+  assert.equal(p.x, 20, 'the suggested spot was not honoured');
+  assert.equal(p.y, 30, 'the suggested spot was not honoured');
+  assert.equal(p.level, '12\u201315', 'the written band did not print');
+  assert.equal(p.note, 'west of the hill', 'the cartographer\u2019s note was lost');
+});
+
+test('a commissioned sanctum with no suggested spot is filed beside its gate', () => {
+  const g = newGame('region-near');
+  g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
+  const id = 'exp-near-1';
+  g.registry.dungeons.push({ id, name: 'X', floors: 2, threat: 4, monsterWeights: [], bossId: null, requires: 'serpent', minLevel: 10, level: [10, 13] });
+  const places = g.regionPlaces();
+  const p = places.find((x) => x.id === id);
+  const serpent = places.find((x) => x.id === 'serpent');
+  assert.ok(p, 'the sanctum is not on the chart');
+  assert.ok(Math.abs(p.x - serpent.x) <= 34 && Math.abs(p.y - serpent.y) <= 34, 'not filed near the gate it opened from');
+  assert.ok(p.x >= 8 && p.x <= 92 && p.y >= 8 && p.y <= 92, 'placed off the chart');
+});
+
+test('the Emberworks opens off the Upper Reaches, at its own level', () => {
+  const g = newGame('ember');
+  g.state.player.dungeonId = 'the-whetstone';
+  assert.ok(!g.availableDungeons().some((d) => d.id === 'emberworks'), 'the works opened before its gate');
+  g.state.player.bossesSlain = { temple: true, upper: true };
+  const d = g.availableDungeons().find((x) => x.id === 'emberworks');
+  assert.ok(d, 'the Emberworks never opened off the Upper Reaches');
+  assert.equal(d.requires, 'upper');
+  assert.equal(g.levelBand(d), '6\u20139', 'the works carry the wrong chart band');
+  const place = g.regionPlaces().find((p) => p.id === 'emberworks');
+  assert.ok(place, 'the Emberworks is not on the chart');
+  assert.equal(place.kind, 'dungeon', 'a shipped place was marked as a Library work');
+  assert.equal(place.x, 24);
+  assert.equal(place.y, 44);
+  /* The door itself is barred to a company under level six. */
+  assert.ok(g.dungeonBarred(d), 'a level-one company was let into the works');
+  g.state.player.level = 6;
+  assert.equal(g.dungeonBarred(d), null, 'a level-six company was kept out');
+  g.enterDungeon('emberworks');
+  assert.equal(g.state.player.dungeonId, 'emberworks', 'the company could not go down');
+  assert.ok(g.currentFloor, 'no floor was generated for the works');
+  assert.equal(d.theme, 'fire', 'the works were dressed in the wrong stone');
+});
+
+test('the first door of an over-strong sanctum says so, without shutting it', () => {
+  const g = newGame('level-sign');
+  g.state.player.dungeonId = 'the-whetstone';
+  const before = g.logs.length;
+  g.enterDungeon('upper');
+  assert.equal(g.state.player.dungeonId, 'upper', 'the sign turned out to be a lock');
+  assert.ok(g.logs.slice(before).some((l) => /company of level 5\u20138/.test(l)),
+    'nobody warned the level-one company at the door');
+});
+

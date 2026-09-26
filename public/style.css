@@ -432,6 +432,7 @@ h3.pane {
 }
 .overlay-card h2 { margin: 0 0 6px; color: var(--amb); letter-spacing: 4px; text-align: center; }
 .overlay-card .sub { color: var(--ink-dim); text-align: center; margin: 0 0 18px; }
+#arrival-level { color: var(--amb-dim); }
 .overlay-card h2.death { color: var(--red); }
 .overlay-card h2.gold { color: var(--amb); }
 /* A CAPPED, SCROLLING LIST. Five cards asked for `scrolly` and the
@@ -607,37 +608,121 @@ kbd {
 }
 #help button { margin-top: 16px; }
 
-/* ---- THE REGION MAP: the world from above, and click-to-travel ---- */
+/* ---- THE REGION MAP: a chart in the Keeper's own hand ---- */
 #region-map {
   position: relative;
-  height: 380px;
-  margin: 4px 0 16px;
-  border: 1px solid var(--ink-dim);
-  background: radial-gradient(120% 90% at 50% 120%, #16200f 0%, #0a0d08 68%, #050705 100%);
+  height: 440px;
+  margin: 4px 0 14px;
+  border: 1px solid var(--amb-dim);
+  outline: 1px solid rgba(216, 176, 74, .18);
+  outline-offset: 3px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(216, 176, 74, .05), transparent 60%),
+    radial-gradient(140% 120% at 50% 130%, #182410 0%, #0c120a 55%, #060806 100%);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, .8), inset 0 0 8px rgba(0, 0, 0, .6);
   overflow: hidden;
 }
-.region-water { position: absolute; inset: 0; width: 100%; height: 100%; }
-.region-water path { fill: none; stroke: #2e4a3a; stroke-width: 1.2; }
-.region-land {
+
+/* the inked terrain: sea, coast, river, roads — stretched to the pane */
+.rg-terrain { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rg-terrain .rg-sea { fill: #0c1a1c; opacity: .92; }
+.rg-terrain .rg-coast { fill: none; stroke: var(--amb-dim); stroke-width: .5; opacity: .8; }
+.rg-terrain .rg-river { fill: none; stroke: #3f6b78; stroke-width: .6; opacity: .7; }
+.rg-terrain .rg-road {
+  fill: none; stroke: var(--amb-dim); stroke-width: .55;
+  stroke-dasharray: 1.4 1.2; opacity: .85;
+}
+.rg-terrain .rg-track {
+  fill: none; stroke: var(--ink-faint); stroke-width: .4;
+  stroke-dasharray: .6 1.1; opacity: .8;
+}
+
+/* hills and trees, fixed-size so the stretch cannot smear them */
+.rg-feat {
+  position: absolute; transform: translate(-50%, -50%);
+  color: var(--ink-faint); pointer-events: none;
+}
+.rg-feat svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.rg-hill svg { width: 34px; height: 20px; }
+.rg-tree svg { width: 15px; height: 22px; }
+.rg-tree { color: var(--ink-dim); }
+
+.rg-land {
   position: absolute; transform: translate(-50%, -50%);
   color: var(--ink-faint); font: 10px "Courier New", monospace;
-  letter-spacing: 3px; text-transform: uppercase; white-space: nowrap;
-  pointer-events: none;
+  letter-spacing: 4px; text-transform: uppercase; white-space: nowrap;
+  pointer-events: none; text-shadow: 0 0 6px #050705, 0 0 6px #050705;
 }
+
+/* place markers: symbol over name over level */
 .region-node {
   position: absolute; transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
   background: none; border: 0; padding: 0; cursor: pointer;
   font: 11px "Courier New", monospace; color: var(--ink); white-space: nowrap;
+  text-shadow: 0 0 5px #050705, 0 0 5px #050705;
 }
-.region-node .dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--ink-dim);
+.region-node .pin { color: var(--ink-dim); line-height: 0; }
+.region-node .pin svg {
+  width: 24px; height: 24px; fill: none; stroke: currentColor;
+  stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round;
 }
-.region-node.town .dot { background: var(--amb-dim); }
-.region-node.endless .dot { background: #7a6aa8; }
-.region-node.here .dot { background: var(--amb); box-shadow: 0 0 12px rgba(216, 176, 74, .9); }
-.region-node .nm { text-shadow: 0 0 4px #050705, 0 0 4px #050705; }
+.region-node .nm { letter-spacing: 1px; }
+.region-node .lv {
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-faint);
+}
+.region-node.here .lv { color: var(--amb-dim); }
+.region-node.town .pin { color: var(--amb); }
+.region-node.written .pin { color: var(--ink); }
+.region-node.endless .pin { color: #9a86c8; }
+.region-node.here .pin {
+  color: var(--amb);
+  filter: drop-shadow(0 0 5px rgba(216, 176, 74, .9));
+}
 .region-node .you { color: var(--amb); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
-.region-node:not(:disabled):hover .nm { color: var(--amb); }
+.region-node:not(:disabled):hover .nm,
+.region-node:not(:disabled):hover .lv { color: var(--amb); }
+.region-node:not(:disabled):hover .pin { color: var(--amb); }
 .region-node:disabled { cursor: default; }
+
+/* the trim: compass, cartouche, scale */
+.rg-compass { position: absolute; top: 12px; right: 12px; width: 56px; height: 56px; opacity: .8; }
+.rg-compass svg { width: 100%; height: 100%; fill: none; stroke: var(--amb-dim); stroke-width: 1; }
+.rg-compass .rg-n { fill: var(--amb-dim); stroke: none; }
+.rg-compass .rg-e { fill: var(--ink-faint); stroke: none; }
+.rg-compass text { fill: var(--amb-dim); stroke: none; font: 10px "Courier New", monospace; text-anchor: middle; }
+
+.rg-cartouche {
+  position: absolute; top: 12px; left: 12px;
+  padding: 6px 12px; border: 1px solid var(--amb-dim);
+  background: rgba(6, 8, 6, .72); color: var(--amb);
+  font: 11px "Courier New", monospace; letter-spacing: 3px; text-transform: uppercase;
+}
+.rg-scale {
+  position: absolute; bottom: 10px; left: 12px;
+  display: flex; align-items: center; gap: 6px;
+  color: var(--ink-dim); font: 9px "Courier New", monospace;
+  letter-spacing: 2px; text-transform: uppercase;
+}
+.rg-scale i {
+  display: inline-block; width: 60px; height: 6px;
+  border: 1px solid var(--ink-dim);
+  background: linear-gradient(90deg, var(--ink-dim) 0 50%, transparent 50% 100%);
+}
+
+#region-legend {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: center;
+  margin: 0 0 16px; color: var(--ink-dim);
+  font: 9px "Courier New", monospace; letter-spacing: 2px; text-transform: uppercase;
+}
+#region-legend span { display: inline-flex; align-items: center; gap: 6px; }
+#region-legend .sw { width: 10px; height: 10px; display: inline-block; border: 1px solid currentColor; }
+#region-legend .sw.town { background: var(--amb-dim); }
+#region-legend .sw.dungeon { background: var(--ink-faint); }
+#region-legend .sw.written { background: var(--ink); }
+#region-legend .sw.endless { background: #9a86c8; }
+#region-legend .sw.road {
+  border: 0; height: 3px; width: 14px;
+  background: repeating-linear-gradient(90deg, var(--amb-dim) 0 4px, transparent 4px 7px);
+}
+#region-legend .sw.sea { background: #0c1a1c; border-color: #3f6b78; }

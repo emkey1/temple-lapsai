@@ -4,7 +4,7 @@
  */
 
 import { RNG, hashSeed } from './rng.js';
-import { getTheme } from './base.js';
+import { getTheme, dungeonLevelBand } from './base.js';
 
 export const T = {
   WALL: 0,
@@ -914,7 +914,7 @@ export function generateTownFloor(dungeons) {
      * made at the mouth rather than one floor down. */
     mouths.push({
       x, y, dungeonId: d.id,
-      name: d.minLevel ? `${d.name} (Lv ${d.minLevel}+)` : d.name,
+      name: dungeonLevelBand(d) ? `${d.name} (Lv ${dungeonLevelBand(d)})` : d.name,
       minLevel: d.minLevel || 0,
     });
   });
@@ -1065,7 +1065,7 @@ export function generateReachFloor(dungeons) {
     tiles[y][x] = T.DOWN;
     mouths.push({
       x, y, dungeonId: d.id,
-      name: d.minLevel ? `${d.name} (Lv ${d.minLevel}+)` : d.name,
+      name: dungeonLevelBand(d) ? `${d.name} (Lv ${dungeonLevelBand(d)})` : d.name,
       minLevel: d.minLevel || 0,
     });
   });

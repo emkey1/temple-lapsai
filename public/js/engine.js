@@ -7,7 +7,8 @@ import { QUESTS, questById, questsFrom, objectiveText } from './quests.js';
 import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
-  scaleDice, randomTreasureValue, getDungeon, ENDLESS, DROWNED, TOWNS, townById, isTownId,
+  scaleDice, randomTreasureValue, getDungeon, OFFSITE_DUNGEONS, TOWNS, townById, isTownId,
+  dungeonLevelBand, dungeonLevelLabel,
   healFractionForItem, healFractionForAbility, RECOVERY,
   BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
@@ -474,15 +475,13 @@ export class Game {
       const met = Array.isArray(requires) ? requires.every((r) => bossSlain(r)) : bossSlain(requires);
       if (met && !order.some((o) => o && o.id === d.id)) order.push(d);
     }
-    /* THE LOWER LEDGER, the stair past the last founding sanctum. Not one of
-     * the three, so it never gates the chronicle — it simply opens once the
-     * serpent is quiet, and then it does not end. */
-    const endless = this.dungeonById(ENDLESS.id);
-    if (endless && bossSlain(endless.requires) && !order.some((o) => o && o.id === endless.id)) order.push(endless);
-    /* THE DROWNED QUARTER: the sunken lower town off the Far Reach. Also not
-     * one of the three, and also opened once the serpent is quiet. */
-    const drowned = this.dungeonById(DROWNED.id);
-    if (drowned && bossSlain(drowned.requires) && !order.some((o) => o && o.id === drowned.id)) order.push(drowned);
+    /* THE SHIPPED PLACES PAST THE FOUNDING THREE — the endless stair, the
+     * drowned quarter, the emberworks. None counts toward the chronicle; each
+     * opens once the boss it leans on is quiet. */
+    for (const off of OFFSITE_DUNGEONS) {
+      const d = this.dungeonById(off.id);
+      if (d && bossSlain(d.requires) && !order.some((o) => o && o.id === d.id)) order.push(d);
+    }
     return order.filter(Boolean);
   }
 
@@ -499,24 +498,57 @@ export class Game {
     const spec = (WORLD.region && WORLD.region.places) || {};
     const here = this.state.player.dungeonId;
     const out = [];
-    const place = (id, kind) => {
+    const coords = new Map();
+    const hash = (id) => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
+    const authored = (id) => {
+      const s = spec[id] || {};
+      return (s.x != null && s.y != null) ? { x: s.x, y: s.y } : null;
+    };
+    const place = (id) => {
       const town = townById(id);
       const d = town ? null : this.dungeonById(id);
       const s = spec[id] || {};
-      let h = 0;
-      for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      /* WHERE IT SITS. A written coordinate if the stories gave one, else the
+       * model's suggestion, else filed beside the gate it opened from, else a
+       * hash. Clamped so nothing lands off the chart or in the sea. */
+      let pos = authored(id) || coords.get(id);
+      if (!pos) {
+        const h = hash(id);
+        const clamp = (v) => Math.max(8, Math.min(92, v));
+        if (d && d.region && Number.isFinite(d.region.x) && Number.isFinite(d.region.y)) {
+          pos = { x: d.region.x, y: d.region.y };
+        } else {
+          const req = d && (d.requires || d.unlockAfter);
+          const parent = Array.isArray(req) ? req[0] : req;
+          const pc = parent ? (authored(parent) || coords.get(parent)) : null;
+          /* A standoff ring, so a written sanctum reads as a neighbour of the
+           * gate it opened from rather than a tile on top of it. */
+          const a = ((h % 360) * Math.PI) / 180;
+          const r = 14 + (h % 8);
+          const anchor = pc || { x: 28 + (h % 44), y: 22 + ((h >>> 5) % 56) };
+          pos = { x: clamp(anchor.x + Math.cos(a) * r), y: clamp(anchor.y + Math.sin(a) * r) };
+          /* Nudge clear of anything already inked nearby. */
+          for (let i = 0; i < 6 && [...coords.values()].some((c) => Math.abs(c.x - pos.x) < 7 && Math.abs(c.y - pos.y) < 7); i++) {
+            const aa = a + i * 2.1, rr = 14 + i * 3;
+            pos = { x: clamp(anchor.x + Math.cos(aa) * rr), y: clamp(anchor.y + Math.sin(aa) * rr) };
+          }
+        }
+      }
+      coords.set(id, pos);
+      const written = !town && !getDungeon(id);   /* a Library work, not a shipped place */
       out.push({
         id,
         name: s.name || (town ? town.name : (d ? d.name : id)),
-        note: s.note || (town ? 'a town' : (d ? (d.title || d.name) : 'somewhere below')),
-        x: s.x != null ? s.x : 28 + (h % 44),
-        y: s.y != null ? s.y : 22 + ((h >> 5) % 56),
-        kind,
+        note: s.note || (d && d.regionNote) || (town ? 'a town' : (d ? (d.title || d.name) : 'somewhere below')),
+        x: pos.x,
+        y: pos.y,
+        kind: town ? 'town' : (d && d.endless ? 'endless' : (written ? 'written' : 'dungeon')),
+        level: town ? '' : this.levelBand(d),
         here: here === id,
       });
     };
-    for (const t of TOWNS) place(t.id, 'town');
-    for (const d of this.availableDungeons()) place(d.id, d.endless ? 'endless' : 'dungeon');
+    for (const t of TOWNS) place(t.id);
+    for (const d of this.availableDungeons()) place(d.id);
     return out;
   }
 
@@ -952,6 +984,25 @@ export class Game {
     return Math.round(live.reduce((n, m) => n + (m.level || 1), 0) / live.length);
   }
 
+  /* THE INTENDED LEVEL OF A PLACE. The story walks you through the temple; past
+   * it the world is open and every other way down is already there. This is the
+   * number the Keeper would ink in the margin, so nobody marches a level-one
+   * company into the coils. It is a SIGN, not a lock — see dungeonBarred for
+   * the doors that are actually shut. */
+  placeLevel(d) {
+    const lv = d && d.level;
+    const pair = Array.isArray(lv) ? lv : (d && d.minLevel ? [d.minLevel, null] : null);
+    return pair && pair[0] != null ? pair[0] : null;
+  }
+  /* "1–4", "12+" — the band alone, for a HUD or a map tag. */
+  levelBand(d) {
+    return dungeonLevelBand(d);
+  }
+  /* "level 1–4", "level 12+" — for a sentence. */
+  levelLabel(d) {
+    return dungeonLevelLabel(d);
+  }
+
   /* A written sanctum states the strength it was built for, and holds the
    * door until the company has it. The founding three are never gated: they
    * are unlocked in order by what you have killed, and a level gate on top of
@@ -983,6 +1034,15 @@ export class Game {
         m2.visitedDungeons[id] = true;
       });
       this.journal('The company first set foot in ' + d.name + '.');
+      /* The sign in the margin, once, at the first door. Walk through it if you
+       * like — the world is yours to lose — but read it first. */
+      const rec = this.placeLevel(d);
+      const have = this.companyLevel();
+      if (rec && have + 1 < rec) {
+        this.log('A hand in the ledger, not your own, has written beside it: ' + d.name +
+          ' is a place for a company of ' + this.levelLabel(d) + '. Yours averages ' + have +
+          '. The stairs do not stop you — only the reading does.');
+      }
       const p0 = this.state.player;
       if (!p0.counters) p0.counters = {};
       if (firstEver && !p0.counters.welcomeSeen) {
@@ -993,7 +1053,8 @@ export class Game {
       if (this.ui.showArrival) this.ui.showArrival(d);
       else this.log('— ' + d.name + ' —');
     } else {
-      if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (this.state.player.floorIdx + 1) + '/' + d.floors);
+      const band = this.levelBand(d);
+      if (this.ui.setLocation) this.ui.setLocation(d.name + ' \u00b7 ' + (this.state.player.floorIdx + 1) + '/' + d.floors + (band ? ' \u00b7 lv ' + band : ''));
     }
     /* The mouth remembers. Monsters do not respawn, so the floors above your
      * deepest mark are swept corridors and nothing else — the stairs take you
@@ -1089,7 +1150,7 @@ export class Game {
     this.secretsRevealed = false;
     this.turn = 0;
     this.fireBeats('enter', floorIdx);
-    if (this.ui.setLocation) this.ui.setLocation(isRoad ? d.name : d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
+    if (this.ui.setLocation) this.ui.setLocation(isRoad ? d.name : d.name + ' \u00b7 ' + (floorIdx + 1) + '/' + d.floors + (this.levelBand(d) ? ' \u00b7 lv ' + this.levelBand(d) : ''));
     if (!isRoad && this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
     /* A flight of stairs is worth a breath, so arriving on a new floor at two
      * hit points is not an automatic death. Once per new depth — see above. */

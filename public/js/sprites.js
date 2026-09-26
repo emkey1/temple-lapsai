@@ -124,6 +124,15 @@ export const CREATURE_SHEETS = {
   'brine-hound': 'stealth',        /* a low prowling shape in the flooded street */
   'silt-wretch': 'cursed_grave',   /* crusted with the lower town, half buried */
   'tidewright': 'minotaur',        /* big, and still tending the sluices */
+
+  /* THE EMBERWORKS' OWN. Ash and iron, and the shift that never changed. */
+  'cinder-hound': 'stealth',       /* a low prowling shape in the cinder */
+  'emberling': 'fire_ant',         /* a spark that moves on its own */
+  'forge-wight': 'skeleton',       /* a smith who never clocked off */
+  'slag-golem': 'cursed_grave',    /* furnace-dross that stands and walks */
+  'ash-wraith': 'skeleton_mage',   /* what the flue let out */
+  'bellows-fiend': 'wyvern_fire',  /* it breathes in, and the room grows hot */
+  'assayer': 'minotaur',           /* big, and still keeping the weights */
 };
 
 /* THE COMMONS A WRITTEN CREATURE MAY DRAW FROM. Every name here has a packed

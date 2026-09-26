@@ -190,6 +190,9 @@ export const LIMITS = {
   floors: [2, 10],
   threat: [-4, 12],
   abilityLevel: [1, 20],
+  /* Where a written place may sit on THE REGION chart, in percent. Kept off the
+   * edges so a marker and its label are never clipped. */
+  region: [8, 92],
 };
 
 /* Rendered into the prompt so the model is told exactly what will be accepted. */

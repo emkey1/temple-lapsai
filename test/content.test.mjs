@@ -4,10 +4,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DUNGEONS, MONSTERS, ALL_ITEMS, getMonster } from '../public/js/base.js';
+import { DUNGEONS, OFFSITE_DUNGEONS, MONSTERS, ALL_ITEMS, getMonster } from '../public/js/base.js';
+
+/* Every area the game ships — the founding three plus the places past them (the
+ * stair, the drowned quarter, the emberworks). A dangling id in ANY of them cost
+ * a dungeon its bestiary or its boss before, so all of them are checked. */
+const SHIPPED = [...DUNGEONS, ...OFFSITE_DUNGEONS];
 
 test('every dungeon monster pool resolves', () => {
-  for (const d of DUNGEONS) {
+  for (const d of SHIPPED) {
     for (const id of d.monsterWeights || []) {
       assert.ok(getMonster(id), `dungeon "${d.id}" lists unknown monster id "${id}"`);
     }
@@ -15,14 +20,14 @@ test('every dungeon monster pool resolves', () => {
 });
 
 test('every dungeon has a boss that exists', () => {
-  for (const d of DUNGEONS) {
+  for (const d of SHIPPED) {
     assert.ok(d.bossId, `dungeon "${d.id}" has no bossId`);
     assert.ok(getMonster(d.bossId), `dungeon "${d.id}" names unknown boss "${d.bossId}"`);
   }
 });
 
 test('every dungeon can draw monsters that are not its own boss', () => {
-  for (const d of DUNGEONS) {
+  for (const d of SHIPPED) {
     const pool = (d.monsterWeights || []).filter((id) => id !== d.bossId);
     assert.ok(pool.length >= 3, `dungeon "${d.id}" has only ${pool.length} non-boss monsters`);
   }

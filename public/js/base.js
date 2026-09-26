@@ -450,6 +450,21 @@ export const MONSTERS = [
       { name: 'slam', damage: { dice: 1, sides: 8, bonus: 2 } },
       { name: 'undertow', damage: { dice: 1, sides: 10, bonus: 0 } },
     ] },
+
+  /* THE EMBERWORKS' OWN. A foundry cut into the west hill that was never shut
+   * down: the fire was banked, not put out, and the shift never changed. */
+  M('cinder-hound', 'Cinder Hound', 'c', 4, 18, 8, 3, '1d6', 80, 8, 28, ['pack'], 'A dog-shaped heat that leaves paw-prints of fused ash.'),
+  M('emberling', 'Emberling', 'e', 6, 18, 7, 4, '1d6', 100, 6, 24, ['ranged'], 'A spark with an opinion, flitting just out of arm\u2019s reach.', 2),
+  M('forge-wight', 'Forge-Wight', 'F', 6, 26, 6, 4, '1d10', 120, 12, 36, ['undead'], 'A smith who never clocked off, still swinging at a bar of metal that is no longer there.'),
+  M('slag-golem', 'Slag Golem', 'G', 7, 46, 3, 4, '2d6', 170, 18, 50, ['trap'], 'Cooled furnace-dross, walking, and glad of the weight.'),
+  M('ash-wraith', 'Ash Wraith', 'a', 7, 36, 5, 5, '2d6', 190, 20, 55, ['undead'], 'What the flue let out and would not take back.'),
+  M('bellows-fiend', 'Bellows-Fiend', 'B', 7, 40, 6, 5, '2d6', 200, 22, 60, ['ranged'], 'It breathes in and the whole room grows bright, and then hot.'),
+  { ...M('assayer', 'The Assayer', 'A', 9, 95, 4, 7, '3d6', 820, 220, 460, ['intelligent', 'cursed'], 'It weighed every bar that left this hill, and every hand that carried one. It has not been able to stop, and it has not stopped.', 2),
+    attacks: [
+      { name: 'hammer', damage: { dice: 1, sides: 6, bonus: 2 } },
+      { name: 'hammer', damage: { dice: 1, sides: 6, bonus: 2 } },
+      { name: 'crucible', damage: { dice: 1, sides: 8, bonus: 0 } },
+    ] },
 ];
 
 export function getMonster(id) {
@@ -595,6 +610,9 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'temple',
     threat: 0,
+    /* The intended company level, floors one to four of the game. Advisory
+     * only: the founding sanctums are never gated (see dungeonBarred). */
+    level: [1, 4],
     monsterWeights: ['rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'orc', 'skeleton', 'ghoul', 'mummy', 'living-statue', 'gargoyle', 'otyugh', 'lapsai-demon'],
     bossId: 'lapsai-demon',
   },
@@ -606,6 +624,8 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'sewers',
     threat: 2,
+    /* Floors five to eight: the second sanctum, and not a soft restart. */
+    level: [5, 8],
     /* Stocked for the depths it sits at, which are the fifth to the eighth
      * floor of the game and not the first to the fourth again. It used to open
      * with Giant Rats and Giant Spiders — the same tier-1 vermin as the Temple
@@ -624,6 +644,7 @@ export const DUNGEONS = [
     floors: 4,
     theme: 'cavern',
     threat: 4,
+    level: [9, 12],
     /* Four floors need four bands to walk through, and a roster of 4, 8, 9, 9,
      * 9, 11, 11, 11 only has two — so its floors came out identical. Widened
      * with things that belong in a swallowed spiral of stone: the ghosts of
@@ -649,6 +670,7 @@ export const ENDLESS = {
   bossEvery: 5,
   theme: 'cavern',
   threat: 6,
+  level: [12, null],   /* no last floor, so no ceiling */
   requires: 'serpent',
   monsterWeights: [
     'rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'orc', 'skeleton', 'ghoul',
@@ -671,15 +693,60 @@ export const DROWNED = {
   floors: 4,
   theme: 'sewers',
   threat: 5,
+  level: [12, 15],
   requires: 'serpent',
   monsterWeights: ['drowned-thing', 'brine-hound', 'silt-wretch', 'giant-leech', 'ghast', 'wraith', 'spectre', 'otyugh', 'umber-hulk'],
   bossId: 'tidewright',
 };
 
-const ALL_DUNGEONS = [...DUNGEONS, ENDLESS, DROWNED];
+/* THE EMBERWORKS. A foundry cut into the west hill on the warrens' water, opened
+ * once the route above is running and never shut down since — the fire banked,
+ * the shift unchanged. Not one of the founding three, so it never counts toward
+ * the chronicle; it is a WORKING, met between the Upper Reaches and the Coils,
+ * and its gate is measured in levels rather than in bosses alone. */
+export const EMBERWORKS = {
+  id: 'emberworks',
+  name: 'The Emberworks',
+  title: 'the forges that never cooled',
+  flavor: 'The west hill is hollow and it is warm. Somewhere under it a bellows you cannot see keeps its slow stroke, and the air tastes of iron and old smoke. The foundry was cut to weigh and pour the hill’s ore, and nobody ever gave the order to damp the fire — so it is still going, and so is the shift.',
+  floors: 4,
+  theme: 'fire',
+  threat: 3,
+  level: [6, 9],
+  requires: 'upper',
+  minLevel: 6,
+  monsterWeights: ['cinder-hound', 'emberling', 'forge-wight', 'slag-golem', 'ash-wraith', 'bellows-fiend', 'fire-elemental'],
+  bossId: 'assayer',
+};
+
+const ALL_DUNGEONS = [...DUNGEONS, ENDLESS, DROWNED, EMBERWORKS];
+
+/* The shipped places that are NOT founding sanctums. Each is a real area with a
+ * written coordinate on the chart, and each opens once the boss in `requires` is
+ * quiet — the stair, the drowned quarter, the emberworks. Kept in one list so a
+ * new one is added in a single place rather than wired into the engine. */
+export const OFFSITE_DUNGEONS = [ENDLESS, DROWNED, EMBERWORKS];
 
 export function getDungeon(id) {
   return ALL_DUNGEONS.find((d) => d.id === id) || null;
+}
+
+/* THE INTENDED LEVEL of a place, as a band: "1–4", or "12+" for the endless
+ * stair. `level` is the authored band; a literary sanctum carrying only
+ * `minLevel` reads as open-ended. This is a sign, not a lock — the world is
+ * open past the story, and the choosing is the player's. */
+export function dungeonLevelBand(d) {
+  const lv = d && d.level;
+  const pair = Array.isArray(lv) ? lv : (d && d.minLevel ? [d.minLevel, null] : null);
+  if (!pair || pair[0] == null) return '';
+  const [min, max] = pair;
+  if (max === null || max === undefined) return min + '+';
+  return max === min ? String(min) : min + '\u2013' + max;
+}
+
+export function dungeonLevelLabel(d) {
+  const band = dungeonLevelBand(d);
+  return band ? 'level ' + band : '';
 }
 
 /* THE TOWNS. Two now: the Whetstone at the foot of the hill, and the Far Reach

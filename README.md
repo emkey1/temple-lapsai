@@ -16,12 +16,16 @@ built.
 *The isometric scene in Flare art, the company's stat sheet, and the dark below.*
 [Title card](docs/title.png) · [Character creation](docs/charcreate.png)
 
-**What is in it:** three hand-authored sanctums and an **endless descent** past them that needs no
-LLM key; a company of four with backgrounds, skills and ability ladders; **two walkable towns** — the
-Whetstone, and the coast-town Far Reach with its own mouth down — where you buy, sell, read, unbind,
-**enchant**, hire, rest and raise the dead; a **region map** for fast travel, and a **road** between
-the towns; seven factions that know you; twenty undertakings; a narrator who keeps the account; and a
-Hall of Accounts that remembers your dead. Optional LLM-driven expansion on top of all of it.
+**What is in it:** four hand-authored sanctums and an **endless descent** past them that needs no
+LLM key — the Temple, the Upper Reaches, the **Emberworks** (the foundry under the west hill), and
+the Serpent's halls, plus the **Drowned Quarter** off the coast; a company of four with backgrounds,
+skills and ability ladders; **two walkable towns** — the Whetstone, and the coast-town Far Reach
+with its own mouth down — where you buy, sell, read, unbind, **enchant**, hire, rest and raise the
+dead; a **region map** for fast travel, drawn as a chart and signed with each area's **intended
+level**, and a **road** between the towns; seven factions that know you; a couple of dozen
+undertakings; a narrator who keeps the account; and a Hall of Accounts that remembers your dead.
+Optional LLM-driven expansion on top of all of it — and a **headless robot delver**
+(`npm run simulate`) that walks whole games to catch bugs and measure balance.
 
 ## Requirements
 
@@ -57,9 +61,10 @@ generation are all client-side; progression is saved to `localStorage`.
 
 ## LLM-driven expansion (optional)
 
-`data/expansions.json` starts empty. With an LLM API key configured, the "Library" tab generates new
-dungeons, monsters, items and abilities on demand, validates them, and appends them to that file;
-the client merges whatever is there into every new game on boot.
+`data/expansions.json` is created on demand by the server and is git-ignored. With an LLM API key
+configured, the "Library" tab generates new dungeons, monsters, items and abilities on demand,
+validates them, and appends them to that file; the client merges whatever is there into every new
+game on boot.
 
 **Art for what it writes.** A generated monster carries a `sheet` field naming one of the commons'
 Flare sheets (`public/js/sprites.js` → `CREATURE_SHEET_NAMES`, nineteen creatures it may borrow and
@@ -188,6 +193,17 @@ A few rules worth knowing before you go down:
   its own holdout: **Liss**, who kept the lamp lit when the water came and wants the sluices opened,
   which means stopping the **Tidewright** that shut them. The townsfolk ask for things too — Orrin for
   what the water keeps, Essa for her nets, and Maren in the Whetstone for the husband the temple took.
+- **Every way down is signed with its intended level.** The chart inks a band beside each place —
+  the Temple **1–4**, the Upper Reaches **5–8**, the Emberworks **6–9**, the Serpent **9–12**, the
+  Drowned Quarter **12–15**, the endless stair **12+** — the top bar repeats it while you are in
+  there, the Codex lists it, and the first time you open a place out of your depth the Keeper says
+  so. Past the founding story the world is open and every area already exists; the signs are how you
+  choose a road instead of walking one you cannot survive.
+- **The Emberworks.** A foundry cut into the west hill, opened once the Upper Reaches are running and
+  never shut down — the fire banked, the shift unchanged. Fire creatures and forge-wights, a
+  resident clerk (**Otway the Weigher**) who cannot close his column, and **The Assayer** at the
+  bottom, still weighing a debt nobody came back to collect. It never counts toward the founding
+  chronicle; it is a step up from the Upper Reaches, and the chart says so.
 
 ![The region map](docs/region.png)
 ![The Far Reach](docs/far-reach.png)
@@ -302,6 +318,7 @@ has noticed you and they open their mouth by how they count you.
 npm run check     # lint, then the test suite
 npm test
 npm run lint
+npm run simulate  # the robot delver: walks whole games, reports bugs and balance
 ```
 
 `npm test` runs the headless suite on `node:test` — no dependencies, no build. The engine has no DOM
@@ -315,6 +332,13 @@ no NPC recites a story beat the player is about to read.
 `npm run lint` is a dependency-free check — every file parses, every relative import resolves, no
 debug debris, and the two conventions the content depends on.
 
+`npm run simulate` is a **headless robot delver**: it plays whole games without a browser and prints
+two reports — **BALANCE** (outcomes, depth, level, gold, kills, party) and **BUGS** (any exception,
+deduped with the seeds that hit it). Flags: `--runs N`, `--seed S`, `--cls C`, `--gold G`, `--cap N`,
+`--verbose`, and `--at <dungeon>` to drop a funded, geared company straight into a named area (the
+Emberworks, the Drowned Quarter, the endless stair) at the level it was cut for — so deep content can
+be tested without clearing the founding three first.
+
 The server binds to `127.0.0.1` by default; set `HOST=0.0.0.0` if you deliberately want it on the
 network. `POST /api/expand` refuses cross-origin requests and is rate-limited, because it spends
 your API key.
@@ -325,22 +349,30 @@ your API key.
 server.js           HTTP server, static serving, LLM proxy
 lib/expansion.js    Prompt building and validation of everything the oracle returns
 lib/oracle.js       Which model answers the Library, and how to reach it
+lib/dialogue.js     The in-character system prompt for the speaking cast
+scripts/simulate.mjs  The headless robot delver (npm run simulate)
+scripts/lint.mjs    The dependency-free lint
+scripts/repack-flare-art.mjs  Packs the upstream Flare sheets into what ships
 public/index.html   Single-page shell
 public/style.css    Layout & theming
 public/js/
   contract.js       THE CONTENT CONTRACT — one vocabulary shared by client and server
   providers.js      THE PROVIDER LIST — the oracle menu and the server read the same file
   describe.js       Turns an item's effects into the line of rules text under its name
-  base.js           Rules/data: classes, abilities, themes, item templates, XP table
+  base.js           Rules/data: classes, abilities, themes, monsters, items, the areas
+  quests.js         THE UNDERTAKINGS — data only, like lore.js
   dice.js           rpg-style dice helpers
   rng.js            seedable RNG
-  mapgen.js         Room-corridor dungeon generation
+  mapgen.js         Room-corridor dungeon and town generation
   npc.js            Dialogue machinery (keyword topics, pluggable LLM adapter)
   lore.js           THE WRITING — history, factions, story arcs, the cast and their dialogue
   world.js          World layer: registers the lore and answers the engine's queries about it
+  sprites.js        Creature-sheet manifest and procedural tokens
+  town.js           Town services and prices
+  roster.js         The adventurer ledger and the Hall of Accounts
   engine.js         Game state machine: movement, combat, inventory, abilities, save
   main.js           UI controller: canvas renderer, HUD, panels, keyboard, save/load, library
-data/expansions.json  Persisted generated content (server-side)
+data/expansions.json  Persisted generated content (server-side; created on demand, git-ignored)
 ```
 
 ## Controls

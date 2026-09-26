@@ -105,6 +105,21 @@ shows the road ahead, a pedlar who walks it both ways, and a **toll-man who
 wants paying** for the dry crossing (or wade for nothing). Step on the near gate
 to turn back, or the far one to arrive.
 
+**Every way down is signed with the level it is meant for.** The chart prints a
+band under each place — the Temple **1–4**, the Upper Reaches **5–8**, the
+**Emberworks** **6–9**, the Serpent **9–12**, the Drowned Quarter **12–15** —
+and the top bar repeats it while you are inside. The founding story walks you
+through the first sanctum; after that the world is open and every other area is
+already there, so the signs are how you choose a road you can survive instead of
+one you cannot. If you open a place far above your level, the Keeper says so
+once — the stairs will not stop you, but you have been told.
+
+**The Emberworks** is the foundry cut into the west hill, opened once the Upper
+Reaches are running and never shut down. Fire creatures, forge-wights and a slag
+golem that is glad of the weight; **Otway the Weigher**, a clerk who cannot
+close his column and will not leave; and **The Assayer** at the bottom, still
+weighing a debt nobody came back to collect.
+
 ## The Far Reach
 
 Down the coast, where the sea gave the lower town back: a second settlement with
@@ -164,8 +179,8 @@ again. Losing is expensive, not final.
 With an LLM key configured, the **Library** tab writes new dungeons, monsters,
 items and abilities on demand and folds them into the world. It is entirely
 optional: the game is complete without it, and runs offline with the founding
-three sanctums forever. Setup is in the [README](README.md#llm-driven-expansion-optional).
-
+sanctums and the areas past them forever. Setup is in the
+[README](README.md#llm-driven-expansion-optional).
 **And the people can speak.** Bind an oracle and the characters you meet answer
 in their own voice — leave it unbound and they fall back to their written lines.
 

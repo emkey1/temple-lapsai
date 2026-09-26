@@ -9,10 +9,10 @@ import { WORLD, beatsAt, beatAt, arcForDungeon, npcsForDungeon, factionById, res
 import { LORE } from '../public/js/lore.js';
 import { DialogueSystem, npcsForDungeonFloor, NPC_GLYPH } from '../public/js/npc.js';
 import { COLORS } from '../public/js/contract.js';
-import { DUNGEONS, getDungeon } from '../public/js/base.js';
+import { DUNGEONS, OFFSITE_DUNGEONS, getDungeon } from '../public/js/base.js';
 import { newGame } from './helpers.mjs';
 
-const DUNGEON_IDS = DUNGEONS.map((d) => d.id);
+const DUNGEON_IDS = [...DUNGEONS, ...OFFSITE_DUNGEONS].map((d) => d.id);
 
 /* ---- the content is actually registered ---- */
 
@@ -51,7 +51,7 @@ test('every beat is a shape the engine handles', () => {
       }
       if (b.type === 'flag') assert.ok(b.flag, `${arc.id}: flag beat with no flag`);
       if (b.floor !== undefined) {
-        const d = DUNGEONS.find((x) => x.id === arc.dungeonId);
+        const d = getDungeon(arc.dungeonId);
         assert.ok(Number.isInteger(b.floor) && b.floor >= 0 && b.floor < d.floors,
           `${arc.id}: floor ${b.floor} is outside 0..${d.floors - 1}`);
       }

@@ -308,6 +308,61 @@ export const LORE = {
           valueCount: 1
         }
       ]
+    },
+    {
+      id: 'arc-emberworks',
+      dungeonId: 'emberworks',
+      name: 'The Shift That Never Changed',
+      beats: [
+        {
+          kind: 'enter',
+          floor: 0,
+          type: 'overlay',
+          title: 'THE YARD',
+          text: 'Ore heaped in graded piles, each with its chalk line and its tally. The piles have not been added to in a long time and they have not been taken from either. Whoever kept the count kept it exactly, right up to the last bar, and then put the chalk down where it still lies.'
+        },
+        {
+          kind: 'enter',
+          floor: 1,
+          type: 'overlay',
+          title: 'THE FLUE',
+          text: 'The draught here pulls the same way it pulled when the hill was first cut, and it is warm, and it is steady. Something below is still drawing breath through this chimney. It has been drawing it for four hundred years and it has not needed to.'
+        },
+        {
+          kind: 'enter',
+          floor: 2,
+          type: 'overlay',
+          title: 'THE POUR',
+          text: 'Channels of cooled metal run the length of the floor, each one ending in a mold and each mold full. They poured the last batch and they did not take it out and nobody came to. The metal has the sheen of something that set in a hurry.'
+        },
+        {
+          kind: 'enter',
+          floor: 3,
+          type: 'overlay',
+          title: 'THE ASSAY',
+          text: 'A scale the height of two men, its pans level, and both pans empty. The beam does not move. Whatever this room used to weigh, it has not had anything put in a pan since the order came down to stop, and the order never came.'
+        },
+        {
+          kind: 'boss',
+          floor: 3,
+          type: 'narration',
+          text: 'It was the one who kept the weights. It is still keeping them.'
+        },
+        {
+          kind: 'finish',
+          floor: 3,
+          type: 'overlay',
+          title: 'THE BANKED FIRE',
+          text: 'The bellows stops. It is the first silence the west hill has known in four hundred years, and the quiet is so complete that you can hear the scale settle, both pans level, both pans empty. Whatever the foundry was owed, it has been weighed and found to balance. Up the flue, the last of the heat goes out of the hill and does not come back, and above you the snow on the west slope begins, at last, to melt.'
+        },
+        {
+          kind: 'finish',
+          floor: 3,
+          type: 'flag',
+          flag: 'forge-banked',
+          valueCount: 1
+        }
+      ]
     }
   ],
   /* THE KEEPER OF THE ACCOUNT. The one voice that is not a place and not a
@@ -332,16 +387,20 @@ export const LORE = {
     name: 'The Hill and the Reach',
     places: {
       'the-whetstone': { name: 'The Whetstone', x: 50, y: 70, note: 'the flat stone outside the lintel, and the town that grew up around it' },
+      'far-reach': { name: 'The Far Reach', x: 85, y: 76, note: 'salt on the wind, a harbour of sorts, and a town that files the sea under losses' },
       temple: { name: 'The Temple of Lapsai', x: 34, y: 50, note: 'the swept stairs down, under the hill' },
       upper: { name: 'The Upper Works', x: 66, y: 42, note: 'the warrens, and the toll road they call the Chute' },
       serpent: { name: 'The Coils', x: 46, y: 24, note: 'the serpent halls beneath the last hill' },
-      deep: { name: 'The Lower Ledger', x: 54, y: 9, note: 'the stair that does not stop' }
+      deep: { name: 'The Lower Ledger', x: 54, y: 9, note: 'the stair that does not stop' },
+      drowned: { name: 'The Drowned Quarter', x: 14, y: 80, note: 'the lower town the sea gave back, and kept some of' },
+      emberworks: { name: 'The Emberworks', x: 24, y: 44, note: 'the west hill, hollow and warm, where the fires were banked and never put out' }
     },
     landmarks: [
       { name: 'The Hill', x: 43, y: 36 },
       { name: 'The Chute', x: 76, y: 32 },
       { name: 'The Far Reach', x: 85, y: 76 },
-      { name: 'The Drowned Quarter', x: 14, y: 80 }
+      { name: 'The Drowned Quarter', x: 14, y: 80 },
+      { name: 'The Cinder Flats', x: 18, y: 37 }
     ]
   },
   /* THE ROAD BETWEEN TOWNS. Short, and only now and then eventful. */
@@ -351,7 +410,14 @@ export const LORE = {
     { text: 'A pedlar trades you a draught for the story of where you have been.', item: 'potion-heal' },
     { text: 'Something follows for a mile, and then does not. Nobody looks back twice.', hp: -3 },
     { text: 'A cart going the other way shares its fire, and its salt fish.', hp: 4 },
-    { text: 'A scrap of a song, from a cart passing the other way, sticks for the rest of the walk.' }
+    { text: 'A scrap of a song, from a cart passing the other way, sticks for the rest of the walk.' },
+    { text: 'A milestone cut with a name that has been struck out and cut again. Whoever is owed this road is owed it still.' },
+    { text: 'A wayside grave with the toll of the last mile chalked on the stone. Nobody has collected it in years.', gold: 12 },
+    { text: 'A dog with no collar walks a mile with the company, then turns off at a track that leads nowhere you can see.', hp: 3 },
+    { text: 'Rain all afternoon, the kind that gets under the collar and stays there.', hp: -2 },
+    { text: 'A half-buried chart in the verge, its inks still wet from the rain. You dry it and keep it.', item: 'scroll-identify' },
+    { text: 'A stone marker for the high crossing, its distances planed down to blanks. The road is longer than it was.' },
+    { text: 'A pedlar going the other way pays you a coin for the direction of the next town, and does not say why he is in a hurry.', gold: 8 }
   ],
   npcs: [
     {
@@ -1028,6 +1094,85 @@ export const LORE = {
         'Liss looks at the water the way people look at a wound. “It is still in there. All of it.”',
         'She trims the lamp and says nothing for a while. “Ask me about the town, or the water, or the thing that shut it. Not about the rest.”',
         '“The light is the whole of it,” Liss says. “Everything else is under the water, where it belongs.”'
+      ]
+    },
+
+    /* THE CLERK OF THE FLUE. The Emberworks’ resident: a lore-weaver who came
+     * down to record the foundry’s last number and found the count would not
+     * close, so the shift — and the clerk — never did either. */
+    {
+      id: 'ember-clerk', faction: 'lore-weavers',
+      name: 'Otway the Weigher', title: 'a lore-weaver who stayed for the last entry',
+      dungeon: 'emberworks', floor: 0, color: 'amber',
+      intro: '“You are warm, so you are alive, so you are new.” Otway does not look up from the ledger. “I came to read the scale and write down its last number, and the number will not come, and I will not leave without it. Sit. You are the first thing down here that is not made of ash.”',
+      recognise: [
+        '“You are the one who went down and came back,” Otway says, and actually sets the pen down. “That is data. Almost nothing down here comes back. I have it written.”',
+        '“Again.” A nod at the ledger. “The column is filling. You are in it in your own hand now — I let the living sign for themselves.”',
+        '“Sit.” Otway clears a stool of ash with one sleeve. “The archive has you listed, and the archive does not list many who still breathe.”',
+        '“You need not tell me how far down you went,” Otway says. “I measured it off you coming up the stairs. The archive knows. The archive always knows.”'
+      ],
+      knowledge: ['scale', 'weight', 'weigh', 'assay', 'forge', 'fire', 'ash', 'ledger', 'count', 'assayer', 'foundry', 'order', 'shift'],
+      topics: [
+        {
+          keys: ['scale', 'weight', 'weigh', 'balance', 'number'],
+          replies: [
+            'It has been level for four hundred years, both pans empty, and it will not read. A scale that will not read is not broken. It is waiting for the thing it was built to weigh, and it will not be fooled by anything lighter.'
+          ]
+        },
+        {
+          keys: ['assayer', 'the assayer', 'keeper', 'who kept'],
+          replies: [
+            'It kept the weights. It was the one post down here that could be trusted with a number, so they left it holding every number, and then they left, and it stayed to balance them. Do not hate it. It is only thorough.'
+          ]
+        },
+        {
+          keys: ['fire', 'forge', 'foundry', 'bellows', 'flue', 'hot', 'warm'],
+          replies: [
+            'The fire was banked, not put out. There is a difference, and the difference is why the hill is warm and why I have not slept in some time. Bank it true and the hill goes cold. That is the whole of the work down here.'
+          ]
+        },
+        {
+          keys: ['ledger', 'book', 'count', 'column', 'entry', 'write'],
+          replies: [
+            'I am the last entry that will not close. The archive sent me to write the final number, and I cannot write a number that will not come. So I wait, and I read, and the column stays open, and I go on being warm.'
+          ]
+        },
+        {
+          keys: ['archive', 'lore-weavers', 'weaver', 'who are you', 'your name', 'otway', 'yourself'],
+          replies: [
+            'Otway. Weigher, of the Archive. The Archive reads over the shoulder of anyone who lifts anything; I am simply the part of it that came in person, and got warm, and could not get back out.'
+          ]
+        },
+        {
+          keys: ['order', 'shift', 'stop', 'damp', 'why'],
+          replies: [
+            'The order to damp the fire never came. That is all of it. Nobody decided to keep working — nobody decided to stop, and so nobody did, and four hundred years went by in one unbroken shift.'
+          ]
+        },
+        {
+          keys: ['this place', 'where am i', 'emberworks', 'works', 'hill'],
+          replies: [
+            'The Emberworks. The west hill, hollow, kept warm by a fire nobody put out. Half foundry, half furnace, all of it still running on a schedule set by people who were paid off long ago.'
+          ]
+        },
+        {
+          keys: ['hello', 'hail', 'greet'],
+          replies: [
+            'Warm. Good. Everything else down here is ash or iron. State your depth and your business; I record both.',
+            'A live one. The dead ones are no good for the count; they will not answer a question and they will not hold still.'
+          ]
+        },
+        {
+          keys: ['help', 'advice', 'what should i', 'survive', 'tip'],
+          replies: [
+            'The wraiths hate the light, the golems hate the wet, and the scale answers only to a number. Bring both, and bring a full pack — the works do not sell anything back.'
+          ]
+        }
+      ],
+      fallbacks: [
+        'Otway makes a note of the question instead of answering it. “Noted. The archive will have it either way.”',
+        '“That is not a number,” Otway says, “nor a depth, nor a business. Try again.”',
+        'Otway turns a page he has turned a hundred times. “Ask me about the fire, or the weights, or the thing that keeps them. Those I can read to you.”'
       ]
     }
   ],

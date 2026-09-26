@@ -209,8 +209,15 @@ test('the briefing is built from the lore, not written beside it', () => {
   }
 });
 
-test('and it carries the REGISTER, which is the part a model gets wrong first', () => {
-  /* Facts without tone produce high fantasy written over the top of them. */
+test('the briefing places the world on the chart, so a written place knows where it lies', () => {
+  const b = loreBriefing({ places: ['The Whetstone', 'The Far Reach'] });
+  assert.match(b, /THE LAND/, 'the briefing never names the land');
+  assert.ok(b.includes('The Whetstone') && b.includes('The Far Reach'), 'the towns are not named');
+  assert.ok(b.includes(WORLD.region.name), 'the region is not named');
+  for (const l of WORLD.region.landmarks) assert.ok(b.includes(l.name), 'the landmark ' + l.name + ' is missing');
+});
+
+test('and it carries the REGISTER, which is the part a model gets wrong first', () => {  /* Facts without tone produce high fantasy written over the top of them. */
   const b = loreBriefing().toLowerCase();
   for (const word of ['debts', 'ledgers', 'owed']) {
     assert.ok(b.includes(word), 'the briefing does not teach the voice: missing "' + word + '"');
@@ -313,6 +320,32 @@ test('the minimum level is derived from the boss, not claimed by the model', () 
    * for levels 5-7, 8-10 and 11-13. */
   assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 9 } }).minLevel, 8);
   assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 12 } }).minLevel, 11);
+});
+
+test('the chart band is measured from the boss, and its ceiling cannot dip below its floor', () => {
+  const d = validateDungeon({ name: 'X', boss: { name: 'B', tier: 9 } });
+  assert.deepEqual(d.level, [8, 11], 'the band did not follow the boss tier');
+  assert.equal(validateDungeon({ name: 'X', level: [3, 3], boss: { name: 'B', tier: 9 } }).level[0], 8,
+    'a model lowered the band under the boss');
+  assert.equal(validateDungeon({ name: 'X', levelMax: 20, boss: { name: 'B', tier: 9 } }).level[1], 20,
+    'a model could not widen the band');
+});
+
+test('a written sanctum may suggest a spot on the chart, clamped to it', () => {
+  const d = validateDungeon({ name: 'X', region: { x: 120, y: -5, note: 'east of the Chute' }, boss: { name: 'B', tier: 6 } });
+  assert.ok(d.region, 'the suggested spot was dropped');
+  assert.ok(d.region.x >= 8 && d.region.x <= 92 && d.region.y >= 8 && d.region.y <= 92, 'placed off the chart');
+  assert.equal(d.region.note, 'east of the Chute');
+  /* No suggestion means no coordinates — the Keeper files it beside its gate. */
+  assert.equal(validateDungeon({ name: 'X', boss: { name: 'B', tier: 6 } }).region, undefined);
+  assert.equal(validateDungeon({ name: 'X', regionNote: 'under the hill', boss: { name: 'B', tier: 6 } }).regionNote, 'under the hill');
+});
+
+test('the dungeon prompt tells the oracle it is writing onto the chart', () => {
+  const p = buildPrompt('dungeon', {});
+  assert.match(p, /THE REGION/, 'the prompt never mentions the chart');
+  assert.match(p, /regionNote/, 'the prompt never offers a cartographer\u2019s note');
+  assert.match(p, /tier N reads as/, 'the prompt never explains how the level is measured');
 });
 
 /* READING A MODEL THAT THINKS OUT LOUD.

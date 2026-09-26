@@ -129,6 +129,7 @@ const els = {
   arrival: $('dungeon-arrival'),
   arrivalTitle: $('arrival-title'),
   arrivalFlavor: $('arrival-flavor'),
+  arrivalLevel: $('arrival-level'),
   btnArrivalOk: $('btn-arrival-ok'),
   victory: $('victory'),
   victoryMsg: $('victory-msg'),
@@ -410,6 +411,8 @@ function showArrival(d) {
   enqueueCard(() => {
     els.arrivalTitle.textContent = String(d.name || '').toUpperCase();
     els.arrivalFlavor.textContent = d.flavor || '';
+    const lv = game && game.levelLabel ? game.levelLabel(d) : '';
+    els.arrivalLevel.textContent = lv ? 'Written for a company of ' + lv + '.' : '';
     overlayShow(els.arrival);
   });
 }
@@ -425,6 +428,7 @@ function showWelcome() {
       'Descend, take what you can carry, and climb back to the Whetstone — the Provisioner buys what you haul up, the Lector reads what you dare not, and the inn mends what resting will not. ' +
       'Clear the boss at the bottom of each of the three sanctums and the founding account is settled. ' +
       'Everything hostile is drawn in red; nothing worth taking is. Press ? for the keys whenever you want them.';
+    els.arrivalLevel.textContent = '';
     overlayShow(els.arrival);
   });
 }
@@ -434,6 +438,7 @@ function showBeat(beat) {
   enqueueCard(() => {
     els.arrivalTitle.textContent = String(beat.title || 'THE DARK SPEAKS');
     els.arrivalFlavor.textContent = beat.text || '';
+    els.arrivalLevel.textContent = '';
     overlayShow(els.arrival);
   });
 }
@@ -3598,8 +3603,10 @@ function renderCodex(g) {
   for (const d of g.availableDungeons()) {
     if (!d) continue;
     const done = g.isDungeonCleared(d.id);
+    const band = g.levelBand(d);
     depths += '<div class="codex-item' + (done ? '' : ' unread') + '"><b>' + esc(d.name) + '</b> <span class="tiny">' +
-      (done ? '· conquered' : '· ' + d.floors + ' floors') + '</span>' +
+      (band ? '· lv ' + esc(band) + ' · ' : '· ') +
+      (done ? 'conquered' : d.floors + ' floors') + '</span>' +
       '<p class="flavor">' + esc(d.flavor) + '</p></div>';
   }
 
@@ -3876,7 +3883,7 @@ function onKey(e) {
   if (k === 'i' || k === 'e') { setTab('gear'); e.preventDefault(); return; }
   if (k === 'c') { setTab('codex'); e.preventDefault(); return; }
   if (k === 'l') { setTab('library'); e.preventDefault(); return; }
-  if (k === 'm') { openRegion(); e.preventDefault(); return; }
+  if (k === 'm') { if (!cardUp) openRegion(); e.preventDefault(); return; }
   if (k === 'escape') {
     if (els.regionOverlay && !els.regionOverlay.classList.contains('hidden')) closeRegion();
     else if (helpOpen) closeHelp();
@@ -4186,28 +4193,108 @@ function openRegion() {
 }
 
 function closeRegion() {
-  els.regionOverlay.classList.add('hidden');
+  /* Hide the whole overlay, not just the card: the dark backdrop is a separate
+   * element, and leaving it up keeps the world both dimmed and click-dead. */
+  overlayHideAll();
   canvasFocus();
+}
+
+/* A place's map glyph: a roof for a town, a cave for a sanctum, a flight of
+ * steps for the stair that does not stop. */
+function regionGlyph(kind) {
+  if (kind === 'town') {
+    return '<svg viewBox="0 0 24 24"><path d="M3 12 12 4l9 8"/><path d="M5 12v8h14v-8"/><path d="M10 20v-5h4v5"/></svg>';
+  }
+  if (kind === 'endless') {
+    return '<svg viewBox="0 0 24 24"><path d="M6 20h12M7.5 16h9M9 12h6M10.5 8h3M12 4v4"/></svg>';
+  }
+  if (kind === 'written') {
+    /* A quill: a place the Library wrote rather than the stories. */
+    return '<svg viewBox="0 0 24 24"><path d="M4 20c6-2 12-8 16-16-8 4-14 10-16 16Z"/><path d="M4 20c2-3 5-5 8-6"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24"><path d="M3 20 9 6l5 9 3-5 4 10Z"/></svg>';
+}
+
+/* Hills and trees, in the chart's own percent coordinates but drawn at a fixed
+ * size so they do not smear when the map stretches. */
+const REGION_FEATURES = [
+  ['hill', 39, 41], ['hill', 43, 38], ['hill', 47, 41], ['hill', 43, 45],
+  ['hill', 40, 32], ['hill', 46, 31], ['hill', 52, 32],
+  ['tree', 22, 56], ['tree', 25, 60], ['tree', 19, 61], ['tree', 28, 64],
+  ['tree', 58, 60], ['tree', 62, 56], ['tree', 66, 61],
+  ['tree', 30, 32], ['tree', 70, 52],
+];
+function regionFeature(kind, x, y) {
+  const svg = kind === 'tree'
+    ? '<svg viewBox="0 0 16 24"><path d="M8 2 3 12h3L2 20h12l-4-8h3Z"/><path d="M8 20v3"/></svg>'
+    : '<svg viewBox="0 0 40 24"><path d="M2 22 12 4l8 18"/><path d="M16 22 26 8l12 14"/></svg>';
+  return '<span class="rg-feat rg-' + kind + '" style="left:' + x + '%;top:' + y + '%">' + svg + '</span>';
 }
 
 function renderRegionMap(g) {
   const places = g.regionPlaces();
-  const lands = g.regionLandmarks().map((l) =>
-    '<div class="region-land" style="left:' + l.x + '%;top:' + l.y + '%">' + esc(l.name) + '</div>').join('');
+  const lands = g.regionLandmarks();
   const here = g.state.player.dungeonId;
   const where = here === 'the-whetstone' ? 'the Whetstone' : ((g.dungeonById(here) || {}).name || 'down below');
-  const nodes = places.map((p) =>
-    '<button class="region-node ' + p.kind + (p.here ? ' here' : '') + '" data-travel="' + esc(p.id) + '"' +
-    ' style="left:' + p.x + '%;top:' + p.y + '%"' + (p.here ? ' disabled' : '') + ' title="' + esc(p.note || '') + '">' +
-      '<span class="dot"></span>' +
+  const byId = Object.fromEntries(places.map((p) => [p.id, p]));
+  /* A landmark standing where a place already does is not inked twice. */
+  const onPlace = (l) => places.some((p) => Math.abs(p.x - l.x) < 4 && Math.abs(p.y - l.y) < 4);
+  const landLabels = lands.filter((l) => !onPlace(l)).map((l) =>
+    '<div class="rg-land" style="left:' + l.x + '%;top:' + l.y + '%">' + esc(l.name) + '</div>').join('');
+
+  /* The roads the company walks, drawn between the places they join. */
+  const whet = byId['the-whetstone'];
+  const far = byId['far-reach'] || lands.find((l) => /Far Reach/i.test(l.name));
+  const road = (whet && far)
+    ? '<path class="rg-road" d="M' + whet.x + ' ' + whet.y +
+      ' C' + (whet.x + 12) + ' ' + (whet.y - 5) + ' ' + (far.x - 14) + ' ' + (far.y + 3) + ' ' + far.x + ' ' + far.y + '"/>'
+    : '';
+  const track = whet
+    ? '<path class="rg-track" d="M' + whet.x + ' ' + whet.y + ' C' + (whet.x - 6) + ' ' + (whet.y - 8) + ' 40 58 36 54"/>'
+    : '';
+
+  const terr = '' +
+    '<svg class="rg-terrain" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+      '<defs>' +
+        '<pattern id="rg-grid" width="8.333" height="8.333" patternUnits="userSpaceOnUse">' +
+          '<path d="M8.333 0H0V8.333" fill="none" stroke="rgba(216,176,74,.10)" stroke-width=".18"/>' +
+        '</pattern>' +
+      '</defs>' +
+      '<rect x="0" y="0" width="100" height="100" fill="url(#rg-grid)"/>' +
+      /* the sea the coast gives up, along the whole south */
+      '<path class="rg-sea" d="M0 100V82C11 78 21 86 32 82 44 77 53 85 65 82 77 79 89 86 100 81V100Z"/>' +
+      '<path class="rg-coast" d="M0 82C11 78 21 86 32 82 44 77 53 85 65 82 77 79 89 86 100 81"/>' +
+      '<path class="rg-river" d="M73 16C77 28 71 38 74 50 77 62 70 72 74 82"/>' +
+      track + road +
+    '</svg>';
+
+  const feats = REGION_FEATURES.map(([k, x, y]) => regionFeature(k, x, y)).join('');
+
+  const nodes = places.map((p) => {
+    const cls = 'region-node ' + p.kind + (p.here ? ' here' : '');
+    const lv = p.level ? 'lv ' + esc(p.level) : (p.kind === 'town' ? 'safe' : '');
+    return '<button class="' + cls + '" data-travel="' + esc(p.id) + '"' +
+      ' style="left:' + p.x + '%;top:' + p.y + '%"' + (p.here ? ' disabled' : '') +
+      ' title="' + esc((p.note || '') + (p.level ? ' \u2014 for ' + p.level : '')) + '">' +
+      '<span class="pin">' + regionGlyph(p.kind) + '</span>' +
       '<span class="nm">' + esc(p.name) + '</span>' +
+      '<span class="lv">' + lv + '</span>' +
       '<span class="you">' + (p.here ? 'you are here' : '') + '</span>' +
-    '</button>').join('');
-  els.regionMap.innerHTML = lands +
-    /* The coast the sea gives back, drawn once, low and flat. */
-    '<svg class="region-water" viewBox="0 0 100 100" preserveAspectRatio="none">' +
-      '<path d="M2,88 C24,80 34,74 50,76 C66,78 78,72 98,82" /></svg>' +
-    nodes;
+    '</button>';
+  }).join('');
+
+  els.regionMap.innerHTML = terr + feats + landLabels + nodes +
+    '<div class="rg-compass" aria-hidden="true">' +
+      '<svg viewBox="0 0 64 64">' +
+        '<circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="17"/>' +
+        '<path class="rg-n" d="M32 4 37 32 32 60 27 32Z"/>' +
+        '<path class="rg-e" d="M4 32 32 27 60 32 32 37Z"/>' +
+        '<text x="32" y="14">N</text>' +
+      '</svg>' +
+    '</div>' +
+    '<div class="rg-cartouche">The Hill &amp; the Reach</div>' +
+    '<div class="rg-scale"><i></i>ten leagues</div>';
+
   if (els.regionSub) {
     els.regionSub.textContent = 'You are in ' + where + '. Click a name to take the road there; the rest wait to be found.';
   }
@@ -4463,6 +4550,10 @@ function installExpansion(exp) {
       registry.monsters = registry.monsters.filter((x) => x.id !== m.id);
       registry.monsters.push(m);
     }
+    /* The gate the company may actually open: the model's floor, capped at the
+     * company's own level. The chart's band is floored to the same number, so
+     * the sign and the door never disagree. */
+    const gate = Math.min(exp.minLevel || 0, game ? game.companyLevel() : (exp.minLevel || 0));
     registry.dungeons.push({
       id, type: 'dungeon',
       name: exp.name, title: exp.title, flavor: exp.flavor,
@@ -4475,7 +4566,13 @@ function installExpansion(exp) {
        * company, and XP down here is finite: nothing respawns, so a gate the
        * company cannot reach is not pacing, it is a wall. A written sanctum
        * must never be a door the company that commissioned it cannot open. */
-      minLevel: Math.min(exp.minLevel || 0, game ? game.companyLevel() : (exp.minLevel || 0)),
+      minLevel: gate,
+      /* The band THE REGION prints, its floor capped to match the gate so the
+       * sign and the door agree. */
+      level: gate ? [gate, Math.max(gate, Array.isArray(exp.level) ? (exp.level[1] || gate) : gate + 3)] : null,
+      region: exp.region || null,
+      regionNote: exp.regionNote || '',
+      written: true,
     });
     return id;
   }
@@ -4524,10 +4621,10 @@ function dungeonGateNote(d) {
     return 'Its mouth will open in the Whetstone’s east field once ' + names + ' is conquered.';
   }
   let note = 'Its mouth stands in the Whetstone’s east field';
-  const ml = d.minLevel || 0;
-  if (ml) {
-    note += ', cut for a company of level ' + ml;
-    if (game.companyLevel() < ml) note += ' — too deep for you yet';
+  const band = game.levelBand ? game.levelBand(d) : '';
+  if (band) {
+    note += ', cut for a company of ' + game.levelLabel(d);
+    if (game.companyLevel() < (d.minLevel || 0)) note += ' — too deep for you yet';
   }
   return note + '.';
 }
@@ -4553,6 +4650,7 @@ async function doExpand(action) {
     }
     bodyContext.lore = loreBriefing({
       dungeons: game ? game.availableDungeons().map((x) => x && x.name).filter(Boolean) : [],
+      places: game ? game.regionPlaces().filter((p) => p.kind === 'town').map((p) => p.name) : [],
     });
     /* Tell the oracle who is asking, so what it writes is worth meeting. */
     if (p) {
@@ -4719,7 +4817,12 @@ async function boot() {
   if (els.regionMap) els.regionMap.addEventListener('click', (e) => {
     const b = e.target.closest('[data-travel]');
     if (!b || !game || b.disabled) return;
-    if (game.travelTo(b.dataset.travel)) { closeRegion(); renderAll(game); saveGame(); }
+    /* Close the chart FIRST. Travelling to a dungeon you have been in raises the
+     * floor-choice card, and hiding the overlay afterwards swallowed that card
+     * and stranded the company on the old floor with the new place's name. */
+    closeRegion();
+    if (game.travelTo(b.dataset.travel)) { renderAll(game); saveGame(); }
+    else openRegion();
   });
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {

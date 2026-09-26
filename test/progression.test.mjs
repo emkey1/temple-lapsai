@@ -17,7 +17,8 @@ test('clearing each dungeon opens the next', () => {
   p.bossesSlain.temple = true;
   assert.deepEqual(g.availableDungeons().map((d) => d.id), ['temple', 'upper']);
   p.bossesSlain.upper = true;
-  assert.deepEqual(g.availableDungeons().map((d) => d.id), ['temple', 'upper', 'serpent']);
+  /* Clearing the Upper Reaches also opens the Emberworks, which leans on it. */
+  assert.deepEqual(g.availableDungeons().map((d) => d.id), ['temple', 'upper', 'serpent', 'emberworks']);
 });
 
 test('killing the boss clears the dungeon', () => {

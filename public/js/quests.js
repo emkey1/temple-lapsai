@@ -190,10 +190,55 @@ export const QUESTS = [
     journal: 'The Great Wyrm fell, and the long account of the hill was closed.',
   },
 
+  {
+    id: 'the-assayers-weights',
+    name: 'The Assayer\u2019s Weights',
+    giver: 'tallyman-ress',
+    faction: 'tallymen',
+    opens: { dungeonCleared: 'upper' },
+    offer:
+      'Ress has a column open and a pen waiting. “The west hill is a foundry and the foundry ' +
+      'keeps a scale, and the scale has not been read in four hundred years. The table has ' +
+      'carried the discrepancy in silence the whole time — an unmade count, which is worse than ' +
+      'a wrong one. Go down the Emberworks and close the last weighing. You will know it when ' +
+      'you are standing under it; it is the only thing down there that is level.”',
+    accepted: '“The Assayer, at the bottom, under the scale. Bring back a number, any number.”',
+    objective: { kind: 'slay', monster: 'assayer', count: 1 },
+    turnIn: true,
+    reward: { gold: 520, xp: 760 },
+    done:
+      '“Read.” Ress sets the pen down and does not pick it up again for a moment. “Four hundred ' +
+      'years of an open column, and the number balances. The table thanks you. It does not do ' +
+      'that often, and it does not do it loud.”',
+    journal: 'The Assayer\u2019s scale was read at last, and the Table closed four centuries of column.',
+  },
+
+  {
+    id: 'the-open-column',
+    name: 'The Open Column',
+    giver: 'ember-clerk',
+    faction: 'lore-weavers',
+    opens: { dungeonCleared: 'upper' },
+    offer:
+      'Otway turns the ledger toward you, and the column at the foot of the page has no number ' +
+      'in it. “I can read a thing once the archive can name it, and the archive cannot name ' +
+      'what is still walking around down here being not-quite-dead. Put down four of the ' +
+      'foundry\u2019s dead — the wights, the wraiths, the thing at the bellows — and I can write ' +
+      'them off, and the page comes one line closer to closing.”',
+    accepted: '“Four. The dead ones, not the dogs. The dogs were never on the books; that is the tragedy of the dogs.”',
+    objective: { kind: 'slayAny', monsters: ['forge-wight', 'ash-wraith', 'bellows-fiend'], count: 4 },
+    turnIn: true,
+    reward: { gold: 320, xp: 430 },
+    done:
+      '“Four, and named.” Otway writes each one down and does not hurry it. “The archive can hold ' +
+      'them now, which is more than the fire ever did. You have shortened a column that has been ' +
+      'open since before your town had a name.”',
+    journal: 'The company put four of the Emberworks\u2019 restless dead on the Archive\u2019s page.',
+  },
+
   /* --- THE WIDENED LEDGER. Three givers, three factions, and a ladder the
    * content finally climbs. Ogil keeps the spine; Eilyth and Venn get the
    * depth their lore always promised. --- */
-
   /* Ogil — the statues that stopped waiting. Teaches the multi-count slay and
    * plants the Standing Order before a single bone with orders is met. */
   {
