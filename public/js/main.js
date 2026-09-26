@@ -7,7 +7,7 @@ import {
   CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon,
   BACKGROUNDS, backgroundById, SKILLS, skillById, skillDetail,
 } from './base.js';
-import { T, W, H, isTravelable } from './mapgen.js';
+import { T, W, H, isTravelable, doorLeafFacesSouth } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
 import { WORLD, loreBriefing } from './world.js';
@@ -2509,15 +2509,12 @@ function drawIsoDoor(ctx, ax, ay, theme, f, g, t) {
    * a corner — a doorway has one door, and it faces the way you walk. */
   let west = true;
   if (g && t && g.currentFloor) {
-    const tiles = g.currentFloor.tiles;
-    const walk = (x, y) => {
-      const q = tiles[y] && tiles[y][x];
-      return q !== undefined && q !== T.WALL && q !== T.SECRET;
-    };
-    /* Screen-left is the tile's SOUTH face, screen-right its EAST. A
-     * passage running north-south is closed by a door you see on the
-     * south face — the left one. East-west, and it is the right. */
-    west = walk(t.x, t.y - 1) && walk(t.x, t.y + 1);
+    /* Screen-left is the tile's SOUTH face, screen-right its EAST: a passage
+     * running north-south (an east-west wall) hangs its leaf on the south
+     * face, the left one. See doorLeafFacesSouth — reading it off the
+     * north/south neighbours alone put the leaf on the wall in the middle of
+     * a run of doors. */
+    west = doorLeafFacesSouth(g.currentFloor.tiles, t.x, t.y);
   }
   /* The jamb: the masonry the door is set into, at full wall height so the
    * wall line stays unbroken from across the room. */

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DUNGEONS } from '../public/js/base.js';
-import { T, W, H, isTravelable } from '../public/js/mapgen.js';
+import { T, W, H, isTravelable, doorLeafFacesSouth } from '../public/js/mapgen.js';
 import { floorOf, canReach, reachableFrom, newGame } from './helpers.mjs';
 
 const SEEDS = 80;
@@ -216,4 +216,56 @@ test('the endless stair never ends, and keeps a boss every fifth landing', () =>
   const g = newGame('open-2');
   g.state.player.bossesSlain = { serpent: true };
   assert.ok(g.availableDungeons().some((d) => d.id === 'deep'), 'it never opened at all');
+});
+
+/* The leaf hangs across the PASSAGE, which is perpendicular to the wall it
+ * stands in — and the wall is what is solid on both sides. Read off the
+ * north/south neighbours alone, the middle leaf of a run of doors (whose north
+ * and south are the other leaves) faced the wall it stood in. */
+test('a door leaf hangs across the passage, even in the middle of a run', () => {
+  const grid = (rows) => rows.map((r) => r.map((c) => ({ W: T.WALL, '.': T.FLOOR, C: T.DOOR_C }[c])));
+  /* East-west wall, north-south passage: the leaf is on the south face. */
+  assert.equal(doorLeafFacesSouth(grid([
+    ['.', '.', '.'],
+    ['W', 'C', 'W'],
+    ['.', '.', '.'],
+  ]), 1, 1), true);
+  /* North-south wall, east-west passage: the leaf is on the east face. */
+  assert.equal(doorLeafFacesSouth(grid([
+    ['.', 'W', '.'],
+    ['.', 'C', '.'],
+    ['.', 'W', '.'],
+  ]), 1, 1), false);
+  /* The MIDDLE of a run of three: north and south are leaves, not wall. */
+  assert.equal(doorLeafFacesSouth(grid([
+    ['.', 'W', '.'],
+    ['.', 'C', '.'],
+    ['.', 'C', '.'],
+    ['.', 'C', '.'],
+    ['.', 'W', '.'],
+  ]), 1, 2), false, 'the middle leaf of a run faces the wall it stands in');
+});
+
+test('every leaf of a run of doors faces the same way', () => {
+  for (const d of DUNGEONS) {
+    for (let f = 0; f < d.floors; f++) {
+      for (let s = 0; s < 20; s++) {
+        const { floor } = floorOf(d.id, f, `leaf-${d.id}-${f}-${s}`);
+        const g = floor.tiles;
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            const t = g[y][x];
+            if (t !== T.DOOR_C && t !== T.DOOR_O) continue;
+            const mine = doorLeafFacesSouth(g, x, y);
+            for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+              const q = g[y + dy][x + dx];
+              if (q !== t) continue;
+              assert.equal(doorLeafFacesSouth(g, x + dx, y + dy), mine,
+                `${d.id} ${f}/${s}: a run of doors at ${x},${y} faces two ways`);
+            }
+          }
+        }
+      }
+    }
+  }
 });

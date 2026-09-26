@@ -36,6 +36,27 @@ export function isWall(tile) { return tile === T.WALL || tile === T.DOOR_C || ti
 
 export function isDoor(tile) { return tile === T.DOOR_C || tile === T.DOOR_O || tile === T.SECRET; }
 
+/* WHICH FACE A DOOR'S LEAF HANGS ON. `true` means the passage runs north-south,
+ * so the leaf hangs on the SOUTH face (screen-left in iso); `false` means the
+ * passage runs east-west and the leaf hangs on the EAST face.
+ *
+ * The wall is the axis that is SOLID on both sides — a wall, a secret, or the
+ * door's own neighbouring leaves (a run of doors is one doorway). Reading the
+ * axis off the north/south neighbours alone was right for a lone door and wrong
+ * in the MIDDLE of a run: its north and south are the other leaves, not the
+ * wall, so the leaf was hung facing the wall it stood in. */
+export function doorLeafFacesSouth(tiles, x, y) {
+  const at = (dx, dy) => tiles[y + dy] && tiles[y + dy][x + dx];
+  const solid = (q) => q === T.WALL || q === T.SECRET || q === T.DOOR_C || q === T.DOOR_O;
+  const ewWall = solid(at(1, 0)) && solid(at(-1, 0));
+  const nsWall = solid(at(0, 1)) && solid(at(0, -1));
+  if (ewWall) return true;    /* an east-west wall carries a north-south passage */
+  if (nsWall) return false;   /* a north-south wall carries an east-west passage */
+  /* Neither axis is solid — a junction. Fall back to the old guess. */
+  const walk = (q) => q !== undefined && q !== T.WALL && q !== T.SECRET;
+  return walk(at(0, -1)) && walk(at(0, 1));
+}
+
 function carveRoom(grid, room) {
   for (let y = room.y; y < room.y + room.h; y++) {
     for (let x = room.x; x < room.x + room.w; x++) {
