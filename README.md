@@ -8,6 +8,20 @@ ToEE-style combat — ground and a blow, attacks of opportunity, flanking, initi
 Optional LLM-driven world expansion. Client and server are plain ES modules — no build step, no
 npm install required.
 
+**New here? Start with the [player's manual](PLAYING.md).** This README is about how the thing is
+built.
+
+![A delver on the Temple's first floor](docs/scene.png)
+
+*The isometric scene in Flare art, the company's stat sheet, and the dark below.*
+[Title card](docs/title.png) · [Character creation](docs/charcreate.png)
+
+**What is in it:** three hand-authored sanctums and an **endless descent** past them that needs no
+LLM key; a company of four with backgrounds, skills and ability ladders; the walkable Whetstone
+(buy, sell, read, unbind, **enchant**, hire, rest, raise the dead); seven factions that know you;
+twenty undertakings; a narrator who keeps the account; and a Hall of Accounts that remembers your
+dead. Optional LLM-driven expansion on top of all of it.
+
 ## Requirements
 
 - Node.js **>= 18** (uses global `fetch`, `URL`, top-level await)
@@ -56,6 +70,15 @@ gelatinous cube, the fire elemental) falls to the **procedural token**: a dark d
 name, its glyph, and a mark for each of its props. No image, no wait, and never a bare letter.
 Genuinely new art is the same seam: drop a packed Flare atlas and def under
 `public/assets/creatures/` and let a monster name it.
+
+**The cast can speak.** The dialogue machinery in `npc.js` has carried an adapter seam for an LLM
+since the beginning; it is finally used. Bind an oracle and the people you meet answer **in
+character** — the prompt is built from each NPC's own lore and your standing with their order
+(`public/js/voice.js`, shared by server and browser), and a failed call falls back to the written
+line rather than an error. Or switch on **THE LOCAL VOICE** in the Library: a small model
+([WebLLM](https://github.com/mlc-ai/web-llm), loaded lazily from a CDN only when you ask) runs **in
+the page** — no key, no server, offline after a one-time download, needs WebGPU. With neither on, the
+cast answer from their written lines and nothing is downloaded.
 
 ### Configuration
 
@@ -143,6 +166,14 @@ A few rules worth knowing before you go down:
 - **The belt** takes four items. Bind with BELT in the gear panel, use with **shift + 1-4**.
 - **Armour class descends**, as in the modules this is an homage to: lower is harder to hit.
 - The stairs down are only barred while something is at your heels.
+- **Skills are visible now.** A level grants a point of learning, the Stat sheet spends it, and every
+  rank prints what it is worth — `Haggle 2: 12% off buys`, `Fieldcraft 3: +30% to find seams` — so a
+  rank that is working is a rank you can see working.
+- **A cut can keep cutting.** Some workings leave a **bleed** that ticks on the foe's own turn, and
+  can finish something that thought it had a turn left.
+- **The Lower Ledger never ends.** Clear the three founding sanctums and the stair keeps going down:
+  an endless descent drawn from the whole bestiary, a boss every fifth landing, no bottom — only how
+  deep you got, and whether you came back to say so. It needs no LLM key.
 
 ### The undertakings
 
@@ -232,6 +263,13 @@ fires once per character.
 Dialogue topics are matched as substrings against what the player types and the **first** match
 wins — so a topic carrying a short common key (`god`, `door`) must sit below the specific topics it
 would otherwise swallow. `npm test` checks that no topic is unreachable.
+
+**The Keeper of the Account** is the one voice that is not a place and not a person — whatever keeps
+the book the whole hill is written in. It speaks once at the moments the per-dungeon arcs cannot (the
+first blood, the first loss, each sanctum shut, the closing of the book) and never twice, and it is
+the through line the arcs only hint at. Each of the people you can meet also carries a four-rung
+**greeting ladder**: walk up to them as a stranger and they say their intro; walk up once their order
+has noticed you and they open their mouth by how they count you.
 
 ## Development
 
@@ -429,6 +467,10 @@ someone new used to write over whoever went down last.
   them at the same price the death card charges — half their gold — so a second character is never
   a way to dodge the cost of dying.
 - An existing single save is adopted as the first name in the ledger the next time the game loads.
+- A second ledger, the **Hall of Accounts**, keeps the runs that are *over*: a company whose
+  chronicle was settled, or one written off. Newest first, with the deepest floor, the slain and the
+  purse — so a good death outlives the save it was played in. Erasing a live record lays its account
+  in the Hall first, and the two ledgers never touch each other's storage.
 
 Storage lives in `public/js/roster.js` and takes its store as an argument, so all of it is covered
 by tests rather than by clicking around in a browser.
@@ -485,7 +527,10 @@ feet.
 
 **The Lector** reads a rune for 20 gold, so identification no longer depends on a lucky scroll
 drop, and his ledger covers the **whole company's** packs and backs — as does the identify scroll,
-because knowledge welded to the active member is the heal-yourself bug in different clothes.
+because knowledge welded to the active member is the heal-yourself bug in different clothes. His
+**back room** works the other trade: for coin he lays a **rite** on a thing you carry — *Keen Edge*
+(+1 hit, +1 damage), *Warding* (+1 AC), *Deep Ward* (+1 damage soaked) — and lays it again for more
+each time, so a +5 blade is a career, not a purchase.
 
 **The Little Temple** rings curses loose for gold — the vicar unbinds anything bound, anywhere in
 the company, and names it in the act. The Lector reads; the temple looses; neither does the

@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LORE } from '../public/js/lore.js';
 import { WORLD } from '../public/js/world.js';
-import { DialogueSystem } from '../public/js/npc.js';
+import { DialogueSystem, greetingFor } from '../public/js/npc.js';
 import { newGame } from './helpers.mjs';
 
 const dlg = new DialogueSystem();
@@ -135,6 +135,16 @@ test('the cast answers the obvious opening questions', () => {
   }
 });
 
+test('the world opens its mouth by how it counts you', () => {
+  for (const n of LORE.npcs) {
+    assert.ok(Array.isArray(n.recognise) && n.recognise.length === 4, n.id + ' has no four-rung greeting ladder');
+    assert.equal(greetingFor(n, 0), n.intro, n.id + ' does not greet a stranger with the intro');
+    assert.equal(greetingFor(n, 1), n.recognise[0], n.id + ' ignores the first rung');
+    assert.equal(greetingFor(n, 4), n.recognise[3], n.id + ' ignores the top rung');
+    assert.ok(greetingFor(n, 9), n.id + ' fell over past the top of the ladder');
+  }
+});
+
 /* ---- voice ---- */
 
 test('nobody reaches for the clichés the rest of the game avoids', () => {
@@ -143,6 +153,7 @@ test('nobody reaches for the clichés the rest of the game avoids', () => {
     ...LORE.factions.map((f) => f.note),
     ...LORE.storyArcs.flatMap((a) => a.beats.map((b) => b.text || '')),
     ...LORE.npcs.flatMap((n) => [n.intro, ...n.topics.flatMap((t) => t.replies), ...n.fallbacks]),
+    ...(LORE.keeper ? [LORE.keeper.firstBlood, LORE.keeper.fall, LORE.keeper.closing, ...(LORE.keeper.clears || [])] : []),
   ].join('\n');
   for (const cliche of [/ancient evil/i, /chosen one/i, /prophec/i, /darkness stirs/i, /time immemorial/i]) {
     assert.doesNotMatch(all, cliche, `the writing reaches for ${cliche}`);

@@ -7,7 +7,7 @@ import { QUESTS, questById, questsFrom, objectiveText } from './quests.js';
 import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
-  scaleDice, randomTreasureValue, getDungeon,
+  scaleDice, randomTreasureValue, getDungeon, ENDLESS,
   healFractionForItem, healFractionForAbility, RECOVERY,
   BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
@@ -15,7 +15,7 @@ import {
   T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
-import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction } from './world.js';
+import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction, keeperLine } from './world.js';
 import { evaluateDice, rngIntId, dist1, dist8, applyMagic, applyCurse, deepItem } from './dice.js';
 import { WEARABLE_SLOTS, isWorn } from './contract.js';
 import { itemStackKey } from './base.js';
@@ -439,6 +439,11 @@ export class Game {
       const met = Array.isArray(requires) ? requires.every((r) => bossSlain(r)) : bossSlain(requires);
       if (met && !order.some((o) => o && o.id === d.id)) order.push(d);
     }
+    /* THE LOWER LEDGER, the stair past the last founding sanctum. Not one of
+     * the three, so it never gates the chronicle — it simply opens once the
+     * serpent is quiet, and then it does not end. */
+    const endless = this.dungeonById(ENDLESS.id);
+    if (endless && bossSlain(endless.requires) && !order.some((o) => o && o.id === endless.id)) order.push(endless);
     return order.filter(Boolean);
   }
 
@@ -810,11 +815,22 @@ export class Game {
     this.state.player.dungeonId = id;
     this.state.player.floorIdx = 0;
     if (!this.state.player.visitedDungeons[id]) {
+      /* THE FIRST ENTRY. The first time the company ever goes below, say the
+       * loop out loud — descend, haul, sell, rest — before the dungeon says
+       * its own line. Only the very first visit to anywhere; a save already
+       * under way is left to get on with it. */
+      const firstEver = !Object.keys(this.state.player.visitedDungeons || {}).length;
       this.markCompany((m2) => {
         if (!m2.visitedDungeons) m2.visitedDungeons = {};
         m2.visitedDungeons[id] = true;
       });
       this.journal('The company first set foot in ' + d.name + '.');
+      const p0 = this.state.player;
+      if (!p0.counters) p0.counters = {};
+      if (firstEver && !p0.counters.welcomeSeen) {
+        p0.counters.welcomeSeen = 1;
+        if (this.ui.showWelcome) this.ui.showWelcome();
+      }
       const arc = arcForDungeon(id);
       if (this.ui.showArrival) this.ui.showArrival(d);
       else this.log('— ' + d.name + ' —');
@@ -872,11 +888,14 @@ export class Game {
     const deepestSoFar = (p.deepest && p.deepest[d.id] !== undefined) ? p.deepest[d.id] : -1;
     const wentDeeper = floorIdx > deepestSoFar;
     p.floorIdx = floorIdx;
-    const isLast = floorIdx >= d.floors - 1;
-    const boss = isLast ? (this.monsterTemplate(d.bossId) || null) : null;
+    const isLast = !d.endless && floorIdx >= d.floors - 1;
+    /* An endless stair keeps a boss every fifth landing instead of a last one. */
+    const bossFloor = d.endless ? ((floorIdx + 1) % (d.bossEvery || 5) === 0) : isLast;
+    const bossId = d.endless ? this.endlessBossFor(d, floorIdx) : d.bossId;
+    const boss = bossFloor ? (this.monsterTemplate(bossId) || null) : null;
     /* No boss means bossesSlain is never set, which means the dungeon can never
      * be cleared and the next one never unlocks. Say so rather than shrug. */
-    if (isLast && !boss) console.warn(`[lapsai] dungeon "${d.id}" has no boss for bossId "${d.bossId}" — it cannot be cleared`);
+    if (bossFloor && !boss) console.warn(`[lapsai] dungeon "${d.id}" has no boss for bossId "${bossId}" — it cannot be cleared`);
     const pool = this.resolveMonsterPool(d, floorIdx);
     const npcs = npcsForDungeonFloor(d.id, floorIdx);
     const floor = generateFloor({
@@ -890,7 +909,7 @@ export class Game {
       pickConsumable: (fi, rng) => this.pickConsumable(fi, rng),
       makeTreasure: (fi, rng) => this.makeTreasure(fi, rng),
     });
-    if (boss && p.bossesSlain[d.id] && floor.monsters) {
+    if (boss && !d.endless && p.bossesSlain[d.id] && floor.monsters) {
       floor.monsters = floor.monsters.filter((m) => m.boss !== true);
     }
     const memo = this.floorMemo(d.id, floorIdx);
@@ -966,6 +985,14 @@ export class Game {
 
   floorDepth(d, floorIdx) {
     return this.dungeonStartDepth(d) + (floorIdx || 0);
+  }
+
+  /* Which boss keeps an endless floor. The founding three take turns, so a
+   * deep run is never the same fight on every fifth landing. */
+  endlessBossFor(d, floorIdx) {
+    const bosses = ['lapsai-demon', 'umber-hulk', 'great-wyrm'];
+    const n = Math.floor((floorIdx || 0) / (d.bossEvery || 5));
+    return bosses[n % bosses.length];
   }
 
   resolveMonsterPool(d, floorIdx) {
@@ -1390,7 +1417,7 @@ export class Game {
     if (mender > 0) {
       let closed = 0;
       for (const m of this.livingMembers()) closed += this.mendWounds(mender, m);
-      if (closed) this.log('Practiced hands close what sitting cannot: ' + closed + ' wound' + (closed === 1 ? '' : 's') + ' mended.');
+      if (closed) this.log('Your Mending (rank ' + mender + ') closes what sitting cannot: ' + closed + ' wound' + (closed === 1 ? '' : 's') + ' mended.');
     }
     if (p.wounds > 0) {
       this.log('You have rested all you can. What is left of this needs mending, not sitting — ' +
@@ -1714,6 +1741,10 @@ export class Game {
       return true;   /* the search itself costs the turn */
     }
     this.revealSecretAt(x, y);
+    /* Name the skill when it is why the seam gave — a rank you cannot see
+     * working is a rank you will never spend a point on. */
+    const fc = this.skillRank(p, 'fieldcraft');
+    if (fc > 0) this.log('Your Fieldcraft (rank ' + fc + ') knew where to press.');
     return true;
   }
 
@@ -1899,6 +1930,7 @@ export class Game {
     }
     if (p.inventory.length >= PACK_LIMIT) {
       this.log(me ? 'Your pack is full.' : p.name + '’s pack is full.');
+      if (me) this.tip('pack', 'Your pack is full. The Provisioner in the Whetstone buys what you haul up — sell, then come back for the rest.');
       return false;
     }
     p.inventory.push(it);
@@ -1917,7 +1949,7 @@ export class Game {
         const lore = Math.max(...this.livingMembers().map((m) => this.skillRank(m, 'lore')), 0);
         if (lore > 0 && this.rngOfTurn().chance(0.15 * lore)) {
           this.revealItem(it);
-          this.log('A practiced eye knows it at once: ' + it.name + '.');
+          this.log('Your Lore (rank ' + lore + ') names it at once: ' + it.name + '.');
         }
       }
     }
@@ -2024,6 +2056,9 @@ export class Game {
      * order, a shift debt, a quest tally) reads hp, not the floor list. */
     if (m.hp > 0) m.hp = 0;
     this.state.totalKills = (this.state.totalKills || 0) + 1;
+    /* The first blood the company ever draws is the moment the Keeper first
+     * notices there is a company to notice. */
+    if (this.state.totalKills === 1) this.speak('first-blood');
     const cleaves = this.hasPassive('cleave') && !this.actorTurn().cleaved;
     if (m.boss) this.onBossSlain(m);
     const xp = m.xp || 10;
@@ -2064,6 +2099,10 @@ export class Game {
       m2.bossesSlain[p.dungeonId] = true;
       m2.explored[p.dungeonId] = true;
     });
+    /* How many of the founding sanctums are quiet now. The Keeper has a word
+     * for each, and a different one for the last. */
+    const quieted = this.baseDungeonIds().filter((id) => this.isDungeonCleared(id)).length;
+    this.speak(quieted >= this.baseDungeonIds().length ? 'closing' : 'clear', quieted);
     /* A boss falling is the only way a `cleared` objective ever moves — read
      * the live undertakings now, so the capstone closes the moment the last
      * sanctum goes quiet rather than on the next errand. */
@@ -2096,13 +2135,19 @@ export class Game {
     if (!p.counters) p.counters = {};
     if (!p.counters.finished) {
       p.counters.finished = 1;
+      /* The Keeper closes the book, said once, before the victory card. */
+      this.speak('closing');
       if (this.ui.showVictory) {
+        const deepest = Object.values(p.deepest || {}).reduce((n, f) => Math.max(n, (f || 0) + 1), 0);
         this.ui.showVictory({
           name: p.name,
           cls: p.cls,
           level: p.level,
           gold: this.purse(),
           kills: this.state.totalKills,
+          cleared: bases.filter((id) => this.isDungeonCleared(id)).length,
+          deepest,
+          party: (this.state.party.members || []).map((m) => ({ name: m.name, cls: m.cls, fell: m.hp <= 0 })),
         });
       }
     }
@@ -2149,6 +2194,9 @@ export class Game {
     /* A level teaches one thing outside of fighting, spent where its owner
      * chooses — the Arcanum point, one a level, no banking limit. */
     p.skillPoints = (p.skillPoints || 0) + 1;
+    if (p === this.state.player) {
+      this.tip('learning', 'You have unspent learning. The Stat sheet spends it on a skill, and each rank says what it is worth.');
+    }
     const c = CLASSES[p.cls] || CLASSES.fighter;
     const hpGain = this.rngOfTurn().d(Math.max(2, c.hpDie)) + Math.max(0, abilityMod(p.stats.con));
     p.maxhp += Math.max(1, hpGain);
@@ -2158,6 +2206,10 @@ export class Game {
     this.uiLog((p === this.state.player ? 'You grow wise and strong — ' : p.name + ' grows wise and strong — ') +
       CLASSES[p.cls].name + ' level ' + p.level + '!');
     this.journal(p.name + ' reached level ' + p.level + '.');
+    /* The first growth of anyone in the company: say where abilities live. */
+    if (p === this.state.player) {
+      this.tip('level', 'You have grown. Your class abilities sit on the number keys — press 1–9 to spend one, and open the Codex to read them.');
+    }
     /* A condition beat is pinned to a floor, but level-ups happen wherever they
      * happen — an exact match meant the beat only fired if you happened to
      * level on that one floor. Fire everything at or above your current depth;
@@ -2732,6 +2784,17 @@ export class Game {
       return;
     }
 
+    /* WOUNDS THAT KEEP WOUNDING. A bleed ticks at the start of the thing's own
+     * turn, before it can act — and it can finish something that thought it
+     * had a turn left. */
+    if (m.bleed > 0) {
+      const dmg = m.bleedDmg || 1;
+      m.bleed--;
+      m.hp -= dmg;
+      this.log('The ' + m.t.name + ' bleeds for ' + dmg + '.');
+      if (m.hp <= 0) { this.killMonster(m); return; }
+    }
+
     const near = this.nearestMember(m);
     /* Something under the surface does nothing at all until it breaks it —
      * which is the point of the drains: the water is not only slow and loud,
@@ -3017,6 +3080,12 @@ export class Game {
     }
     target.hp -= dmg;
     this.takeWound(dmg, target);
+    /* The first time the leader is brought low, say the thing the help panel
+     * never manages to at the right moment: sitting down mends, and an altar
+     * closes what sitting cannot. */
+    if (target === this.state.player && target.hp > 0 && target.hp <= target.maxhp * 0.35) {
+      this.tip('hurt', 'Badly hurt — rest (r) mends in the quiet, and an altar closes what rest cannot.');
+    }
     if (target.hp <= 0) {
       target.hp = 0;
       this.memberDown(target, m);
@@ -3028,6 +3097,9 @@ export class Game {
    * every targeting path, all of which ask livingMembers. */
   memberDown(target, m) {
     this.clearActorTurn(target);
+    /* Whoever falls, the Keeper enters the loss in the same hand — said once,
+     * the first time anybody in the company goes down. */
+    this.speak('fall');
     const left = this.livingMembers();
     if (!left.length) {
       this.die(m);
@@ -3099,6 +3171,36 @@ export class Game {
   /* ---- helpers ---- */
   log(msg) { if (this.ui.log) this.ui.log(msg); }
   uiLog(msg) { if (this.ui.log) this.ui.log(msg); }
+
+  /* ONCE-PER-SAVE NUDGES. The help panel lists the keys; it never says the
+   * thing you need at the moment you need it. A tip fires once, the first time
+   * its moment comes, and never again — teaching by doing, then getting out of
+   * the way. Stored on the player, so it survives the save and never repeats. */
+  tip(key, text) {
+    const p = this.state.player;
+    if (!p) return;
+    if (!p.counters) p.counters = {};
+    if (!p.counters.tips) p.counters.tips = {};
+    if (p.counters.tips[key]) return;
+    p.counters.tips[key] = 1;
+    this.uiLog(text);
+  }
+
+  /* THE KEEPER OF THE ACCOUNT, heard and never met. It speaks once at each
+   * moment it has something to say — the first blood, the first loss, each
+   * sanctum shut, the closing of the book — and never twice. Kept on the
+   * player, so it survives the save and does not repeat after a reload. */
+  speak(event, n) {
+    const p = this.state.player;
+    if (!p) return;
+    if (!p.counters) p.counters = {};
+    if (!p.counters.keeper) p.counters.keeper = {};
+    const key = event + (n ? ':' + n : '');
+    if (p.counters.keeper[key]) return;
+    p.counters.keeper[key] = 1;
+    const line = keeperLine(event, n);
+    if (line) this.log(line);
+  }
 
   resolveWeapon(name) {
     if (!name) return this.itemTemplate('dagger');
@@ -3428,9 +3530,11 @@ export class Game {
 
   /* STANDING WITH THE POWERS OF THE WORLD.
    *
-   * Seven factions were written at depth, three of them with a person you can
-   * actually meet, and not one of them meant anything: the Codex printed the
-   * notes and the game never asked who you had done right by.
+   * Seven factions were written at depth; five of them now have a person you
+   * can actually meet, and every one of them means something — the Codex
+   * prints where you stand and what it has bought. The two without a face are
+   * the two that never wanted one: the garrison has had no one left to speak
+   * for it in four hundred years, and the Weavers keep no account of you.
    *
    * The ledger lives on the STATE, not on a member. This is the seventh time
    * that distinction has mattered — healing, loot, the purse, expedition
@@ -3733,6 +3837,7 @@ export class Game {
     const bonus = this.abilityBonus(a.damage, der);
     const spread = !!(a.aura || a.sight);
     let held = 0;
+    let bled = 0;
     for (const m of hit) {
       /* FINISHING. A foe already down to its last share does not get rolled
        * for — the working is the finish, not another blow. Measured before
@@ -3753,9 +3858,19 @@ export class Game {
         m.stunned = Math.max(m.stunned || 0, a.stun);
         held++;
       }
+      /* BLEEDING. Set after the damage and only on something still standing,
+       * so a finishing blow is just a finishing blow. */
+      if (a.bleed && m.hp > 0) {
+        m.bleed = Math.max(m.bleed || 0, a.bleed);
+        m.bleedDmg = Math.max(m.bleedDmg || 0, a.bleedDmg || 1);
+        bled++;
+      }
     }
     if (held) {
       this.log('The cold closes: ' + held + (held === 1 ? ' of them stands still.' : ' of them stand still.'));
+    }
+    if (bled) {
+      this.log('The ' + (bled === 1 ? 'wound keeps' : 'wounds keep') + ' giving: ' + bled + ' bleeding.');
     }
   }
 

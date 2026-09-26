@@ -13,6 +13,7 @@ import {
   LEDGER_KEY, LEGACY_SLOT, slotKey, newCharId, summarise,
   readLedger, writeLedger, rememberCharacter, readCharacter, forgetCharacter,
   markFallen, pickLast, playable, adoptLegacySave,
+  ACCOUNTS_KEY, readAccounts, recordAccount,
 } from '../public/js/roster.js';
 
 /* localStorage, near enough: string in, string out, and it can be made to
@@ -233,4 +234,31 @@ test('what goes into the ledger comes back out of it', () => {
   const back = readLedger(store);
   assert.equal(back.last, 'c9');
   assert.equal(back.chars[0].name, 'Marlyle');
+});
+
+/* ---- the closed accounts ---- */
+
+test('a finished run is laid in the Hall, newest first, and capped', () => {
+  const store = fakeStore();
+  recordAccount(store, { name: 'Maren', cls: 'cleric', level: 9, won: true, when: 5 });
+  recordAccount(store, { name: 'Odo', cls: 'thief', level: 4, writtenOff: true, when: 9 });
+  const list = readAccounts(store);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].name, 'Odo', 'the newest account was not at the top');
+  assert.equal(list[1].won, true, 'the settled account lost its ending');
+  /* A nameless entry is refused, and the list never runs past its ceiling. */
+  assert.equal(recordAccount(store, { cls: 'fighter' }), null);
+  for (let i = 0; i < 60; i++) recordAccount(store, { name: 'N' + i, when: i });
+  assert.ok(readAccounts(store).length <= 50, 'the Hall grew without a ceiling');
+  assert.equal(readAccounts(store)[0].name, 'N59', 'the last run in is not the first shown');
+});
+
+test('closing an account does not touch the live roster', () => {
+  const store = fakeStore();
+  put(store, 'live-1', 'Brann');
+  assert.equal(playable(store).length, 1);
+  recordAccount(store, { name: 'Brann', won: true, when: 1 });
+  /* The character is still playable — an account is only the memory of a run. */
+  assert.equal(playable(store).length, 1, 'closing an account erased the live record');
+  assert.equal(store.getItem(ACCOUNTS_KEY) !== null, true, 'no account was written at all');
 });

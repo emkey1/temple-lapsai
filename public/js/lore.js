@@ -310,6 +310,21 @@ export const LORE = {
       ]
     }
   ],
+  /* THE KEEPER OF THE ACCOUNT. The one voice that is not a place and not a
+   * person: whatever keeps the book the whole hill is written in. It speaks at
+   * the moments the per-dungeon arcs cannot — the first blood, the first loss,
+   * each sanctum shut — and it is the through line the arcs only hint at (the
+   * neat hand in the temple's margin). Heard, never met; said once, never
+   * twice. */
+  keeper: {
+    firstBlood: 'Somewhere up the line, something that had not been interested in anything for a long time becomes interested. A mark goes down beside a name, in a small neat hand. It is a small mark. They are all small at first.',
+    fall: 'A companion is entered in the loss column, in the same hand, and the hand does not pause over it. It is the long column. It was always going to be the long column.',
+    clears: [
+      'One sanctum quiet, and the count above does not go down. It goes through. Whatever keeps the book has waited a long time for somebody to move a number, and you have moved one.',
+      'Two. The hand is quicker now, and it has stopped pretending this is only bookkeeping. You are not an entry it is making any more. You are the sum it is carrying, and it does not care for where the sum is going.'
+    ],
+    closing: 'Three sanctums quiet, and the book is not full — it is finished, which is a different thing and a worse one for whoever kept it. Above you a lid is set down on something that has stood open for four hundred years. You have closed an account that outlived every clerk who ever touched it.'
+  },
   npcs: [
     {
       id: 'hermit-ogil', faction: 'carriers-ubtao',
@@ -319,6 +334,14 @@ export const LORE = {
       floor: 0,
       color: 'amber',
       intro: '“Sharp edges keep softer men alive down here. I know this temple blade by blade. Ask, and I shall whet your wits as well.”',
+      /* What he says instead, once the order behind him has noticed you. One
+       * line per rung of the standing ladder; rank 0 keeps the intro. */
+      recognise: [
+        '“The blade, again.” Ogil does not look up. “Word came up the stairs ahead of you. You are a name the four families have heard now, which is more than most get.”',
+        '“Sit, if you want.” A shift on the stone. “There is a place by the fire. It is not yours yet, but it is closer than it was.”',
+        '“You,” he says, and means it as a greeting. “The families ask after you by name now. I do not tell them much. I am not paid to.”',
+        'Ogil is already making room on the stone before you reach him. “There. Sit. You are the four families’ own now, and they will not hear a word against you in my hearing.”'
+      ],
       knowledge: [
         'temple',
         'whetstone',
@@ -453,6 +476,12 @@ export const LORE = {
       floor: 0,
       color: 'cyan',
       intro: '“The tide carries ruin into the warrens and carries our prayers out. Whom do you serve, down-soaked stranger? Perhaps I keep a blessing for you.”',
+      recognise: [
+        '“You came back up,” Eilyth says, as if checking a figure twice. “The Sisters note who does.”',
+        '“The count is better for you being in it.” She says it plainly, the way she says everything. “Sit where the water does not reach.”',
+        '“I have written your name in the margin,” she says, “which for my order is not a small thing. The margin is where the survivors go.”',
+        'Eilyth makes the sign she makes for her own. “You are counted among us now. That is not a debt and it is not a blessing — it is the same document, all the same.”'
+      ],
       knowledge: [
         'water',
         'tide',
@@ -581,6 +610,12 @@ export const LORE = {
       floor: 0,
       color: 'green',
       intro: '“The Coils remember every pilgrim who ever crawled them, and they counted you the moment you stepped inside. Be cleverer than the last hundred.”',
+      recognise: [
+        '“You are entered,” Venn says, turning a page. “I have begun a column for you. It is short. It will not stay short.”',
+        '“The survey includes you now.” Venn does not look up, which is how he looks up. “An open file is a kind of compliment, in this office.”',
+        '“Ah. The column.” A rare pause. “I have had occasion to write something good in it. I do not often get occasion.”',
+        'Venn sets the pen down entire, which he does for nobody. “You are one of the office’s own now. I am permitted to tell you that, which I was not, before.”'
+      ],
       knowledge: [
         'serpent',
         'coils',
@@ -715,6 +750,12 @@ export const LORE = {
       floor: 0,
       color: 'gray',
       intro: '“Name and company, for the book. We haul back what the hill keeps, at the standing rate, and we do not count wrong. State your business.”',
+      recognise: [
+        '“Name and company,” Ress says, by reflex. Then: “— already in the book. Good. The rate notices who it is applying to.”',
+        'Ress makes a mark and turns the book an inch toward you. “The table remembers a steady account. That is as warm as this table gets.”',
+        '“A friend of the table.” Ress says it the way he says the rate: flatly, and meaning it. “The friend’s rate applies.”',
+        '“You are one of ours now,” Ress says, “and the book says so in a hand that does not lie. Half is for strangers; you will find your rate has more give than that.”'
+      ],
       knowledge: ['rate', 'half', 'gold', 'book', 'entry', 'ledger', 'threshold', 'haul', 'tally', 'statue', 'order', 'tithe', 'traffic', 'death'],
       topics: [
         {
@@ -802,6 +843,12 @@ export const LORE = {
       floor: 1,
       color: 'rust',
       intro: '“Easy with the steel. You are on a toll road, not a battlefield. The Chute is crewed, the yardage is fair, and there is a rate for freight both ways. Talk first; it is cheaper.”',
+      recognise: [
+        '“A customer,” the factor says, approving. “The road keeps a list, and you have just been added to it. That is the whole of the ceremony.”',
+        '“Back again. Good.” The factor tallies something. “Freight that returns is freight worth keeping. Your yardage is improving.”',
+        '“You,” the factor says, with something almost like warmth on a whiskered face. “The crews know your stride now. That never happens to a stranger.”',
+        'The factor waves a paw before you speak. “Your toll is waived. You are written down as ours, and ours do not pay to walk their own road. Do not make me regret the ink.”'
+      ],
       knowledge: ['toll', 'yard', 'rate', 'freight', 'chute', 'route', 'crew', 'pay', 'debt', 'passage', 'rat', 'traffic'],
       topics: [
         {

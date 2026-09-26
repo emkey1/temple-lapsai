@@ -5,11 +5,12 @@
 import { Game, rollStats, initialStats, PACK_LIMIT } from './engine.js';
 import {
   CLASSES, getTheme, abilityMod, XP_FOR_LEVEL, cls, itemStackKey, getDungeon,
-  BACKGROUNDS, backgroundById, SKILLS, skillById,
+  BACKGROUNDS, backgroundById, SKILLS, skillById, skillDetail,
 } from './base.js';
 import { T, W, H, isTravelable } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
+import { buildDialogueSystemPrompt, buildDialogueMessages } from './voice.js';
 import { WORLD, loreBriefing } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, isWorn, abilityReach, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
@@ -27,11 +28,14 @@ import {
   unreadItems, knownCurses, identifyItem, unbindCurse,
   raiseCost, fallenMembers, raiseMember,
   identifyCost, unbindCost, musterRoster, hireMember, innCost, takeRoom,
+  RITES, enchantCost, enchantItem,
+  haggleNote,
 } from './town.js';
 import { itemDescription, abilityHealNote, abilityPowerNote, abilityDamageNote } from './describe.js';
 import {
   LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
   forgetCharacter, markFallen, pickLast, playable, adoptLegacySave,
+  readAccounts, recordAccount,
 } from './roster.js';
 
 /* ---------------- constants ---------------- */
@@ -112,6 +116,13 @@ const els = {
   btnOracleTest: $('btn-oracle-test'),
   btnOracleModels: $('btn-oracle-models'),
   btnOracleForget: $('btn-oracle-forget'),
+
+  voicePanel: $('voice-panel'),
+  voiceModel: $('voice-model'),
+  voiceStatus: $('voice-status'),
+  voiceNote: $('voice-note'),
+  btnVoiceOn: $('btn-voice-on'),
+  btnVoiceOff: $('btn-voice-off'),
   libResult: $('lib-result'),
   btnLibClose: $('btn-library-close'),
   itemDetail: $('item-detail'),
@@ -315,6 +326,7 @@ function makeUI() {
     setLocation: (s) => { els.location.textContent = s; },
     showFloor: () => {},
     showArrival: (d) => showArrival(d),
+    showWelcome: () => showWelcome(),
     openDialogue: (npc) => openDialogue(npc),
     showCamp: (g) => showCamp(g),
     showDeath: (msg) => showDeath(msg),
@@ -405,6 +417,21 @@ function showArrival(d) {
   });
 }
 
+/* THE FIRST ENTRY. The welcome the game owed a stranger — what the loop is,
+ * said once, before the first dungeon says its line. It reuses the arrival
+ * card rather than adding a second card to keep in step. */
+function showWelcome() {
+  enqueueCard(() => {
+    els.arrivalTitle.textContent = 'THE FIRST ENTRY';
+    els.arrivalFlavor.textContent =
+      'You go down for the oldest reason there is: something under the old sanctums is owed, and somebody has to collect. ' +
+      'Descend, take what you can carry, and climb back to the Whetstone — the Provisioner buys what you haul up, the Lector reads what you dare not, and the inn mends what resting will not. ' +
+      'Clear the boss at the bottom of each of the three sanctums and the founding account is settled. ' +
+      'Everything hostile is drawn in red; nothing worth taking is. Press ? for the keys whenever you want them.';
+    overlayShow(els.arrival);
+  });
+}
+
 function showBeat(beat) {
   if (!beat) return;
   enqueueCard(() => {
@@ -438,6 +465,13 @@ function buildVictory(run) {
 }
 
 function showVictoryCard(run) {
+  /* The account is closed: lay it in the Hall so the run outlives the save it
+   * was played in. */
+  recordAccount(localStorage, {
+    name: run.name, cls: run.cls, level: run.level, gold: run.gold,
+    kills: run.kills, cleared: run.cleared, deepest: run.deepest,
+    party: run.party, won: true, when: Date.now(),
+  });
   enqueueCard(() => { buildVictory(run); overlayShow(els.victory); });
 }
 
@@ -545,6 +579,7 @@ function showShop(g, sellIdx) {
   const box = townCard('shop-card', 'THE PROVISIONER',
     'Shelves of what the dungeon is stingy with, and a scale that weighs what you hauled up.',
     purseLine(g) +
+    (haggleNote(g) ? '<div class="lib-status">' + esc(haggleNote(g)) + '</div>' : '') +
     /* WHOSE PACK IS ON THE SCALE, decided before anything is read: the
      * picker sat in the GOODS header, below a shelf long enough to push
      * it off the card. It belongs at the top, where a choice is made. */
@@ -641,15 +676,39 @@ function showSage(g) {
   const known = cursed.length
     ? '<div class="tiny">Of the curses you carry: “not my trade any longer — take them up the lane, the vicar rings them loose.”</div>'
     : '';
+  /* THE BACK ROOM. The reader also deepens what a thing already is, for gold,
+   * and the price climbs each time it is laid again — a build bought a rite at
+   * a time. */
+  const wearable = g.companyItems().filter((it) => it && it.identified !== false && RITES.some((r) => r.on(it)));
+  const forge = wearable.length
+    ? '<h3 class="pane">THE BACK ROOM <span class="tiny">a rite, a coin, a keener thing</span></h3>' +
+      '<div class="scrolly" style="max-height:200px">' + wearable.map((it, i) => {
+        const opts = RITES.filter((r) => r.on(it)).map((r) => {
+          const cost = enchantCost(it, g, r);
+          return '<button data-enchant="' + i + '|' + r.id + '"' + (g.purse() < cost ? ' disabled' : '') + '>' +
+            esc(r.name) + ' · ' + cost + ' gp</button>';
+        }).join(' ');
+        return '<div class="eq-row"><span class="i-name">' + esc(it.name) + '</span> ' + opts + '</div>';
+      }).join('') + '</div>'
+    : '';
   const box = townCard('sage-card', 'THE LECTOR',
     'A reader of runes who has outlived four of the things people brought in to be read.',
     purseLine(g) +
+    (haggleNote(g) ? '<div class="lib-status">' + esc(haggleNote(g)) + '</div>' : '') +
     '<div class="scrolly" style="max-height:280px">' +
-      (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>' + known,
+      (rows || '<div class="tiny">Nothing you carry has anything left to tell.</div>') + '</div>' + known + forge,
     'BACK TO THE STREET', npcPortrait('lector', 'male'));
   box.addEventListener('click', (e) => {
     const read = e.target.closest('[data-read]');
-    if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); }
+    if (read) { identifyItem(g, unread[Number(read.dataset.read)]); saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g); box.remove(); showSage(g); return; }
+    const ench = e.target.closest('[data-enchant]');
+    if (ench) {
+      const [i, riteId] = ench.dataset.enchant.split('|');
+      if (enchantItem(g, wearable[Number(i)], riteId)) {
+        saveGame(); renderHud(g); if (currentTab === 'gear') renderGear(g);
+        box.remove(); showSage(g);
+      }
+    }
   });
   box.querySelector('[data-town-back]').onclick = () => {
     box.remove();
@@ -698,11 +757,17 @@ function showTemple(g) {
 }
 
 /* ---------------- character creation ---------------- */
-function appliedStats(s, clsId) {
+/* The preview's stats: the roll with the class laid on, and the past laid on
+ * after it — so clicking a background MOVES the numbers. The real character
+ * gets the same treatment in engine.applyBackground; the creation path below
+ * passes the class-adjusted roll and lets the engine add the background, so
+ * the adjustment lands exactly once. */
+function appliedStats(s, clsId, bgId) {
   const c = CLASSES[clsId] || CLASSES.fighter;
+  const bg = bgId ? backgroundById(bgId) : null;
   const out = {};
   for (const k of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
-    out[k] = Math.max(3, Math.min(18, (s[k] || 10) + (c.statAdj[k] || 0)));
+    out[k] = Math.max(3, Math.min(18, (s[k] || 10) + (c.statAdj[k] || 0) + ((bg && bg.statAdj[k]) || 0)));
   }
   return out;
 }
@@ -743,14 +808,14 @@ function paintBgPicker() {
     const line = bgLine(bg);
     el.innerHTML = '<b>' + bg.name + '</b>' + (line ? ' <span class="tiny">' + line + '</span>' : '') +
       '<div class="d">' + bg.blurb + '</div>';
-    el.onclick = () => { selBackground = bg.id; paintBgPicker(); };
+    el.onclick = () => { selBackground = bg.id; paintBgPicker(); paintAttrs(); };
     box.appendChild(el);
   }
 }
 
 function paintAttrs() {
   const c = CLASSES[selClass] || CLASSES.fighter;
-  const eff = rolled ? appliedStats(rolled, selClass) : initialStats(selClass);
+  const eff = rolled ? appliedStats(rolled, selClass, selBackground) : initialStats(selClass);
   els.attrGrid.innerHTML = '';
   const KEY = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
   for (const k of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
@@ -784,6 +849,8 @@ function beginCreate() {
 function doEnter() {
   const name = (els.charName.value || '').trim();
   if (!name) { els.charName.focus(); return; }
+  /* Class only, deliberately: foundAdventurer lays the background on top, so
+   * the adjustment lands exactly once. The preview above adds both to show it. */
   const eff = appliedStats(rolled, selClass);
   overlayHideAll();
   const g = makeGame();
@@ -3256,7 +3323,13 @@ function renderStats(g) {
       const rank = (p.skills && p.skills[s.id]) || 0;
       const pips = '&#9679;'.repeat(rank) + '<span style="color:var(--ink-faint)">' + '&#9675;'.repeat(s.max - rank) + '</span>';
       const plus = pts > 0 && rank < s.max ? ' <button class="mini" data-skill="' + s.id + '">+</button>' : '';
-      return '<tr title="' + esc(s.desc) + '"><td class="k">' + esc(s.name) + '</td><td class="v">' + pips + plus + '</td></tr>';
+      /* The concrete worth, now and next, right on the row — a rank you cannot
+       * see working reads as a rank that does nothing. */
+      const now = skillDetail(s.id, rank);
+      const next = rank < s.max ? skillDetail(s.id, rank + 1) : null;
+      const title = esc(s.desc) + (next ? '  ·  Next rank: ' + esc(next) : '  ·  maxed');
+      return '<tr title="' + title + '"><td class="k">' + esc(s.name) + '</td><td class="v">' + pips +
+        ' <span class="tiny">' + esc(now) + '</span>' + plus + '</td></tr>';
     }).join('') + '</table>';
   const buffs = buffLines(p);
   if (buffs.length) {
@@ -3829,7 +3902,10 @@ function openDialogue(npc) {
   els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name, tpl.sex) + '" alt=""> ' +
     esc(tpl.name) + ' — ' + esc(tpl.title || 'a denizen of the dark');
   els.dlgLog.innerHTML = '';
-  const hist = dialogue.start(tpl);
+  /* How their order counts the company decides how they open their mouth. */
+  const faction = game ? game.factionOfNpc(tpl.id) : null;
+  const rank = faction && game ? game.standing(faction) : 0;
+  const hist = dialogue.start(tpl, rank);
   for (const m of hist) appendDlg(m);
   els.dlgInput.value = '';
   renderQuestOffers();
@@ -3996,7 +4072,7 @@ function whenSaved(ms) {
 
 function renderLedger() {
   const chars = playable(localStorage);
-  els.ledgerList.innerHTML = chars.length ? chars.map((c) => {
+  const rows = chars.length ? chars.map((c) => {
     const cls = (CLASSES[c.cls] || {}).name || c.cls;
     const here = c.where ? esc(c.where) + ' · floor ' + (c.floor || 1) : 'not yet gone down';
     return '<div class="ledger-row' + (c.fallen ? ' fallen' : '') + '">' +
@@ -4007,6 +4083,23 @@ function renderLedger() {
       '<button data-forget="' + esc(c.id) + '">ERASE</button>' +
       '</div>';
   }).join('') : '<div class="tiny">Nobody has gone down yet.</div>';
+  /* THE CLOSED ACCOUNTS. Runs that are over — the chronicle settled, or a
+   * company written off — so a good death is remembered past the save. */
+  const accounts = readAccounts(localStorage);
+  const closed = accounts.length
+    ? '<h3 class="pane">CLOSED ACCOUNTS</h3>' + accounts.map((a) => {
+      const cls = (CLASSES[a.cls] || {}).name || a.cls;
+      const fate = a.won ? 'the founding account settled' : (a.writtenOff ? 'written off' : 'closed');
+      const bits = [fate,
+        a.deepest ? 'deepest floor ' + a.deepest : '',
+        a.kills ? a.kills + ' slain' : '',
+        a.gold ? a.gold + ' gp' : ''].filter(Boolean).join(' · ');
+      return '<div class="ledger-row' + (a.won ? ' won' : '') + '">' +
+        '<span class="who"><b>' + esc(a.name) + '</b> <span class="tiny">' + esc(cls) + ' · level ' + (a.level || 1) + '</span>' +
+        '<span class="where">' + esc(bits) + ' · ' + whenSaved(a.when) + '</span></span></div>';
+    }).join('')
+    : '';
+  els.ledgerList.innerHTML = rows + closed;
   overlayShow(els.ledger);
 }
 
@@ -4017,11 +4110,20 @@ function ledgerClick(e) {
   if (!forget) return;
   const id = forget.dataset.forget;
   const row = forget.closest('.ledger-row');
-  /* Erasing is the one thing here that cannot be undone, so it asks. */
+  /* Erasing is the one thing here that cannot be undone, so it asks. And the
+   * company's account is closed in the Hall first, so erasing the save does
+   * not erase the memory of them. */
   if (row && row.dataset.sure !== '1') {
     row.dataset.sure = '1';
     forget.textContent = 'ERASE FOR GOOD?';
     return;
+  }
+  const entry = playable(localStorage).find((c) => c.id === id);
+  if (entry) {
+    recordAccount(localStorage, {
+      name: entry.name, cls: entry.cls, level: entry.level, gold: entry.gold,
+      deepest: entry.floor, won: false, writtenOff: true, when: Date.now(),
+    });
   }
   forgetCharacter(localStorage, id);
   if (charId === id) charId = null;
@@ -4042,6 +4144,7 @@ function openLibrary(openTheOracle) {
   els.libActions.innerHTML = EXP_ACTIONS.map(([a, label]) =>
     '<button data-act="' + a + '">' + label + '</button>').join('');
   paintOracle();
+  paintVoice();
   overlayShow(els.libOverlay);
   /* Arriving with nothing bound, the fold opens itself: the settings ARE the
    * errand, and a collapsed <details> is one more thing to find. */
@@ -4099,7 +4202,117 @@ function note(text, kind) {
 
 /* One sentence in the summary line, because that is all you see when the panel
  * is folded away — and folded away is where it lives once it works. */
+/* ---- the local voice: a small model, in the page, optional ---- *
+ *
+ * Loaded lazily from a CDN only when the player asks for it, so the base game
+ * stays zero-dependency and nothing is downloaded by default. Needs WebGPU;
+ * with it off the cast are back on their written lines. */
+
+const VOICE_MODELS = [
+  { id: 'SmolLM2-360M-Instruct-q4f16_1-MLC', label: 'SmolLM2 360M — tiny and quick' },
+  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B — small, decent' },
+  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B — the sweet spot' },
+  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B — heavier, better' },
+];
+let voiceEngine = null;
+let voiceBusy = false;
+let voiceModelId = VOICE_MODELS[1].id;
+try { voiceModelId = localStorage.getItem('lapsai-voice') || voiceModelId; } catch { /* private mode */ }
+
+function paintVoice() {
+  if (!els.voicePanel) return;
+  if (!els.voiceModel.options.length) {
+    els.voiceModel.innerHTML = VOICE_MODELS.map((m) =>
+      '<option value="' + m.id + '">' + esc(m.label) + '</option>').join('');
+    els.voiceModel.value = voiceModelId;
+  }
+  const gpu = typeof navigator !== 'undefined' && !!navigator.gpu;
+  els.voiceStatus.textContent = voiceEngine ? 'awake' : (voiceBusy ? 'waking…' : (gpu ? 'asleep' : 'no WebGPU here'));
+  els.voiceStatus.className = 'lib-status ' + (voiceEngine ? 'bound' : 'unbound');
+  els.btnVoiceOn.disabled = voiceBusy || !!voiceEngine || !gpu;
+  els.btnVoiceOff.disabled = voiceBusy || !voiceEngine;
+}
+
+async function enableLocalVoice() {
+  if (voiceBusy || voiceEngine) return;
+  if (!(typeof navigator !== 'undefined' && navigator.gpu)) {
+    els.voiceNote.textContent = 'This browser has no WebGPU, so the local voice cannot run here.';
+    return;
+  }
+  voiceBusy = true;
+  voiceModelId = els.voiceModel.value || voiceModelId;
+  try { localStorage.setItem('lapsai-voice', voiceModelId); } catch { /* private mode */ }
+  els.voiceNote.textContent = 'Fetching the engine (one time)…';
+  paintVoice();
+  try {
+    const webllm = await import('https://esm.run/@mlc-ai/web-llm');
+    els.voiceNote.textContent = 'Loading ' + voiceModelId + ' — the first run downloads the model, and caches it after that.';
+    const engine = await webllm.CreateMLCEngine(voiceModelId, {
+      initProgressCallback: (r) => { els.voiceStatus.textContent = 'waking… ' + Math.round((r.progress || 0) * 100) + '%'; },
+    });
+    voiceEngine = engine;
+    els.voiceNote.textContent = 'The local voice is awake. Walk up to anyone and speak.';
+    syncDialogueAdapter();
+  } catch (e) {
+    voiceEngine = null;
+    els.voiceNote.textContent = 'The local voice would not wake: ' + (e.message || e);
+  } finally {
+    voiceBusy = false;
+    paintVoice();
+  }
+}
+
+function disableLocalVoice() {
+  const engine = voiceEngine;
+  voiceEngine = null;
+  if (engine && engine.unload) { try { engine.unload(); } catch { /* nothing to do */ } }
+  if (els.voiceNote) els.voiceNote.textContent = 'Put away. The cast are back on their written lines.';
+  syncDialogueAdapter();
+  paintVoice();
+}
+
+/* WHEN A VOICE IS ON, the cast stop reading from the wall. The local model
+ * (if awake) speaks first; otherwise a bound oracle; otherwise the canned
+ * lines in npc.js are all that answer. */
+function syncDialogueAdapter() {
+  if (voiceEngine) {
+    dialogue.setAdapter(async ({ npc, history, input }) => {
+      const g = game;
+      const standing = (npc.faction && g && g.standingRank) ? g.standingRank(npc.faction) : 'a stranger';
+      const system = buildDialogueSystemPrompt(npc, { standing });
+      const messages = buildDialogueMessages({ history, input }, system);
+      const out = await voiceEngine.chat.completions.create({ messages, temperature: 0.85, max_tokens: 220 });
+      const reply = out && out.choices && out.choices[0] && out.choices[0].message && out.choices[0].message.content;
+      if (!reply) throw new Error('the local voice said nothing');
+      return String(reply).trim();
+    });
+    return;
+  }
+  if (!oracle || !oracle.ready) { dialogue.setAdapter(null); return; }
+  dialogue.setAdapter(async ({ npc, history, input }) => {
+    const g = game;
+    const p = g && g.state && g.state.player;
+    let standing = 'a stranger';
+    let where = '';
+    if (g && p) {
+      if (npc.faction && g.standing && g.standingRank) standing = g.standingRank(npc.faction);
+      const d = g.dungeonById ? g.dungeonById(p.dungeonId) : null;
+      where = d ? (d.name + ' · floor ' + ((p.floorIdx || 0) + 1)) : (g.inTown && g.inTown() ? 'the Whetstone' : '');
+    }
+    const res = await fetch('/api/dialogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ npcId: npc.id, history, input, standing, where }),
+    });
+    if (!res.ok) throw new Error('the oracle is silent');
+    const data = await res.json();
+    if (!data || !data.reply) throw new Error('no answer');
+    return data.reply;
+  });
+}
+
 function paintOracle() {
+  syncDialogueAdapter();
   fillProviderMenu();
   const cur = oracle && oracle.current;
   if (!cur) {
@@ -4503,6 +4716,13 @@ async function boot() {
   els.btnOracleTest.onclick = () => testOracle();
   els.btnOracleModels.onclick = () => askWhatItServes();
   els.btnOracleForget.onclick = () => forgetOracle();
+
+  if (els.btnVoiceOn) els.btnVoiceOn.onclick = () => enableLocalVoice();
+  if (els.btnVoiceOff) els.btnVoiceOff.onclick = () => disableLocalVoice();
+  if (els.voiceModel) els.voiceModel.onchange = () => {
+    voiceModelId = els.voiceModel.value;
+    try { localStorage.setItem('lapsai-voice', voiceModelId); } catch { /* private mode */ }
+  };
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);

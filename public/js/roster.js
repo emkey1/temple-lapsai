@@ -12,6 +12,14 @@
 export const LEDGER_KEY = 'lapsai-ledger';
 export const SLOT_PREFIX = 'lapsai-save:';
 
+/* THE CLOSED ACCOUNTS. The ledger above is who you can still play; this is
+ * the memory of the runs that are over — the founding chronicle settled, or a
+ * company written off. Kept apart from the live roster so erasing a live
+ * record never erases the account of it, and capped so the list cannot grow
+ * for ever in a browser that is polite about storage. */
+export const ACCOUNTS_KEY = 'lapsai-accounts';
+const ACCOUNTS_CAP = 50;
+
 /* The single slot the game used to keep. Read once, adopted, and cleared. */
 export const LEGACY_SLOT = 'lapsai-save';
 
@@ -146,4 +154,24 @@ export function adoptLegacySave(store, id, summary, now) {
   rememberCharacter(store, id, old, entry, (old.saved) || now || 0);
   try { store.removeItem(LEGACY_SLOT); } catch { /* leave it, it is harmless */ }
   return id;
+}
+
+/* ---- the closed accounts ---- */
+
+export function readAccounts(store) {
+  const list = readJSON(store, ACCOUNTS_KEY);
+  return Array.isArray(list) ? list.filter((e) => e && e.name) : [];
+}
+
+export function writeAccounts(store, list) {
+  return writeJSON(store, ACCOUNTS_KEY, (list || []).slice(0, ACCOUNTS_CAP));
+}
+
+/* Lay a finished run in the book. Newest first, so the hall reads the way a
+ * ledger does — the last entry at the top. */
+export function recordAccount(store, entry) {
+  if (!entry || !entry.name) return null;
+  const e = { ...entry, when: entry.when || 0 };
+  writeAccounts(store, [e, ...readAccounts(store)]);
+  return e;
 }

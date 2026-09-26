@@ -6,6 +6,7 @@ import { buildPrompt, extractJSON, validateExpansion } from './lib/expansion.js'
 import {
   loadOracle, writeOracle, describeOracle, applySettings, callOracle, probeOracle, listModels, settingsForListing,
 } from './lib/oracle.js';
+import { dialogueReply } from './lib/dialogue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -352,6 +353,21 @@ const server = http.createServer(async (req, res) => {
       const action = ['dungeon', 'monster', 'item', 'ability'].includes(body.action) ? body.action : 'item';
       const expansion = await handleExpand(action, body.context || {});
       return sendJSON(res, 201, { ok: true, expansion });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/dialogue') {
+      if (!sameOrigin(req)) return sendJSON(res, 403, { error: 'cross-origin requests are not accepted' });
+      if (!isJson(req)) return sendJSON(res, 415, { error: 'send application/json' });
+      if (!oracleReadyNow()) return sendJSON(res, 503, { error: 'No oracle is bound — choose one in the Black Library' });
+      if (rateLimited()) return sendJSON(res, 429, { error: 'the scribes need a moment — try again shortly' });
+      let body;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJSON(res, 400, { error: 'could not read that request: ' + (err.message || 'bad JSON') });
+      }
+      const out = await dialogueReply(oracle, body);
+      return sendJSON(res, 200, out);
     }
 
     if (pathname.startsWith('/api/')) {

@@ -25,6 +25,7 @@ export const WORLD = {
   factions: [],
   npcs: [],
   storyArcs: [],
+  keeper: null,
   flags: {},
 };
 
@@ -34,6 +35,7 @@ export function registerWorldContent(content) {
   if (Array.isArray(content.factions)) WORLD.factions.push(...content.factions);
   if (Array.isArray(content.npcs)) WORLD.npcs.push(...content.npcs);
   if (Array.isArray(content.storyArcs)) WORLD.storyArcs.push(...content.storyArcs);
+  if (content.keeper && typeof content.keeper === 'object') WORLD.keeper = content.keeper;
 }
 
 /* WHAT THE ORACLE NEEDS TO KNOW ABOUT THIS WORLD.
@@ -115,6 +117,21 @@ export function beatsAt(dungeonId, kind, floorIdx) {
 
 export function beatAt(dungeonId, kind, floorIdx) {
   return beatsAt(dungeonId, kind, floorIdx)[0] || null;
+}
+
+/* The Keeper's line for a moment, or null if it has nothing to say there. `n`
+ * is only used for the sanctums, which escalate as the hand quickens. */
+export function keeperLine(event, n) {
+  const k = WORLD.keeper;
+  if (!k) return null;
+  if (event === 'first-blood') return k.firstBlood || null;
+  if (event === 'fall') return k.fall || null;
+  if (event === 'closing') return k.closing || null;
+  if (event === 'clear') {
+    const list = Array.isArray(k.clears) ? k.clears : [];
+    return list[(n || 1) - 1] || null;
+  }
+  return null;
 }
 
 export function npcsForDungeon(dungeonId, floorIdx) {

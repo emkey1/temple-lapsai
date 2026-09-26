@@ -527,8 +527,12 @@ export function generateFloor(opts) {
 
   const grid = Array.from({ length: H }, () => Array(W).fill(T.WALL));
 
-  const isLast = floorIdx >= dungeon.floors - 1;
-  const denFrame = isLast ? DEN_FRAME : null;
+  const isLast = !dungeon.endless && floorIdx >= dungeon.floors - 1;
+  /* An endless stair keeps a boss every fifth landing and a way down on every
+   * floor — the last floor never comes, so `isLast` stays false and the down
+   * stair below is always laid. */
+  const bossFloor = dungeon.endless ? ((floorIdx + 1) % (dungeon.bossEvery || 5) === 0) : isLast;
+  const denFrame = bossFloor ? DEN_FRAME : null;
 
   const rooms = [];
   const maxRooms = 9 + rng.int(0, 4);
@@ -562,7 +566,7 @@ export function generateFloor(opts) {
    * inside it, and the den's approach corridor is cut back to this tile. */
   const upRoom = rooms.find((r) => !insideDen(denFrame, cx(r), cy(r))) || rooms[0];
   const up = { x: cx(upRoom), y: cy(upRoom) };
-  const den = isLast ? installBossDen(grid, up) : null;
+  const den = bossFloor ? installBossDen(grid, up) : null;
   grid[up.y][up.x] = T.UP;
   let down = null;
   if (!isLast) {

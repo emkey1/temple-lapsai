@@ -176,3 +176,17 @@ test('speed buys ground and never a second blow', () => {
   assert.equal(blows, 1, `a speed 4 monster landed ${blows} blows in one turn`);
   assert.ok(hp - p.hp > 0, 'it did not attack at all');
 });
+
+test('a bleed keeps cutting on the thing\'s own turn, and can finish it', () => {
+  const g = newGame('bleed');
+  const floor = partitionedFloor(g);
+  const m = beast(12, 7, { hp: 5, maxhp: 5, bleed: 3, bleedDmg: 3 });
+  floor.monsters.push(m);
+  g.turn = 0;
+  g.resolveMonsters();
+  assert.equal(m.hp, 2, 'the bleed did not tick at the start of the turn');
+  assert.equal(m.bleed, 2, 'the bleed did not count down');
+  g.turn = 1;
+  g.resolveMonsters();
+  assert.ok(m.hp <= 0, 'a bleed could not finish something it had already cut');
+});

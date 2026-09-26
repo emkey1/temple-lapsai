@@ -149,13 +149,29 @@ export function skillById(id) {
   return SKILLS.find((s) => s.id === id) || null;
 }
 
+/* WHAT A RANK IS WORTH, in plain numbers, so the sheet can say it and the log
+ * can name it. These are the numbers the engine actually applies (see
+ * searchSecretAt, pickupItem, rest and town.buyCut/sellLift) — the point being
+ * that a skill you cannot see working reads as a skill that does nothing. */
+export function skillDetail(id, rank) {
+  const r = Math.max(0, rank || 0);
+  if (id === 'haggle') return r === 0 ? 'no discount yet' : (6 * r) + '% off buys · +' + (8 * r) + '% on sells';
+  if (id === 'lore') return r === 0 ? 'no chance to read a find' : (15 * r) + '% to read a find the moment you lift it';
+  if (id === 'fieldcraft') return r === 0 ? 'no better than bare hands' : '+' + (10 * r) + '% to find hidden seams';
+  if (id === 'mending') return r === 0 ? 'a rest closes no wounds' : 'a rest closes ' + r + ' wound' + (r === 1 ? '' : 's') + ' each';
+  return '';
+}
+
 export const ABILITIES = [
   /* Fighter */
   { cls: 'fighter', level: 1, id: 'cleave', name: 'Cleave', kind: 'passive', description: 'Your blade carries: slaying a foe grants one bonus attack this turn.' },
+  { cls: 'fighter', level: 2, id: 'sunder', name: 'Sunder', kind: 'damage', powerCost: 3, cooldown: 2, range: 1, damage: { sides: 8, bonus: 0, n: 'str' }, description: 'Split the guard: deal 1d8 + your STR bonus to one foe.' },
   { cls: 'fighter', level: 3, id: 'shield-bash', name: 'Shield Bash', kind: 'damage', name2: 'Shield Bash', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 2, n: 'str' }, description: 'Knock a foe senseless: deal 1d6 + your STR bonus, and it cannot attack next turn.' },
+  { cls: 'fighter', level: 5, id: 'rally', name: 'Rally', kind: 'buff', buff: 'might', bonus: 2, turns: 4, powerCost: 5, cooldown: 5, description: 'Set your jaw and lift the blade: +2 to hit for four turns.' },
   /* Half a bar, twice a fight. The fraction and the price moved together: with
    * the old 5 power it would have been four castings and two full bars. */
   { cls: 'fighter', level: 6, id: 'second-wind', name: 'Second Wind', kind: 'heal', selfOnly: true, powerCost: 8, cooldown: 0, heal: '3d6', healFraction: 0.5, description: 'Breathe deep and shake off the dark: heal 3d6. Your own breath — no one else’s.' },
+  { cls: 'fighter', level: 8, id: 'breaker', name: 'Breaker', kind: 'damage', powerCost: 6, cooldown: 3, range: 1, damage: { sides: 8, bonus: 2, dice: 2, n: 'str' }, description: 'One foe, one ruinous blow: 2d8 + your STR bonus + 2.' },
   { cls: 'fighter', level: 9, id: 'whirlwind', name: 'Whirlwind', kind: 'damage', powerCost: 8, cooldown: 3, aura: 2, damage: { sides: 6, bonus: 3, dice: 2, n: 'str' }, description: 'A dance of death: deal 2d6 + your STR bonus to every foe around you.' },
   /* THE TWELFTH LEVEL, and why there is one.
    *
@@ -179,6 +195,7 @@ export const ABILITIES = [
   { cls: 'thief', level: 1, id: 'sharp-keen', name: 'Sharp & Keen', kind: 'passive', critBonus: 0.10, findsSecrets: true, description: 'You strike where it tells: +10% to wound critically, and your hands find seams other people walk past.' },
   { cls: 'thief', level: 2, id: 'hide-shadows', name: 'Hide in Shadows', kind: 'buff', buff: 'shadow', powerCost: 3, cooldown: 5, turns: 6, description: 'Step out of the world’s attention: nothing hunts what it cannot see. Your first blow from the dark strikes true (+4) and cuts twice as deep — and ends the hiding.' },
   { cls: 'thief', level: 3, id: 'backstab', name: 'Backstab', kind: 'damage', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 4, dice: 1 }, description: 'Find the unguarded flank: deal 1d6+4 to a foe and vanish one tile.' },
+  { cls: 'thief', level: 4, id: 'crimson-cut', name: 'Crimson Cut', kind: 'damage', powerCost: 4, cooldown: 3, range: 1, damage: { sides: 6, bonus: 2, dice: 1 }, bleed: 3, bleedDmg: 3, description: 'A cut that keeps cutting: 1d6+2 to one foe, and it bleeds 3 a turn for three turns.' },
   { cls: 'thief', level: 6, id: 'shadow-blink', name: 'Shadow Blink', kind: 'teleport', powerCost: 5, cooldown: 4, teleportRng: 6, description: 'Fold into the dark and reappear up to 6 tiles away. Monsters lose your trail.' },
   { cls: 'thief', level: 9, id: 'fatal-flurry', name: 'Fatal Flurry', kind: 'damage', powerCost: 8, cooldown: 3, sight: true, damage: { sides: 4, bonus: 2, dice: 4 }, description: 'Strike every foe in sight like falling knives: 4d4+2 each.' },
   { cls: 'thief', level: 12, id: 'quiet-word', name: 'The Quiet Word', kind: 'damage', powerCost: 7, cooldown: 4, range: 1, execute: 1 / 3, damage: { sides: 6, bonus: 3, dice: 3 }, description: 'Finish it: 3d6+3 to one foe — and a foe already down to a third of itself simply stops.' },
@@ -212,8 +229,11 @@ export const ABILITIES = [
   /* A third, not a quarter: at a quarter this was the same integer as a 15gp
    * bottle at every level for every Cleric, which is no kind of signature. */
   { cls: 'cleric', level: 1, id: 'lay-hands', name: 'Lay on Hands', kind: 'heal', powerCost: 5, cooldown: 0, heal: '2d6', healFraction: 1 / 3, description: 'Old gods answer: heal 2d6.' },
+  { cls: 'cleric', level: 2, id: 'bless', name: 'Bless', kind: 'buff', buff: 'might', bonus: 1, turns: 4, party: 2, powerCost: 4, cooldown: 5, description: 'Lay the old words on the company: +1 to hit for every member within two tiles, for four turns.' },
   { cls: 'cleric', level: 3, id: 'detect-evil', name: 'Detect Evil', kind: 'reveal', powerCost: 2, cooldown: 0, detectMonsters: true, description: 'Foes burn on your sight: show every monster on the floor until next turn.' },
+  { cls: 'cleric', level: 5, id: 'smite', name: 'Smite', kind: 'damage', powerCost: 5, cooldown: 2, range: 4, damage: { sides: 8, bonus: 0, dice: 1 }, description: 'Call the judgment down at four paces: 1d8 of it to one foe.' },
   { cls: 'cleric', level: 6, id: 'turn-undead', name: 'Turn Undead', kind: 'turn', powerCost: 6, cooldown: 3, range: 6, damage: { sides: 6, bonus: 0, dice: 2 }, description: 'Drive the unhallowed back: undead & cursed creatures take 2d6 and flee.' },
+  { cls: 'cleric', level: 8, id: 'aegis', name: 'Aegis', kind: 'buff', buff: 'ward', bonus: 2, turns: 5, powerCost: 6, cooldown: 6, description: 'Wrap yourself in the rite: turn aside 2 damage from every blow for five turns.' },
   /* `aura` and not `range`, which is the whole difference between a scythe
    * and a dart. Turn Undead above spells its radius `range` because a turning
    * measures from the priest and nothing else, but a DAMAGING working reads
@@ -602,8 +622,35 @@ export const DUNGEONS = [
   },
 ];
 
+/* THE LOWER LEDGER. Past the three founding sanctums the stair does not stop;
+ * it keeps going down, and the book goes on with it. Endless: it has no last
+ * floor, and every fifth landing keeps a boss. It is NOT one of the founding
+ * three — baseDungeonIds is a fixed list and never sees it — so it is never
+ * counted toward the chronicle's end, only toward how deep anyone has gone. */
+export const ENDLESS = {
+  id: 'deep',
+  name: 'The Lower Ledger',
+  title: 'the stair that keeps going',
+  flavor: 'Past the serpent’s last door the stair does not stop. It goes on, and the walls keep changing, and the book above keeps writing down whatever it finds. Nobody has reached the bottom, because there is no bottom — there is only how far you got, and whether you came back up to say so.',
+  floors: 0,
+  endless: true,
+  bossEvery: 5,
+  theme: 'cavern',
+  threat: 6,
+  requires: 'serpent',
+  monsterWeights: [
+    'rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'orc', 'skeleton', 'ghoul',
+    'mummy', 'living-statue', 'gargoyle', 'otyugh', 'giant-snake', 'wererat', 'giant-leech',
+    'ghast', 'wraith', 'ogre', 'gelatinous-cube', 'troll', 'spectre', 'displacer-beast',
+    'minotaur', 'basilisk', 'wyvern', 'ettin', 'stone-giant', 'gorgon', 'dracolisk',
+  ],
+  bossId: 'great-wyrm',
+};
+
+const ALL_DUNGEONS = [...DUNGEONS, ENDLESS];
+
 export function getDungeon(id) {
-  return DUNGEONS.find((d) => d.id === id) || null;
+  return ALL_DUNGEONS.find((d) => d.id === id) || null;
 }
 
 /* ---------------- Theme palettes (map rendering) ---------------- */

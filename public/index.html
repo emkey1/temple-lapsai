@@ -137,6 +137,20 @@
       </div>
     </details>
 
+    <details id="voice-panel">
+      <summary><span class="oracle-title">THE LOCAL VOICE</span><span class="lib-status" id="voice-status"></span></summary>
+      <p class="tiny">Play the cast with a small language model that runs <b>in this browser</b> — no key, no server, and offline after a one-time download. It needs WebGPU (Chrome, Edge, or Safari 18+). Entirely optional: with it off, the cast answer from their written lines, and nothing is downloaded.</p>
+      <div class="oracle-grid">
+        <label for="voice-model">MODEL</label>
+        <select id="voice-model"></select>
+      </div>
+      <p class="tiny" id="voice-note"></p>
+      <div class="row">
+        <button id="btn-voice-on">WAKE THE LOCAL VOICE</button>
+        <button id="btn-voice-off" class="mini">PUT IT AWAY</button>
+      </div>
+    </details>
+
     <h3 class="pane">COMMISSION A WORK</h3>
     <div class="row" id="lib-actions"></div>
     <div id="lib-preload-zone">

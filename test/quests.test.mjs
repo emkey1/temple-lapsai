@@ -526,3 +526,58 @@ test('the Archive names whatever a friend of the Library lifts', () => {
   g2.pickupItem(warm, p2);
   assert.equal(warm.identified, true, 'the Archive did not read what was lifted');
 });
+
+/* --- THE FIRST ENTRY: the onboarding the game owes a stranger. --- */
+
+test('the first entry is offered first, and the rite keeps it company', () => {
+  const { g } = rig('tutorial');
+  const offers = () => g.questsOnOffer('hermit-ogil').map((x) => x.id);
+  assert.ok(offers().includes('the-first-entry'), 'the first entry was never offered');
+  assert.equal(offers().includes('the-first-rite'), false, 'the rite came before the first entry');
+  g.acceptQuest('the-first-entry');
+  for (let i = 0; i < 3; i++) g.questKilled('rat');
+  assert.ok(g.completeQuest('the-first-entry'), 'the first entry would not close');
+  assert.ok(offers().includes('the-first-rite'), 'the rite never opened once the entry was made');
+});
+
+test('the loop is said out loud once, on the very first plunge', async () => {
+  const { Game, initialStats } = await import('../public/js/engine.js');
+  const calls = [];
+  const g = new Game({ ui: { log: () => {}, showWelcome: () => calls.push('welcome') } });
+  g.state.seed = 'welcome';
+  g.foundAdventurer('Tester', 'fighter', initialStats('fighter'));
+  assert.equal(calls.length, 1, 'the welcome was never shown on the first entry');
+  assert.ok(g.state.player.counters.welcomeSeen, 'the welcome was not marked as said');
+  g.enterDungeon('temple');
+  assert.equal(calls.length, 1, 'the welcome was said again');
+});
+
+test('a nudge is said once and then gets out of the way', () => {
+  const { g } = rig('nudge');
+  g.tip('hurt', 'first warning');
+  g.tip('hurt', 'second warning');
+  assert.equal(g.logs.filter((l) => l === 'first warning').length, 1, 'the nudge was never said');
+  assert.equal(g.logs.filter((l) => l === 'second warning').length, 0, 'the nudge repeated');
+});
+
+/* --- THE KEEPER OF THE ACCOUNT: the through line, said once. --- */
+
+test('the Keeper has a word for each moment, and the last is the closing', async () => {
+  const { keeperLine } = await import('../public/js/world.js');
+  assert.ok(keeperLine('first-blood'), 'nothing for the first blood');
+  assert.ok(keeperLine('fall'), 'nothing for the first loss');
+  assert.ok(keeperLine('clear', 1) && keeperLine('clear', 2), 'no word for the first two sanctums');
+  assert.ok(keeperLine('closing'), 'nothing for the closing');
+  assert.equal(keeperLine('clear', 3), null, 'the third sanctum should close the book, not clear it');
+});
+
+test('the Keeper is heard once at each moment, and never twice', async () => {
+  const { keeperLine } = await import('../public/js/world.js');
+  const { g } = rig('keeper');
+  g.speak('first-blood');
+  g.speak('first-blood');
+  assert.equal(g.logs.filter((l) => l === keeperLine('first-blood')).length, 1, 'the Keeper repeated himself');
+  g.state.player.dungeonId = 'temple';
+  g.onBossSlain({ t: { name: 'The Lapsai Demon' } });
+  assert.equal(g.logs.filter((l) => l === keeperLine('clear', 1)).length, 1, 'the first sanctum drew no notice');
+});

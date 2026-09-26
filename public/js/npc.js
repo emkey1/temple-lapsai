@@ -28,6 +28,16 @@ export function allNPCs() {
 
 /* ---- dialogue ---- */
 
+/* What they say when you walk up. At rank 0 it is their intro; once their
+ * order has noticed you it is the line for that rung, so the world knows you
+ * without a single new greeting card to keep. */
+export function greetingFor(npc, rank) {
+  if (!npc) return '';
+  const r = Number(rank) || 0;
+  if (r >= 1 && Array.isArray(npc.recognise) && npc.recognise[r - 1]) return npc.recognise[r - 1];
+  return npc.intro;
+}
+
 export class DialogueSystem {
   constructor() {
     this.adapter = null; // future: async (ctx) => text, wired to an LLM
@@ -37,10 +47,18 @@ export class DialogueSystem {
 
   setAdapter(fn) { this.adapter = fn; }
 
-  start(npc) {
+  start(npc, rank) {
     this.activeId = npc.id;
-    if (!this.history[npc.id]) this.history[npc.id] = [{ role: 'npc', text: npc.intro }];
-    return this.history[npc.id];
+    const greeting = greetingFor(npc, rank);
+    let hist = this.history[npc.id];
+    if (!hist || !hist.length) {
+      hist = this.history[npc.id] = [{ role: 'npc', text: greeting }];
+    } else if (hist[0] && hist[0].role === 'npc') {
+      /* The greeting grows as they come to know you, so the opening line is
+       * always where you stand now, not where you stood the first time. */
+      hist[0].text = greeting;
+    }
+    return hist;
   }
 
   async talk(npc, player, input) {
@@ -51,7 +69,11 @@ export class DialogueSystem {
       try {
         reply = await this.adapter({ npc, player, history: hist, input });
       } catch (err) {
-        reply = `The ${npc.title} falls silent, their words lost to the dark. (${err.message || 'oracle unreachable'})`;
+        /* The voice failed — a local model out of memory, a key that lapsed, a
+         * provider offline. The wall is still there; use it, and do not make
+         * the player read about our plumbing. */
+        if (typeof console !== 'undefined') console.warn('[lapsai] dialogue oracle failed:', err && err.message);
+        reply = this.canned(npc, input);
       }
     } else {
       reply = this.canned(npc, input);

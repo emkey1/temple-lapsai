@@ -47,6 +47,14 @@ function sellLift(game) {
   return 1 + 0.08 * haggleRank(game) + 0.07 * owed;
 }
 
+/* What the company's best mouth is worth at the counter — said out loud, so a
+ * discounted tag is not the only evidence the skill is doing anything. */
+export function haggleNote(game) {
+  const r = haggleRank(game);
+  if (r <= 0) return '';
+  return 'Haggle (rank ' + r + '): ' + (6 * r) + '% off everything you buy, +' + (8 * r) + '% on everything you sell.';
+}
+
 export function shopStock(game) {
   const p = game.state.player;
   const slain = p ? Object.keys(p.bossesSlain || {}).filter((k) => p.bossesSlain[k]).length : 0;
@@ -220,6 +228,71 @@ export function unbindCurse(game, it) {
   game.revealItem(it);
   it.cursed = false;
   game.log('The bell rings once over the ' + it.name + ', and what had hold of it lets go. It is only a thing again.');
+  return true;
+}
+
+/* THE LECTOR'S OTHER TRADE. Reading runes and unbinding curses were the
+ * office's public face; the back room works a different kind of thing for a
+ * different kind of coin. A rite deepens what a thing already is — it does not
+ * turn a sword into a plough — and laid on a second time it costs more, so a
+ * +5 blade is a career and not a purchase. */
+export const RITES = [
+  {
+    id: 'keen', name: 'Keen Edge', on: (it) => it.kind === 'weapon',
+    apply: (it) => {
+      it.effects = it.effects || {};
+      it.effects.toHit = (it.effects.toHit || 0) + 1;
+      it.effects.damage = it.effects.damage || {};
+      it.effects.damage.bonus = (it.effects.damage.bonus || 0) + 1;
+    },
+    did: 'the edge takes a keener line',
+    got: '+1 to hit, +1 damage',
+  },
+  {
+    id: 'ward', name: 'Warding', on: (it) => ['armor', 'shield', 'ring', 'amulet'].includes(it.kind),
+    apply: (it) => { it.effects = it.effects || {}; it.effects.acBonus = (it.effects.acBonus || 0) + 1; },
+    did: 'the metal remembers how to turn a blow',
+    got: '+1 AC',
+  },
+  {
+    id: 'deep', name: 'Deep Ward', on: (it) => ['armor', 'shield', 'ring', 'amulet'].includes(it.kind),
+    apply: (it) => { it.effects = it.effects || {}; it.effects.resist = (it.effects.resist || 0) + 1; },
+    did: 'a small old sigil is set where the hand does not rest',
+    got: '+1 damage soaked',
+  },
+];
+
+export function riteById(id) {
+  return RITES.find((r) => r.id === id) || null;
+}
+
+/* How many times a rite has already been laid on the thing. */
+export function riteCount(it, riteId) {
+  const fx = (it && it.effects) || {};
+  if (riteId === 'keen') return fx.toHit || 0;
+  if (riteId === 'ward') return fx.acBonus || 0;
+  if (riteId === 'deep') return fx.resist || 0;
+  return 0;
+}
+
+export function enchantCost(it, game, rite) {
+  if (!it || !rite) return 0;
+  const base = 70 + (it.tier || 1) * 25 + Math.round((it.value || 0) * 0.15);
+  const cut = game ? buyCut(game) : 1;
+  return Math.max(25, Math.round(base * (1 + riteCount(it, rite.id) * 0.75) * cut));
+}
+
+export function enchantItem(game, it, riteId) {
+  const rite = riteById(riteId);
+  if (!rite || !it) { game.log('The Lector has no rite for that.'); return false; }
+  if (!rite.on(it)) { game.log('That rite will not take to a ' + (it.kind || 'thing') + '.'); return false; }
+  if (it.identified === false) { game.log('The Lector will not work a thing he has not read.'); return false; }
+  const cost = enchantCost(it, game, rite);
+  if (game.purse() < cost) { game.log('The rite asks ' + cost + ' gold, and your purse says no.'); return false; }
+  game.spendGold(cost);
+  rite.apply(it);
+  game.log(rite.name + ' (' + rite.got + '): ' + rite.did + '. (' + cost + ' gold)');
+  if (game.journal) game.journal('The Lector laid ' + rite.name + ' on ' + it.name + ' for ' + cost + ' gold.');
   return true;
 }
 

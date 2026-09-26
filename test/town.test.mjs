@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame } from './helpers.mjs';
-import { getItemTemplate, XP_FOR_LEVEL } from '../public/js/base.js';
+import { getItemTemplate, XP_FOR_LEVEL, skillDetail } from '../public/js/base.js';
 import { deepItem, applyMagic, applyCurse } from '../public/js/dice.js';
 import { PACK_LIMIT, makePlayer, initialStats, linkPurse } from '../public/js/engine.js';
 import {
@@ -17,6 +17,8 @@ import {
   unreadItems, knownCurses, identifyItem, unbindCurse,
   raiseCost, fallenMembers, raiseMember,
   hireMember,
+  RITES, riteById, enchantCost, enchantItem,
+  haggleNote,
 } from '../public/js/town.js';
 
 function rig(seed = 't', gold = 500) {
@@ -1060,4 +1062,58 @@ test('and a written dungeon reaches the green with the level it asks for', () =>
   const mouth = (g.currentFloor.mouths || []).find((m) => m.dungeonId === 'exp-vault');
   assert.ok(mouth, 'a written dungeon got no way in');
   assert.match(mouth.name, /Lv 13\+/, 'the mouth does not say what it asks of you');
+});
+
+/* ---- the Lector's other trade: a rite, a coin, a keener thing ---- */
+
+test('the Lector deepens a thing, and each rite costs more than the last', () => {
+  const { g, p } = rig('enchant', 5000);
+  const sword = deepItem(getItemTemplate('broadsword'));
+  p.inventory.push(sword);
+  const first = enchantCost(sword, g, riteById('keen'));
+  assert.ok(enchantItem(g, sword, 'keen'), 'the rite would not take to a sword');
+  assert.equal(sword.effects.toHit, 1, 'the edge was not keened');
+  assert.equal(sword.effects.damage.bonus, 1, 'the damage did not follow the edge');
+  const second = enchantCost(sword, g, riteById('keen'));
+  assert.ok(second > first, 'the second rite cost no more than the first');
+  /* A rite will not take to the wrong kind of thing, nor to an unread one. */
+  p.inventory.push(deepItem(getItemTemplate('potion-heal')));
+  assert.equal(enchantItem(g, p.inventory[p.inventory.length - 1], 'keen'), false, 'a rite took to a potion');
+  const unread = deepItem(getItemTemplate('dagger'));
+  unread.identified = false;
+  p.inventory.push(unread);
+  assert.equal(enchantItem(g, unread, 'keen'), false, 'the Lector worked a thing he had not read');
+});
+
+test('a thin purse refuses the rite cleanly', () => {
+  const { g, p } = rig('enchant-poor', 0);
+  const sword = deepItem(getItemTemplate('broadsword'));
+  p.inventory.push(sword);
+  assert.equal(enchantItem(g, sword, 'keen'), false, 'a broke company got an enchant');
+  assert.equal(sword.effects.toHit, 0, 'the item changed hands without payment');
+});
+
+/* ---- skills say what they are worth ---- */
+
+test('a skill rank states its worth, and spending a point moves it', () => {
+  const g = newGame('skills');
+  const p = g.state.player;
+  assert.equal(skillDetail('haggle', 0), 'no discount yet');
+  assert.match(skillDetail('haggle', 2), /12% off buys/);
+  assert.match(skillDetail('fieldcraft', 3), /\+30%/);
+  assert.match(skillDetail('mending', 2), /2 wounds/);
+  p.skillPoints = 1;
+  assert.ok(g.spendSkillPoint(p, 'fieldcraft'), 'the point would not spend');
+  assert.equal(g.skillRank(p, 'fieldcraft'), 1, 'the rank did not move');
+  assert.equal(p.skillPoints, 0, 'the point was not spent');
+});
+
+test('haggle is worth what it says, and the counter says so', () => {
+  const { g, p } = rig('haggle-note', 500);
+  assert.equal(haggleNote(g), '', 'a company with no haggle was quoted a discount');
+  const before = shopStock(g).find((r) => r.id === 'potion-heal').price;
+  p.skills = { haggle: 2 };
+  const after = shopStock(g).find((r) => r.id === 'potion-heal').price;
+  assert.ok(after < before, 'ranking haggle did not cheapen the shelf');
+  assert.match(haggleNote(g), /12% off/, 'the counter does not say what haggle bought');
 });

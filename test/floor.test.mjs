@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DUNGEONS } from '../public/js/base.js';
 import { T, W, H, isTravelable } from '../public/js/mapgen.js';
-import { floorOf, canReach, reachableFrom } from './helpers.mjs';
+import { floorOf, canReach, reachableFrom, newGame } from './helpers.mjs';
 
 const SEEDS = 80;
 
@@ -198,4 +198,22 @@ test('every secret door hides something', () => {
       }
     }
   }
+});
+
+/* THE LOWER LEDGER: the stair past the three founding sanctums. It has no last
+ * floor, so a keyless company can keep going down for ever. */
+test('the endless stair never ends, and keeps a boss every fifth landing', () => {
+  const a = floorOf('deep', 0, 'ledger-0');
+  assert.ok(a.floor.down, 'the first landing had no way down');
+  assert.equal(a.floor.monsters.some((m) => m.boss), false, 'the first landing had a boss');
+  const b = floorOf('deep', 4, 'ledger-4');
+  assert.ok(b.floor.monsters.some((m) => m.boss), 'the fifth landing kept no boss');
+  assert.ok(b.floor.down, 'a boss landing had no way deeper');
+  /* It is not one of the founding three... */
+  assert.equal(a.g.baseDungeonIds().includes('deep'), false, 'the endless stair was counted a founding sanctum');
+  /* ...and it only opens once the serpent is quiet. */
+  assert.equal(newGame('open').availableDungeons().some((d) => d.id === 'deep'), false, 'it opened before the serpent fell');
+  const g = newGame('open-2');
+  g.state.player.bossesSlain = { serpent: true };
+  assert.ok(g.availableDungeons().some((d) => d.id === 'deep'), 'it never opened at all');
 });

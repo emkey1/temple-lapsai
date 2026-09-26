@@ -41,6 +41,53 @@
  */
 
 export const QUESTS = [
+  /* THE FIRST ENTRY. The two undertakings that teach the work to somebody who
+   * has just walked in: take a job, kill what is between you and the loot, and
+   * come back to be paid. They sit first in the list so they are the first
+   * thing the hermit offers, and the second waits on the first. */
+  {
+    id: 'the-first-entry',
+    name: 'The First Entry',
+    giver: 'hermit-ogil',
+    offer:
+      'Ogil looks you over once, from the boots up, and finds you new. “You came down. ' +
+      'That is more than most who stand where you are standing. Before the four families ' +
+      'will hear your name, thin the greeters on this top floor — the rats and the little ' +
+      'green things. Three will do. Take what they leave, do not die, and bring yourself ' +
+      'back up the stairs to be paid. The work is the same all the way down. Only the ' +
+      'names on the ledger change.”',
+    accepted: '“Three, then. Mind the water — it is loud, and things hear it.”',
+    objective: { kind: 'slayAny', monsters: ['rat', 'giant-rat', 'giant-spider', 'goblin', 'kobold', 'giant-ant', 'centipede'], count: 3 },
+    turnIn: true,
+    reward: { gold: 60, xp: 90 },
+    done:
+      '“Three, and you still have your fingers.” Ogil counts the coin out slowly, the way ' +
+      'he does everything. “Now you are a name on the book and not a question in the margin. ' +
+      'The four families will talk to you now. So will worse.”',
+    journal: 'The company made its first entry, and Ogil entered it against a name.',
+  },
+  {
+    id: 'the-first-rite',
+    name: 'The Rite Kept',
+    giver: 'hermit-ogil',
+    requires: { quest: 'the-first-entry' },
+    offer:
+      'A nod at the cold stones along the wall. “There is an altar on every floor, and no ' +
+      'two delvers treat it the same. Set your hands on one and say the words — it will ' +
+      'close what sitting down cannot, and it will unmake what has hold of you. It gives ' +
+      'once, to each of you, and then it is only stone. Keep the rite; you will want it ' +
+      'before the bottom.”',
+    accepted: '“Any altar will do. They are all kept by the same absent clergy.”',
+    objective: { kind: 'altar', count: 1 },
+    turnIn: true,
+    reward: { gold: 40, xp: 60 },
+    done:
+      '“So you know it now, and the next one will not be the last.” Ogil sets the coin down ' +
+      'beside the blade. “Every one of those was kept up by somebody who was never paid for ' +
+      'it and never stopped. That is the whole of this hill, in one sentence. You will ' +
+      'understand it better the deeper you go.”',
+    journal: 'The company kept the old altar-rite, and Ogil paid for the lesson.',
+  },
   {
     id: 'idols-for-ogil',
     name: 'What the Families Pay For',
