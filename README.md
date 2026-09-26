@@ -177,7 +177,8 @@ A few rules worth knowing before you go down:
   the names the stories keep — the Chute, the Drowned Quarter. **You are here** is marked; click a
   place you have found and the company takes the road there — a town is a climb out, a sanctum a road
   taken, and a **road between towns is a strip you walk** — a winding coast road with its own
-  wanderers, a ford to wade, and a roadside altar, the near end home and the far end arrived.
+  wanderers, a ford to wade, a roadside altar, a **fire ring to bed down at once a crossing**, and a
+  **pedlar** who works it both ways, the near end home and the far end arrived.
 - **A second town.** The **Far Reach** is down the coast, where the sea gave the lower town back: its
   own chandler, tide-reader and salt-house inn, people with the sea in their speech, and a mouth down
   into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet, with its own

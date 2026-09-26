@@ -103,3 +103,28 @@ test('the drowned quarter keeps its own bestiary, and its own keeper', async () 
   assert.ok(getMonster('tidewright'), 'the tidewright does not exist');
   assert.ok(getMonster('drowned-thing').props.includes('aquatic'), 'a drowned thing that does not swim');
 });
+
+test('a camp on the road beds the company down, once', () => {
+  const g = newGame('road-camp');
+  g.state.player.dungeonId = 'the-whetstone';
+  g.travelTo('far-reach');
+  const camp = g.currentFloor.camp;
+  assert.ok(camp, 'the road has no camp to make');
+  g.state.player.hp = 1;
+  g.state.player.wounds = 5;
+  g.state.player.power = 0;
+  g.stepOn(camp.x, camp.y);
+  assert.equal(g.state.player.hp, g.state.player.maxhp, 'the camp did not set the company right');
+  assert.equal(g.state.player.wounds, 0, 'the camp did not close wounds');
+  /* Once a road: a second night in the same fire ring does nothing. */
+  g.state.player.hp = 1;
+  g.stepOn(camp.x, camp.y);
+  assert.equal(g.state.player.hp, 1, 'the camp fired a second time');
+});
+
+test('a pedlar works the road', () => {
+  const g = newGame('road-pedlar');
+  g.state.player.dungeonId = 'the-whetstone';
+  g.travelTo('far-reach');
+  assert.ok((g.currentFloor.npcs || []).some((n) => n.tpl.id === 'road-pedlar'), 'nobody works the road');
+});

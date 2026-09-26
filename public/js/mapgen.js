@@ -1130,14 +1130,36 @@ export function generateRoadFloor(opts) {
     if (!pos) continue;
     items.push({ i: it, x: pos.x, y: pos.y, auto: it.kind === 'special' });
   }
+  const mid = path[Math.floor(path.length / 2)];
   const props = [
     { x: roadBack.x + 1, y: roadBack.y - 1, piece: 'barrels_S' },
-    { x: Math.floor(W / 2), y: path[Math.floor(path.length / 2)].y - 2, piece: 'woodenCrate_S' },
+    { x: mid.x, y: Math.max(12, mid.y - 2), piece: 'woodenCrate_S' },
   ];
+  /* A camp: a fire ring off the road, where the company can bed down once. */
+  const camp = findSpot(tiles, rooms, roadBack, rng, 6, null) || { x: mid.x, y: mid.y };
+  props.push({ x: camp.x, y: camp.y, atlas: 102 });   /* the grassland campfire */
+  /* A pedlar who works the road both ways. */
+  const pedlarSpot = findSpot(tiles, rooms, roadBack, rng, 6, null) || { x: mid.x, y: mid.y + 1 };
+  const npcs = [{
+    tpl: {
+      id: 'road-pedlar', name: 'A Pedlar', sex: 'male', title: 'working the coast road', color: 'amber',
+      intro: 'You are on the coast road, then. I walk it both ways and sell to whoever is headed the other. Ask, or buy nothing — I will not mind.',
+      topics: [
+        { keys: ['road', 'coast', 'walk'], replies: ['I walk it both ways, every season. The toll-men come and go; the road stays.'] },
+        { keys: ['buy', 'sell', 'wares', 'goods'], replies: ['Nothing on me you cannot get in a town, and no town nearer than either end. Walk on.'] },
+        { keys: ['camp', 'fire', 'rest'], replies: ['There is an old fire ring a way on. Somebody keeps it swept. I do not ask who.'] },
+        { keys: ['drowned', 'quarter', 'sea'], replies: ['Whatever the sea gives back, the Far Reach sells. I buy none of it. It remembers being people.'] },
+      ],
+      fallbacks: [
+        'The road is long. Keep your eyes on it, and your coin where you can feel it.',
+        'I have nothing worth your time, and you have nothing worth mine. Walk on.',
+      ],
+    }, x: pedlarSpot.x, y: pedlarSpot.y,
+  }];
 
   return {
-    w: W, h: H, tiles, rooms: [], monsters, items, npcs: [],
+    w: W, h: H, tiles, rooms: [], monsters, items, npcs,
     up: roadBack, down: roadExit, isLast: false, den: null, mouths: [], props,
-    road, roadBack, roadExit, entry: roadBack,
+    road, roadBack, roadExit, camp, entry: roadBack,
   };
 }

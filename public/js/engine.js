@@ -534,6 +534,19 @@ export class Game {
     return ev;
   }
 
+  /* A CAMP BY THE ROAD. The company sleeps and rises whole — the road's own
+   * inn, once a night on it, and no coin: the road is where you make do. */
+  bedDown(where) {
+    for (const m of this.livingMembers()) {
+      m.hp = m.maxhp;
+      m.power = m.maxpower;
+      m.wounds = 0;
+      m.cooldowns = {};
+    }
+    this.log('You make camp ' + (where || 'by the road') + '. A fire, a bedroll, and the company rises whole.');
+    if (this.journal) this.journal('The company camped ' + (where || 'by the road') + ' and rose whole.');
+  }
+
   /* Fast travel, by the map. To a town is a climb out, or a road taken if you
    * are already in one; to a sanctum, a road taken. Refuses a place with no way
    * in, or the one you are already at. */
@@ -1891,6 +1904,11 @@ export class Game {
         this.roadLeg(floor.road.from, floor.road.to);
         this.enterTown(undefined, floor.road.to);
         return;
+      }
+      /* The camp, once a road: bed down and rise whole. */
+      if (floor.camp && x === floor.camp.x && y === floor.camp.y && !floor.camped) {
+        floor.camped = true;
+        this.bedDown('in the fire ring by the road');
       }
     }
     if (tile === T.DOWN) {

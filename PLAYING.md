@@ -99,8 +99,9 @@ from above: the Whetstone at the foot of the hill, the stairs down to each
 sanctum, and the coast town of the Far Reach. **You are here** is marked. Click
 a place you have found and the company takes the road there. Travelling between
 towns means **walking the road** between them — a strip of coast road with its
-own wanderers, a ford to wade, and a roadside altar. Step on the near gate to
-turn back, or the far one to arrive.
+own wanderers, a ford to wade, a roadside altar, a **fire ring where the company
+can bed down** and rise whole, once a crossing, and a pedlar who walks it both
+ways. Step on the near gate to turn back, or the far one to arrive.
 
 ## The Far Reach
 
