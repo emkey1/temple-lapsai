@@ -50,20 +50,21 @@ function hostiles(g) {
  * wall (a search is a separate act). */
 function firstStepTo(floor, start, pred) {
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const ok = (t) => isTravelable(t) || t === T.DOOR_C;   /* ground, or a door to open */
   const startK = start.y * W + start.x;
   const prev = new Map([[startK, null]]);
   const q = [start];
   let goal = null;
   for (let i = 0; i < q.length && !goal; i++) {
     const c = q[i];
-    if (!(c.x === start.x && c.y === start.y) && pred(c.x, c.y, floor.tiles[c.y][c.x])) { goal = c; break; }
+    if (!(c.x === start.x && c.y === start.y) && pred(c.x, c.y, floor.tiles[c.y][c.x]) && ok(floor.tiles[c.y][c.x])) { goal = c; break; }
     for (const [dx, dy] of DIRS) {
       const x = c.x + dx, y = c.y + dy;
       if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
       const k = y * W + x;
       if (prev.has(k)) continue;
       const t = floor.tiles[y][x];
-      if (!(isTravelable(t) || t === T.DOOR_C || pred(x, y, t))) continue;
+      if (!ok(t)) continue;   /* never path through stone; a goal on stone is unreachable */
       /* A person blocks the way: walking into one opens a conversation, not a
        * step. Route around them. */
       if (!pred(x, y, t) && (floor.npcs || []).some((n) => n.x === x && n.y === y)) continue;
