@@ -570,6 +570,74 @@ export const QUESTS = [
       'lower streets are dry enough to walk in. Even if it is only me that walks them.”',
     journal: 'The Tidewright was stopped at the sluices, and the drowned quarter was given back to the water it was shut into.',
   },
+
+  /* --- THE TOWNSFOLK ASK FOR THINGS TOO. The people you walk past in a town
+   * were voices and nothing more; the ones with a want now put it to you. --- */
+
+  /* Orrin, the Far Reach's salvager — the four families' trade, down the coast. */
+  {
+    id: 'what-the-water-keeps',
+    name: 'What the Water Keeps',
+    giver: 'reach-salvager',
+    faction: 'carriers-ubtao',
+    offer:
+      'Orrin does not stop sorting as he talks. “The sea keeps things a while, and then hands them up, ' +
+      'and where it hands them up is the drowned quarter, and I am the only man on this coast who pays ' +
+      'for what it gives. Crowns — soft gold, cut cheap — come up green, and I buy them green. Two will ' +
+      'do. The families up the hill want them, and I want rid of them. Both of us are easy to please.”',
+    accepted: '“Two crowns, out of the water. The water will not mind losing them again. I will.”',
+    objective: { kind: 'gather', item: 'crown', count: 2 },
+    turnIn: true,
+    reward: { gold: 420, xp: 520 },
+    done:
+      'Orrin weighs each one, nods, and pays without haggling. “Green, but sound. The four families will ' +
+      'melt them down and never ask where they were kept. That is the arrangement, and it has outlasted ' +
+      'everyone who made it. Take the coin — it is theirs, and they will not miss it.”',
+    journal: 'Two crowns the sea had been keeping went up the coast to the four families.',
+  },
+
+  /* Essa, the netmender — what comes up in the nets. */
+  {
+    id: 'what-comes-up-in-the-nets',
+    name: 'What Comes Up In The Nets',
+    giver: 'reach-netmender',
+    faction: 'drowned-sisters',
+    offer:
+      'Essa knots a net by feel and does not look up. “Things come up in the nets. Brine hounds, mostly, ' +
+      'and the drowned things that used to be somebody. They cut the net and they smell of the water and ' +
+      'I will not go down after them — nobody sensible would. You go down. Thin them, and my nets last a ' +
+      'season longer. Four will do it.”',
+    accepted: '“Four, out of the green streets. And if one of them is wearing a face you know, it will not know you.”',
+    objective: { kind: 'slayAny', monsters: ['brine-hound', 'drowned-thing'], count: 4 },
+    turnIn: true,
+    reward: { gold: 380, xp: 480 },
+    done:
+      '“Four fewer cutting my nets.” Essa still does not look up, which is how she thanks people. “Cheaper ' +
+      'than the net I would have lost. Mind the water, and take your coin.”',
+    journal: 'Essa the netmender’s nets were kept whole, and what rides the drowned streets was thinned.',
+  },
+
+  /* Maren, the ferrier’s widow in the Whetstone — her Aldous. */
+  {
+    id: 'aldous-still-down-there',
+    name: 'Still Down There',
+    giver: 'maren',
+    faction: 'tallymen',
+    offer:
+      'Maren does not offer you a seat. “My Aldous went down for the temple, and came back up as a bill ' +
+      'for boots and a line in the Tallymen’s book. I paid it. But he is still down there, in the marching ' +
+      'kind, and I will not have him on a roster of things to be killed. Put his like out — the bones that ' +
+      'walk the low floors. Four, and I will be able to say him at rest.”',
+    accepted: '“The marching kind, low down. Do not look too closely at the faces. None of them is his. All of them is somebody’s.”',
+    objective: { kind: 'slayAny', monsters: ['skeleton', 'ghoul'], count: 4 },
+    turnIn: true,
+    reward: { gold: 300, xp: 420 },
+    done:
+      'Maren sets the boots by the door, where they have always been. “Four, then, and one of them maybe ' +
+      'him. I will not ask which.” She counts out the Tallymen’s coin, exact. “At rest. Say it at the ' +
+      'counter and they will enter it against his name.”',
+    journal: 'The ferrier’s widow had the temple’s marching bones thinned, and called her husband at rest.',
+  },
 ];
 
 export function questById(id) {

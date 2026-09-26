@@ -113,6 +113,8 @@ somebody is at home. The things down there are the sea's own: drowned things
 still in their coats, brine hounds, silt wretches, and the Tidewright at the
 sluices. **Liss**, who kept the lamp lit when the water came, has an undertaking
 for whoever comes down: open the sluices, which means stopping the Tidewright.
+The townsfolk ask for things too — Essa the netmender, and Orrin the salvager
+down the coast.
 
 ## Fighting
 

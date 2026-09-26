@@ -184,7 +184,8 @@ A few rules worth knowing before you go down:
   into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet, with its own
   bestiary (drowned things still in their coats, brine hounds that do not breathe, silt wretches) and
   its own holdout: **Liss**, who kept the lamp lit when the water came and wants the sluices opened,
-  which means stopping the **Tidewright** that shut them.
+  which means stopping the **Tidewright** that shut them. The townsfolk ask for things too — Orrin for
+  what the water keeps, Essa for her nets, and Maren in the Whetstone for the husband the temple took.
 
 ![The region map](docs/region.png)
 ![The Far Reach](docs/far-reach.png)

@@ -26,13 +26,21 @@ function rig(seed = 'q') {
 
 test('every quest names a giver who exists, and an objective the engine can read', async () => {
   const { WORLD } = await import('../public/js/world.js');
+  const { generateTownFloor, generateReachFloor } = await import('../public/js/mapgen.js');
+  /* Townspeople are givers now too, and they are built by the town generators
+   * rather than held in the lore, so collect their ids off the built floors. */
+  const townIds = new Set([
+    ...(generateTownFloor([]).npcs || []),
+    ...(generateReachFloor([]).npcs || []),
+  ].map((n) => n.tpl.id));
+  const known = (id) => WORLD.npcs.some((n) => n.id === id) || townIds.has(id);
   const kinds = new Set(['slay', 'slayAny', 'gather', 'reach', 'deliver', 'altar', 'cleared', 'all']);
   for (const q of QUESTS) {
     assert.ok(q.id && q.name, 'a quest without a name');
     /* A library undertaking is posted, not spoken — it has no giver, and
      * that is allowed; everything else must name a person who exists. */
     if (q.via !== 'library') {
-      assert.ok(WORLD.npcs.some((n) => n.id === q.giver), q.id + ' is given by nobody: ' + q.giver);
+      assert.ok(known(q.giver), q.id + ' is given by nobody: ' + q.giver);
     }
     assert.ok(q.objective && kinds.has(q.objective.kind), q.id + ' has no readable objective');
     assert.ok(q.offer && q.done, q.id + ' has nothing to say');
@@ -164,6 +172,8 @@ test('every giver stands where a player can actually reach them', async () => {
   for (const q of QUESTS) {
     if (q.via === 'library' || !q.giver) continue;   /* posted, not spoken: no one to stand anywhere */
     const n = WORLD.npcs.find((x) => x.id === q.giver);
+    /* A townsperson giver is reached by walking the town, not a dungeon floor. */
+    if (!n) continue;
     assert.ok(npcsForDungeonFloor(n.dungeon, n.floor).some((x) => x.id === n.id),
       q.id + ': ' + n.id + ' never spawns on ' + n.dungeon + ' floor ' + n.floor);
     const o = q.objective;
@@ -589,4 +599,21 @@ test('the drowned quarter has its own giver, and its own undertaking', () => {
   g.acceptQuest(q.id);
   g.questKilled('tidewright');
   assert.ok(g.questSatisfied(q), 'the sluices will not close on the tidewright');
+});
+
+test('the townsfolk ask for things too', () => {
+  const { g, p } = rig('town-quests');
+  assert.ok(g.questsOnOffer('reach-salvager').some((q) => q.id === 'what-the-water-keeps'), 'Orrin asks nothing');
+  assert.ok(g.questsOnOffer('reach-netmender').some((q) => q.id === 'what-comes-up-in-the-nets'), 'Essa asks nothing');
+  assert.ok(g.questsOnOffer('maren').some((q) => q.id === 'aldous-still-down-there'), 'Maren asks nothing');
+  /* A town quest is satisfied and paid like any other. */
+  const q = questById('what-comes-up-in-the-nets');
+  g.acceptQuest(q.id);
+  for (let i = 0; i < 4; i++) g.questKilled('brine-hound');
+  assert.ok(g.questSatisfied(q), 'Essa’s undertaking will not close on the hounds');
+  const purse = g.purse();
+  assert.ok(g.completeQuest(q.id), 'Essa’s undertaking would not be handed over');
+  assert.equal(g.purse(), purse + q.reward.gold, 'Essa paid nothing');
+  assert.ok(g.standing('drowned-sisters') > 0, 'the favour did not reach the Sisters');
+  assert.ok(p.inventory.length >= 0);
 });
