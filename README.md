@@ -46,6 +46,17 @@ generation are all client-side; progression is saved to `localStorage`.
 dungeons, monsters, items and abilities on demand, validates them, and appends them to that file;
 the client merges whatever is there into every new game on boot.
 
+**Art for what it writes.** A generated monster carries a `sheet` field naming one of the commons'
+Flare sheets (`public/js/sprites.js` → `CREATURE_SHEET_NAMES`, nineteen creatures it may borrow and
+tint by tier, the same way the founding bestiary reuses sheets). The validator drops any name not on
+that list, so a model cannot promise art that is not on disk. A written beast that names none — or
+one written before the field existed — still wears a commons stand-in, chosen deterministically from
+its props and tier by its name. Only a founding oddity the manifest deliberately nulled (the
+gelatinous cube, the fire elemental) falls to the **procedural token**: a dark disc, a rim notched by
+name, its glyph, and a mark for each of its props. No image, no wait, and never a bare letter.
+Genuinely new art is the same seam: drop a packed Flare atlas and def under
+`public/assets/creatures/` and let a monster name it.
+
 ### Configuration
 
 **From inside the game.** Open the Black Library (`L`, then OPEN THE BLACK LIBRARY) and unfold
@@ -147,21 +158,37 @@ the input box: TAKE IT ON, and later — with the thing done — HAND IT OVER,
 with the giver's own words on either side of it. Nothing is picked up from a
 menu somewhere else.
 
-Objectives are the three the engine can answer honestly: **slay** a named
-thing, **gather** a number of something, **reach** a floor. A slay quest counts
-only what dies after it was taken, because counting kills already made is a
-lie the first time somebody takes a quest on a half-cleared floor. A gather
-quest reads the whole **company's** packs, so what you are already carrying
-counts, a companion may hold it, and nothing has to be shuffled about first —
-and the goods are handed over when it closes.
+Objectives are the kinds the engine can answer honestly: **slay** a named
+thing, **slayAny** of a set (a cull), **gather** a number of something,
+**reach** a floor, **deliver** goods to a floor (handed over on arrival, not
+at a counter), keep the **altar**-rite at a number of distinct altars, read
+sanctums **cleared** off the chronicle, or **all** of several parts in any
+order. A slay quest counts only what dies after it was taken, because counting
+kills already made is a lie the first time somebody takes a quest on a
+half-cleared floor. A gather quest reads the whole **company's** packs, so
+what you are already carrying counts, a companion may hold it, and nothing has
+to be shuffled about first — and the goods are handed over when it closes.
+
+Most quests **turn in** at the giver, who must be spoken to again. Some are
+**field-closed** (`turnIn: false`) and pay out the moment they are satisfied,
+wherever the company stands. Some are **repeatable** standing bounties — they
+pay, hand over the goods, and reopen at zero, so a faction can be climbed from
+stranger to one of their own rather than dead-ending after one favour. Any of
+them can be **set aside** from the Codex, which returns it to the offering
+rather than refusing it forever. And a few name a **faction** other than the
+giver's own, so the favour answers to the order the work was really for.
 
 Quests are the company's, like the purse and like what the company knows: they
 do not live on a sheet, do not travel with whoever holds the reins, and
 survive the death of the member who took them. Some are gated — behind a
-dungeon cleared, or behind another quest — so the four that ship tell one
-story in order, from three carved idols to the serpent under the last hill.
-**THE UNDERTAKINGS** at the top of the Codex says what is wanted, how far
-along it is, and who is owed the telling.
+dungeon cleared, or behind another quest — so they tell stories in order, from
+three carved idols to the serpent under the last hill. **THE UNDERTAKINGS** at
+the top of the Codex says what is wanted, how far along it is, and who is owed
+the telling.
+
+Most askings come from people, but the Lore-Weavers keep no account of you, so
+theirs is **posted on the Black Library's petition** instead of spoken — taken
+there, and read off the same ledger as any spoken quest.
 
 Every asking points AHEAD of the person who makes it — Ogil stands at the
 Temple's door and asks about its bottom, Eilyth stands in the drowned works
@@ -173,6 +200,20 @@ could be met is a quest that closes itself.
 And because the people who ask things live near the door while the stairs
 remember your deepest floor, **the mouths ask where to come in**: down to the
 known depth, or in at the entrance. A hand-in is never a climb.
+
+**Standing with the powers.** Closing an undertaking earns the company's
+standing with the order behind it — company-wide, like the purse, because a
+favour owed to the woman who carried the idols is not owed to her alone. The
+Codex's POWERS OF THE WORLD says where you stand with each of the seven and
+what it has bought, because a standing you cannot feel is a number. Each order
+keeps its own promise: the Carriers pay above scrap for what you haul up, the
+Sisters name the safe channels so black water costs no ground, the Keepers
+hold the survey open so hidden seams give sooner, the Tallymen bend their
+haul-back rate down from half your gold, the Drain Toll's wererat crews let a
+customer walk the Chute, the Standing Order's marching bones and walking
+statues know their own once the long arrears are closed, and the Lore-Weavers'
+Archive names whatever you lift. A truce only ever stops a creature *starting*
+something — strike it and it defends itself, as ever.
 
 Content lives in [quests.js](public/js/quests.js), which is data and nothing
 else — the same rule [lore.js](public/js/lore.js) follows.

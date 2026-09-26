@@ -3,7 +3,7 @@
  * leveling, abilities and item use. UI is injected via opts.ui (see main.js).
  */
 import { RNG, hashSeed } from './rng.js';
-import { QUESTS, questById, questsFrom } from './quests.js';
+import { QUESTS, questById, questsFrom, objectiveText } from './quests.js';
 import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
@@ -45,10 +45,19 @@ const STRENGTH_BUFF = 4;
  * power never regenerated at all, so a spent caster stayed spent for the rest
  * of the run. Out of combat both come back, slowly, which is what makes
  * retreating a tactic instead of a longer death. */
-/* What a standing is called, at each step. Four rungs is enough: the game has
- * five quests, and a ladder longer than the content that climbs it is a number
- * pretending to be a relationship. */
+/* What a standing is called, at each step. The ladder is deliberately short:
+ * a company climbs it by doing favours, and the repeatable bounties mean the
+ * climb never dead-ends for want of a quest to take. */
 const STANDING_RANKS = ['a stranger', 'noticed', 'owed a favour', 'a friend of the order', 'one of their own'];
+
+/* THE STANDING ORDER'S OWN, by kind: the bones that remember marching orders
+ * and the carved guards that stopped waiting. Listed rather than swept up by
+ * prop, because the garrison is a specific set of creatures — not everything
+ * undead answers to it; the flood's drowned dead are the Sisters' affair. */
+const STANDING_ORDER_CREATURES = new Set([
+  'skeleton', 'zombie', 'ghoul', 'ghast', 'mummy', 'wraith', 'spectre',
+  'living-statue', 'gargoyle',
+]);
 
 const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
 /* How far a heavy door carries. Deliberately inside CALM_RADIUS: what a door
@@ -768,11 +777,16 @@ export class Game {
    * The average of the living, not the best of them: a level-13 fighter
    * dragging three fresh hirelings is not a level-13 company, and taking the
    * highest would let one veteran walk everyone into something that kills
-   * them. Nor the lowest — one hireling should not bar the door. */
+   * them. Nor the lowest — one hireling should not bar the door.
+   *
+   * Rounded, not floored: a company of three 14s and a 13 averages 13.75, and
+   * it is a level-14 company, not a level-13 one. Flooring it read them as 13
+   * and shut them out of a sanctum pitched at their own leader — and since
+   * nothing down here respawns, there is no grinding the fraction away. */
   companyLevel() {
     const live = this.livingMembers();
     if (!live.length) return (this.state.player && this.state.player.level) || 1;
-    return Math.floor(live.reduce((n, m) => n + (m.level || 1), 0) / live.length);
+    return Math.round(live.reduce((n, m) => n + (m.level || 1), 0) / live.length);
   }
 
   /* A written sanctum states the strength it was built for, and holds the
@@ -1512,6 +1526,9 @@ export class Game {
       let roused = 0;
       for (const m of floor.monsters) {
         if (m.hp <= 0 || m.aggro || m.boss) continue;
+        /* A power you stand with calls its own off: door or no door, a friend
+         * of the toll or the garrison is not worth their notice. */
+        if (this.pacifiedToward(m)) continue;
         const d = dist1(m, { x: nx, y: ny });
         if (d > DOOR_NOISE) continue;
         if (d > 2 && !this.los(nx, ny, m.x, m.y, DOOR_NOISE)) continue;
@@ -1657,7 +1674,9 @@ export class Game {
     for (const m of (this.currentFloor.monsters || [])) {
       if (m.hp <= 0) continue;
       const near = dist1(m, { x, y }) <= 6;
-      if (!m.aggro && near) { m.aggro = true; m.lastSeen = this.turn; roused++; }
+      /* Even the splash carries no weight with a power that counts you its
+       * own — though what lies in the water still hears it, and answers. */
+      if (!m.aggro && near && !this.pacifiedToward(m)) { m.aggro = true; m.lastSeen = this.turn; roused++; }
       /* Whatever is lying in the same water certainly hears it. */
       if (m.submerged && near) this.surface(m);
     }
@@ -1841,6 +1860,9 @@ export class Game {
     this.log('You set your hands on the altar. Someone kept this rite up long after the last of them stopped being paid.');
     const gains = [healed > 0 ? '+' + healed + ' HP' : '', restored > 0 ? '+' + restored + ' PWR' : ''].filter(Boolean);
     if (gains.length) this.log('The old words answer: ' + gains.join(', ') + '.');
+    /* The rite kept, here, once. An undertaking that asks for it counts the
+     * altar, not the asking — one mark per distinct altar, whoever knelt. */
+    this.questAltarUsed(p.dungeonId + ':' + p.floorIdx + ':' + x + ',' + y);
     const cursed = [...p.inventory, ...Object.values(p.equipment || {})].filter((it) => it && it.cursed);
     if (cursed.length) {
       this.removeAllCurses();
@@ -1880,13 +1902,23 @@ export class Game {
       return false;
     }
     p.inventory.push(it);
-    /* Lore: a chance per rank that the thing is recognised the moment it is
-     * lifted — the label read on the spot instead of at the Lector's fee. */
+    /* THE LORE-WEAVERS keep everything that was ever written, and a company
+     * they count as their own finds the Archive reading over its shoulder:
+     * what it lifts, it can already name. The motes off a Ring of the Archive
+     * are scrapings from pages they were forbidden to copy — this is what
+     * those pages know. */
     if (it.identified === false) {
-      const lore = Math.max(...this.livingMembers().map((m) => this.skillRank(m, 'lore')), 0);
-      if (lore > 0 && this.rngOfTurn().chance(0.15 * lore)) {
+      if (this.standing('lore-weavers') > 0) {
         this.revealItem(it);
-        this.log('A practiced eye knows it at once: ' + it.name + '.');
+        this.log('The Archive names it before you can ask: ' + it.name + '.');
+      } else {
+        /* Lore: a chance per rank that the thing is recognised the moment it
+         * is lifted — the label read on the spot instead of at the Lector's fee. */
+        const lore = Math.max(...this.livingMembers().map((m) => this.skillRank(m, 'lore')), 0);
+        if (lore > 0 && this.rngOfTurn().chance(0.15 * lore)) {
+          this.revealItem(it);
+          this.log('A practiced eye knows it at once: ' + it.name + '.');
+        }
       }
     }
     this.refreshQuestProgress();
@@ -2032,6 +2064,10 @@ export class Game {
       m2.bossesSlain[p.dungeonId] = true;
       m2.explored[p.dungeonId] = true;
     });
+    /* A boss falling is the only way a `cleared` objective ever moves — read
+     * the live undertakings now, so the capstone closes the moment the last
+     * sanctum goes quiet rather than on the next errand. */
+    this.refreshQuestProgress();
     this.fireBeats('boss', p.floorIdx);
     /* 'finish' was documented, written for, and never fired by anything. */
     this.fireBeats('finish', p.floorIdx);
@@ -2533,6 +2569,9 @@ export class Game {
      * before it moves, which is what spotting something first should buy. */
     for (const mo of (this.currentFloor && this.currentFloor.monsters) || []) {
       if (mo.hp <= 0 || mo.aggro || mo.submerged) continue;
+      /* A truce keeps a creature looking the other way: the toll's crews and
+       * the garrison's own do not wake for a friend of their order. */
+      if (this.pacifiedToward(mo)) continue;
       if (this.vis[mo.y] && this.vis[mo.y][mo.x] && this.targetableMembers().length) {
         this.rollInitiative(mo);
         mo.aggro = true;
@@ -2703,7 +2742,10 @@ export class Game {
     }
     const seen = !!(this.vis[m.y] && this.vis[m.y][m.x]);
     if (m.t.props && m.t.props.indexOf('flying') >= 0 && !seen) return;
-    if (seen && !hidden) {
+    /* A truce stops a creature STARTING something. The toll's crews and the
+     * garrison's own see a friend of their order and let them pass — but one
+     * already crossed (aggro set, by a blow or an old grudge) stays crossed. */
+    if (seen && !hidden && !this.pacifiedToward(m)) {
       if (!m.aggro) this.rollInitiative(m);
       m.aggro = true;
       m.lastSeen = this.turn;
@@ -3013,12 +3055,14 @@ export class Game {
   returnToCamp(resurrect = false) {
     const p = this.state.player;
     this.dying = false;
+    /* The standing rate is half, and a friend of the table pays the friend's
+     * rate — see deathTollShare. The scribes are the same either way. */
+    const toll = Math.floor(this.purse() * this.deathTollShare());
     if (resurrect) {
-      const paid = Math.floor(this.purse() / 2);
-      this.spendGold(paid);
-      this.log('The temple scribes haul you from the threshold for ' + paid + ' gold.');
+      this.spendGold(toll);
+      this.log('The temple scribes haul you from the threshold for ' + toll + ' gold.');
     } else {
-      this.spendGold(Math.floor(this.purse() / 2));
+      this.spendGold(toll);
     }
     /* The one bed in the world, and it sleeps the whole party: the fallen get
      * up at camp, wounds and all mended — the resurrection fee already paid
@@ -3160,10 +3204,11 @@ export class Game {
   acceptQuest(id) {
     const q = questById(id);
     if (!q || this.questState(id) !== 'unoffered') return false;
-    this.questLedger()[id] = { state: 'active', got: 0, took: this.turn || 0 };
+    this.questLedger()[id] = { state: 'active', got: 0, took: this.turn || 0, parts: {}, seen: [] };
     this.log('Undertaken: ' + q.name + '.');
     this.journal('Took up an undertaking: ' + q.name + '.');
-    /* A gather quest reads what is already in the packs. */
+    /* A gather quest reads what is already in the packs; a cleared one reads
+     * the chronicle. Both are live, so both are read on the way in. */
     this.refreshQuestProgress();
     return true;
   }
@@ -3172,67 +3217,213 @@ export class Game {
     return QUESTS.filter((q) => this.questState(q.id) === 'active');
   }
 
-  questProgressOf(q) {
+  /* THE LEAVES. An objective is one leaf, or a bundle of them under `all`.
+   * eachLeaf yields (leaf, key): key is null for a lone objective and the
+   * sub-index for a bundled one, so every kind is evaluated in exactly one
+   * place whatever shape the quest takes. */
+  eachLeaf(q, fn) {
+    const o = q.objective || {};
+    if (o.kind === 'all' && Array.isArray(o.of)) o.of.forEach((leaf, i) => fn(leaf, i));
+    else fn(o, null);
+  }
+
+  /* Progress on ONE leaf. Live kinds read the world as it stands — a gather
+   * reads the packs, a cleared reads the chronicle — so they never lie about
+   * what the company is already carrying or has already done. Counted kinds
+   * read the ledger, which only moves when the trigger that owns them fires. */
+  leafProgress(q, leaf, key) {
+    if (!leaf || !leaf.kind) return 0;
+    if (leaf.kind === 'gather') {
+      return this.companyItems().filter((it) => it && it.id === leaf.item).length;
+    }
+    if (leaf.kind === 'cleared') {
+      return (leaf.dungeons || []).filter((d) => this.isDungeonCleared(d)).length;
+    }
     const e = this.questLedger()[q.id];
     if (!e) return 0;
-    if (q.objective && q.objective.kind === 'gather') {
-      const want = q.objective.item;
-      return this.companyItems().filter((it) => it && it.id === want).length;
+    if (key === null || key === undefined) return e.got || 0;
+    return (e.parts && e.parts[key]) || 0;
+  }
+
+  leafTarget(leaf) {
+    if (!leaf) return 1;
+    /* A delivery is a single act — its `count` is how many goods it takes to
+     * make the drop, not how many drops there are. */
+    if (leaf.kind === 'deliver') return 1;
+    return leaf.count || (leaf.kind === 'cleared' ? (leaf.dungeons || []).length : 0) || 1;
+  }
+
+  leafSatisfied(q, leaf, key) {
+    return this.leafProgress(q, leaf, key) >= this.leafTarget(leaf);
+  }
+
+  questProgressOf(q) {
+    const o = q.objective || {};
+    /* A bundle reports how many of its leaves are met, so the Undertakings
+     * list can say "2 of 3 undertakings" instead of one bare number. */
+    if (o.kind === 'all') {
+      let n = 0;
+      this.eachLeaf(q, (leaf, key) => { if (this.leafSatisfied(q, leaf, key)) n++; });
+      return n;
     }
-    return e.got || 0;
+    return this.leafProgress(q, o, null);
   }
 
   questSatisfied(q) {
     const o = q.objective || {};
-    return this.questProgressOf(q) >= (o.count || 1);
+    if (o.kind === 'all') {
+      let every = true;
+      this.eachLeaf(q, (leaf, key) => { if (!this.leafSatisfied(q, leaf, key)) every = false; });
+      return every;
+    }
+    return this.leafSatisfied(q, o, null);
   }
 
-  /* Gather quests are read from the packs rather than counted at pickup,
-   * so this only has to run where the packs change. */
+  bumpLeaf(q, key) {
+    const e = this.questLedger()[q.id];
+    if (!e) return;
+    if (key === null || key === undefined) e.got = (e.got || 0) + 1;
+    else { if (!e.parts) e.parts = {}; e.parts[key] = (e.parts[key] || 0) + 1; }
+  }
+
+  /* Hand over n of an item from across the company's packs — a gather quest's
+   * goods at turn-in, a delivery's goods on arrival. Extracted because both
+   * need it and only one had it. */
+  consumeCompanyItems(itemId, n) {
+    let owed = n;
+    for (const m of (this.state.party && this.state.party.members) || []) {
+      if (!m || owed <= 0) continue;
+      for (let i = m.inventory.length - 1; i >= 0 && owed > 0; i--) {
+        const it = m.inventory[i];
+        if (!it || it.id !== itemId) continue;
+        m.inventory.splice(i, 1);
+        this.unbindItem(it, m);
+        owed--;
+      }
+    }
+  }
+
+  /* Live kinds (gather, cleared) are read off the world, so this only has to
+   * run where the packs or the chronicle change — and after a boss falls,
+   * since that is the only way `cleared` ever moves. */
   refreshQuestProgress() {
     for (const q of this.activeQuests()) {
-      if (q.objective && q.objective.kind === 'gather' && this.questSatisfied(q)) {
-        this.noteQuestReady(q);
-      }
+      let live = false;
+      this.eachLeaf(q, (leaf) => { if (leaf.kind === 'gather' || leaf.kind === 'cleared') live = true; });
+      if (live && this.questSatisfied(q)) this.noteQuestReady(q);
     }
   }
 
   noteQuestReady(q) {
     const e = this.questLedger()[q.id];
     if (!e || e.told) return;
+    /* A field-closed undertaking (turnIn: false) needs no return trip: the
+     * moment it is satisfied it pays out where the company stands, and `done`
+     * is read as narration rather than as the giver's speech. */
+    if (!q.turnIn) { this.completeQuest(q.id); return; }
     e.told = true;
     const who = getNPC(q.giver);
     this.log(q.name + ' — what was asked for is in hand' +
-      (q.turnIn && who ? '. Take it back to ' + who.name + '.' : '.'));
+      (who ? '. Take it back to ' + who.name + '.' : '.'));
   }
 
   /* Called where the world changes in ways an objective might care about. */
   questKilled(monsterId) {
     for (const q of this.activeQuests()) {
-      const o = q.objective || {};
-      if (o.kind !== 'slay' || o.monster !== monsterId) continue;
-      const e = this.questLedger()[q.id];
-      e.got = (e.got || 0) + 1;
+      let changed = false;
+      this.eachLeaf(q, (leaf, key) => {
+        const isSlay = leaf.kind === 'slay' && leaf.monster === monsterId;
+        const isCull = leaf.kind === 'slayAny' && (leaf.monsters || []).includes(monsterId);
+        if (isSlay || isCull) { this.bumpLeaf(q, key); changed = true; }
+      });
+      if (!changed) continue;
       if (this.questSatisfied(q)) this.noteQuestReady(q);
-      else this.log(q.name + ' — ' + e.got + ' of ' + o.count + '.');
+      else this.log(q.name + ' — ' + objectiveText(q, this.questProgressOf(q)) + '.');
     }
   }
 
   questReached(dungeonId, floorIdx) {
     for (const q of this.activeQuests()) {
-      const o = q.objective || {};
-      if (o.kind !== 'reach' || o.dungeon !== dungeonId) continue;
-      if (floorIdx < (o.floor || 0)) continue;
-      const e = this.questLedger()[q.id];
-      if (e.got) continue;
-      e.got = 1;
-      this.noteQuestReady(q);
+      let changed = false;
+      this.eachLeaf(q, (leaf, key) => {
+        if (leaf.kind === 'reach' && leaf.dungeon === dungeonId && floorIdx >= (leaf.floor || 0)) {
+          const e = this.questLedger()[q.id];
+          const cur = (key === null || key === undefined) ? e.got : (e.parts && e.parts[key]);
+          if (!cur) { this.bumpLeaf(q, key); changed = true; }
+        }
+        /* A delivery is a reach that has to arrive carrying enough: the whole
+         * consignment is handed over on the spot, not back at a counter. */
+        if (leaf.kind === 'deliver' && leaf.dungeon === dungeonId && floorIdx >= (leaf.floor || 0)) {
+          const e = this.questLedger()[q.id];
+          const cur = (key === null || key === undefined) ? e.got : (e.parts && e.parts[key]);
+          const carried = this.companyItems().filter((it) => it && it.id === leaf.item).length;
+          if (!cur && carried >= (leaf.count || 1)) {
+            this.consumeCompanyItems(leaf.item, leaf.count || 1);
+            this.bumpLeaf(q, key);
+            changed = true;
+            const tpl = getItemTemplate(leaf.item);
+            this.log('Delivered: ' + (tpl ? tpl.name : leaf.item) + (leaf.count > 1 ? ' ×' + leaf.count : '') + ', to where it was owed.');
+          }
+        }
+      });
+      if (!changed) continue;
+      if (this.questSatisfied(q)) this.noteQuestReady(q);
+      else this.log(q.name + ' — ' + objectiveText(q, this.questProgressOf(q)) + '.');
+    }
+  }
+
+  /* An altar gives once, to one member; the undertaking cares about how many
+   * DISTINCT altars the rite was kept at, so it keys them and counts each
+   * once, whoever set their hands on it. */
+  questAltarUsed(altarKey) {
+    for (const q of this.activeQuests()) {
+      let changed = false;
+      this.eachLeaf(q, (leaf, key) => {
+        if (leaf.kind !== 'altar') return;
+        const e = this.questLedger()[q.id];
+        if (!e.seen) e.seen = [];
+        if (e.seen.includes(altarKey)) return;
+        e.seen.push(altarKey);
+        this.bumpLeaf(q, key);
+        changed = true;
+      });
+      if (!changed) continue;
+      if (this.questSatisfied(q)) this.noteQuestReady(q);
+      else this.log(q.name + ' — ' + objectiveText(q, this.questProgressOf(q)) + '.');
     }
   }
 
   /* Anything this NPC is owed and can now be paid for. */
   questsToClose(npcId) {
     return this.activeQuests().filter((q) => q.giver === npcId && this.questSatisfied(q));
+  }
+
+  /* Undertakings that come from no person — the Black Library writes them on
+   * a petition rather than speaking them. Offered where the Library is, not
+   * where anyone stands. */
+  libraryQuestsOnOffer() {
+    return QUESTS.filter((q) => {
+      if (q.via !== 'library') return false;
+      if (this.questState(q.id) !== 'unoffered') return false;
+      if (q.requires && q.requires.quest && this.questState(q.requires.quest) !== 'done') return false;
+      if (q.opens && q.opens.dungeonCleared && !this.isDungeonCleared(q.opens.dungeonCleared)) return false;
+      if (q.opens && q.opens.dungeonsCleared) {
+        if (!q.opens.dungeonsCleared.every((d) => this.isDungeonCleared(d))) return false;
+      }
+      return true;
+    });
+  }
+
+  /* Let one go. It returns to the offering rather than vanishing, so it can
+   * be taken up again — setting an undertaking aside is not refusing it
+   * forever, and the Undertakings list should not be a list you cannot edit. */
+  abandonQuest(id) {
+    const q = questById(id);
+    if (!q || this.questState(id) !== 'active') return false;
+    delete this.questLedger()[id];
+    const who = getNPC(q.giver);
+    this.log('Set aside: ' + q.name + '.' + (who ? ' ' + who.name + ' will ask again.' : ''));
+    return true;
   }
 
   /* STANDING WITH THE POWERS OF THE WORLD.
@@ -3275,28 +3466,63 @@ export class Game {
     return (n && n.faction) || null;
   }
 
+  /* WHAT A STANDING BUYS, for the orders that were written at depth but never
+   * meant anything. Three factions already kept their promises (the Carriers'
+   * price, the Sisters' channels, the Keepers' survey); these are the rest.
+   *
+   * Each effect reads the company ledger, like every other standing rule: a
+   * favour owed to one delver is owed to the whole company. */
+
+  /* THE TALLYMEN haul you back over the threshold for half your gold, because
+   * half is the standing rate and rates are not negotiated. But a friend of
+   * the table pays the friend's rate: it bends with standing, and it never
+   * reaches nothing, because nothing is not a rate. */
+  deathTollShare() {
+    const owed = this.standing('tallymen');
+    return Math.max(0.15, 0.5 - 0.10 * owed);
+  }
+
+  /* The garrison, by kind: the bones that remember marching orders and the
+   * carved guards that stopped waiting. Kept as a list, not a prop sweep,
+   * because the order is a specific set of creatures and not everything
+   * undead answers to it — the flood's drowned dead are the Sisters' affair. */
+  standingOrderCreatures() {
+    return STANDING_ORDER_CREATURES;
+  }
+
+  /* THE STANDING TRUCES. A power you have done right by calls its own
+   * creatures off. The Drain Toll would rather bill you than kill you, so
+   * their wererat crews let a customer walk. The Standing Order knows its own
+   * once the long arrears are closed — you are delivery, and the delivery is
+   * made. A truce only stops a creature STARTING something: strike one and it
+   * defends itself, as ever. Returns the faction the truce answers to, or
+   * null. */
+  pacifiedToward(m) {
+    const id = m && m.t && m.t.id;
+    if (!id) return null;
+    if (id === 'wererat' && this.standing('drain-toll') > 0) return 'drain-toll';
+    if (STANDING_ORDER_CREATURES.has(id) && this.standing('standing-order') > 0) return 'standing-order';
+    return null;
+  }
+
   completeQuest(id) {
     const q = questById(id);
     if (!q || this.questState(id) !== 'active' || !this.questSatisfied(q)) return false;
-    /* A gather quest hands the goods over — the whole company's, since
-     * they were the company's to find. */
-    if (q.objective && q.objective.kind === 'gather') {
-      let owed = q.objective.count;
-      for (const m of (this.state.party && this.state.party.members) || []) {
-        if (!m || owed <= 0) continue;
-        for (let i = m.inventory.length - 1; i >= 0 && owed > 0; i--) {
-          const it = m.inventory[i];
-          if (!it || it.id !== q.objective.item) continue;
-          m.inventory.splice(i, 1);
-          this.unbindItem(it, m);
-          owed--;
-        }
-      }
-    }
-    this.questLedger()[id] = { state: 'done', got: this.questProgressOf(q) };
-    /* The favour lands with whoever asked for it, and through them with the
-     * order standing behind them. */
-    this.earnStanding(this.factionOfNpc(q.giver));
+    /* Gather leaves hand the goods over — the whole company's, since they were
+     * the company's to find. A bundle hands over every gather leaf in it; a
+     * delivery already changed hands on arrival, so it is not taken twice. */
+    this.eachLeaf(q, (leaf) => {
+      if (leaf.kind === 'gather') this.consumeCompanyItems(leaf.item, leaf.count || 1);
+    });
+    /* A repeatable undertaking never leaves the list: it pays, hands over the
+     * goods, and reopens at zero, so a faction can be stood with more than once
+     * — the whole point of a standing bounty. */
+    this.questLedger()[id] = q.repeatable
+      ? { state: 'active', got: 0, told: false, took: this.turn || 0, parts: {}, seen: [], times: ((this.questLedger()[id] || {}).times || 0) + 1 }
+      : { state: 'done', got: this.questProgressOf(q) };
+    /* The favour lands with whoever the undertaking answers to — the order
+     * named on it, or the giver's own order standing behind them. */
+    this.earnStanding(q.faction || this.factionOfNpc(q.giver));
     const r = q.reward || {};
     if (r.gold) { this.earnGold(r.gold); this.log('Paid: ' + r.gold + ' gold.'); }
     if (r.xp) this.gainXP(r.xp);

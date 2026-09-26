@@ -358,6 +358,33 @@ test('a mouth on the green leads down into its dungeon', () => {
   assert.ok(g.currentFloor && !g.currentFloor.mouths, 'still standing in town');
 });
 
+/* A sanctum commissioned from the Black Library while the company stands in
+ * the Whetstone used to stay invisible until the next climb down and back up,
+ * because a mouth is only ever laid when the town floor is built. The rebuild
+ * the Library now triggers lays it at once — and keeps the company standing
+ * where they stood. */
+test('a dungeon commissioned in town gets its mouth without a re-entry', () => {
+  const g = newTownGame('commission');
+  g.state.player.bossesSlain = { temple: true };
+  g.loadTown('arrive');
+  const before = (g.currentFloor.mouths || []).map((m) => m.dungeonId);
+  assert.equal(before.includes('exp-hollow'), false, 'the mouth was there before it was written');
+  /* The Library certifies a new work while the company stands on the green. */
+  g.registry.dungeons.push({
+    id: 'exp-hollow', type: 'dungeon', name: 'The Hollow Count', floors: 3,
+    theme: 'cavern', threat: 6, monsterWeights: ['exp-hollow-m0'], bossId: 'exp-hollow-boss',
+    requires: 'temple', minLevel: 0,
+  });
+  const px = g.state.player.x, py = g.state.player.y;
+  g.loadTown('keep');
+  const mouths = (g.currentFloor.mouths || []).map((m) => m.dungeonId);
+  assert.ok(mouths.includes('exp-hollow'), 'the new mouth was not laid in the east field');
+  assert.equal(mouths.length, before.length + 1, 'a mouth was lost in the rebuild');
+  assert.ok(g.inTown(), 'the rebuild carried the company out of town');
+  assert.equal(g.state.player.x, px, 'the rebuild moved the company');
+  assert.equal(g.state.player.y, py, 'the rebuild moved the company');
+});
+
 test('a reload keeps its place on the green', () => {
   const g = newTownGame('t5-keep');
   const p = g.state.player;
@@ -950,6 +977,40 @@ test('a company is its average, not its best or its worst', () => {
   g.state.party.members.push(mate);
   for (let i = 1; i < 11; i++) g.levelUp(g.state.player);   /* 11 and 1 */
   assert.equal(g.companyLevel(), 6, 'a veteran and a hireling did not average to six');
+});
+
+test('a company rounds its level, and is not read as weaker than it is', () => {
+  /* Three 14s and a 13 average 13.75 — a level-14 company, not a level-13
+   * one. Flooring it shut such a party out of a sanctum pitched at their own
+   * leader, and nothing down here respawns to grind the fraction away. */
+  const g = newGame('company-rounds');
+  const p = g.state.player;
+  const mk = (n) => { const m = makePlayer(n, 'fighter', initialStats('fighter')); g.state.party.members.push(m); return m; };
+  const a = mk('A'), b = mk('B'), c = mk('C');
+  p.level = 14; a.level = 14; b.level = 14; c.level = 13;
+  assert.equal(g.companyLevel(), 14, 'three 14s and a 13 read as a level-13 company');
+});
+
+test('a company that rounds to the mark is let through the gate, and a weaker one is not', () => {
+  const g = newGame('gate-rounds');
+  g.registry.dungeons.push({
+    id: 'sanctum', name: 'The Hollow Count', floors: 3, theme: 'halls',
+    threat: 8, minLevel: 14, monsters: [], items: [], boss: null,
+  });
+  const p = g.state.player;
+  const a = makePlayer('A', 'fighter', initialStats('fighter'));
+  const b = makePlayer('B', 'fighter', initialStats('fighter'));
+  const c = makePlayer('C', 'fighter', initialStats('fighter'));
+  g.state.party.members.push(a, b, c);
+  const d = g.dungeonById('sanctum');
+  /* The party the report came from: three 14s and a 13. */
+  p.level = 14; a.level = 14; b.level = 14; c.level = 13;
+  assert.equal(g.companyLevel(), 14);
+  assert.equal(g.dungeonBarred(d), null, 'a level-14 company was refused a level-14 door');
+  /* The gate keeps its teeth for a company that is genuinely too weak. */
+  p.level = 10; a.level = 10; b.level = 10; c.level = 10;
+  assert.equal(g.companyLevel(), 10);
+  assert.ok(g.dungeonBarred(d), 'a level-10 company walked into a level-14 sanctum');
 });
 
 /* A REGISTRY IS ADDED TO, NEVER REPLACED.

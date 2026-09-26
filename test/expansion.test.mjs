@@ -107,6 +107,14 @@ test('unknown enums fall back instead of leaking through', () => {
   assert.equal(validateMonster({ name: 'X', color: 'gold' }).color, undefined);
 });
 
+test('a written creature borrows a real sheet, or none at all', () => {
+  assert.equal(validateMonster({ name: 'X', sheet: 'minotaur' }).sheet, 'minotaur', 'a valid sheet was dropped');
+  /* A model cannot promise art that is not in the commons: the name is
+   * dropped and the creature earns the procedural token instead. */
+  assert.equal(validateMonster({ name: 'X', sheet: 'dire-penguin' }).sheet, null, 'a model named a sheet off the commons');
+  assert.equal(validateMonster({ name: 'X' }).sheet, null, 'a creature with no sheet did not default to the token');
+});
+
 test('a garbage payload is refused, not half-built', () => {
   assert.throws(() => validateExpansion({ type: 'wizard' }), /unsupported/);
   assert.throws(() => validateExpansion(null), /unsupported/);

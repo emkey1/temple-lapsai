@@ -14,7 +14,8 @@ import { WORLD, loreBriefing } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, isWorn, abilityReach, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
 import {
-  CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, parseAnimationDef, parseTilesetDef,
+  sheetForMonster, monsterTokenSpec,
+  HERO_LAYERS, HERO_HEADS, parseAnimationDef, parseTilesetDef,
   creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl,
   tilesetUrl, tilesetDefUrl, loadImage,
 } from './sprites.js';
@@ -1736,17 +1737,17 @@ function renderClassic(g, sa) {
      * alive. Loot is drawn from a palette with no red in it. */
     const tint = cls(monsterTint(m.t.tier, m.boss));
     const dim = !inView(m.x, m.y) || m.submerged;
-    const sheet = CREATURE_SHEETS[m.t.id];
+    const sheet = sheetForMonster(m.t);
     const entry = sheet ? getSheet('creature', sheet) : null;
     if (entry) {
       drawRing(m.x, m.y, tint, { dim, bold: !!m.boss });
       /* Facing whoever holds the reins — a stance, not an intent. */
-      if (!drawFrame(m.x, m.y, entry, 'stance', flareDir(p.x - m.x, p.y - m.y), { dim, fit: true, scale: m.boss ? 1.3 : 1 })) {
-        drawGlyph(m.x, m.y, m.t.glyph, tint, dim);
-      }
-    } else {
-      drawGlyph(m.x, m.y, m.t.glyph, tint, dim);
+      if (drawFrame(m.x, m.y, entry, 'stance', flareDir(p.x - m.x, p.y - m.y), { dim, fit: true, scale: m.boss ? 1.3 : 1 })) continue;
     }
+    /* No sheet, or one that would not draw: the procedural token, then the
+     * glyph. A written beast is never left as a bare letter if it can help it. */
+    drawTokenClassic(m, tint, dim);
+    drawGlyph(m.x, m.y, m.t.glyph, tint, dim);
   }
   for (const it of floor.items || []) {
     if (!inView(it.x, it.y)) continue;
@@ -2491,12 +2492,13 @@ function drawIsoMonster(g, m, p) {
   const tint = cls(monsterTint(m.t.tier, m.boss));
   const { sx, sy } = isoToScreen(m.x, m.y);
   const ax = sx - isoCamX, ay = sy - isoCamY + 4;
-  const sheet = CREATURE_SHEETS[m.t.id];
+  const sheet = sheetForMonster(m.t);
   const entry = sheet ? getSheet('creature', sheet) : null;
   if (entry) {
     drawRingAt(ax, ay, ISO.TW * 0.30, ISO.TW * 0.15, tint, { dim, bold: !!m.boss });
     if (drawFrameAt(ax, ay, ISO_UNIT, entry, 'stance', flareDir(p.x - m.x, p.y - m.y), { dim, fit: true, scale: m.boss ? 1.3 : 1 })) return;
   }
+  drawTokenIso(ax, ay, m, tint, dim);
   drawIsoGlyph(m.x, m.y, m.t.glyph, dim ? shade(tint, 0.7) : tint, 0);
 }
 
@@ -3033,6 +3035,68 @@ function drawGlyph(x, y, ch, color, dim, pulse) {
   ctx.globalAlpha = 1;
 }
 
+/* THE PROCEDURAL TOKEN, for a creature no sheet fits — a written beast the
+ * oracle could not match to the commons, or a founding oddity like the cube
+ * or the fire elemental. A dark disc, a tinted rim notched by name, the glyph
+ * on top, and a mark for each of its props. Deterministic and offline: no
+ * image, no wait, and never a bare letter. The spec is pure (sprites.js);
+ * this only paints it. */
+function paintToken(cx, cy, r, squash, m, tint, dim) {
+  const ctx = els.ctx;
+  const spec = monsterTokenSpec(m.t);
+  ctx.save();
+  ctx.globalAlpha = dim ? 0.5 : 1;
+  ctx.fillStyle = 'rgba(4,6,4,0.62)';
+  ctx.strokeStyle = tint;
+  ctx.lineWidth = m.boss ? 2 : 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r, r * squash, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  /* Notches on the rim: a count the name chooses, so no two read alike. */
+  for (let i = 0; i < spec.notches; i++) {
+    const a = (i / spec.notches) * Math.PI * 2 - Math.PI / 2;
+    const ux = Math.cos(a), uy = Math.sin(a) * squash;
+    ctx.beginPath();
+    ctx.moveTo(cx + ux * r * 0.86, cy + uy * r * 0.86);
+    ctx.lineTo(cx + ux * r * 1.08, cy + uy * r * 1.08);
+    ctx.stroke();
+  }
+  /* Prop marks, at four fixed points on the rim, at most four. */
+  const spots = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  spec.marks.slice(0, 4).forEach((mk, i) => {
+    const [ux, uy] = spots[i];
+    const px = cx + ux * r * 0.60, py = cy + uy * r * squash * 0.60;
+    const d = Math.max(1.5, r * 0.22);
+    ctx.beginPath();
+    switch (mk) {
+      case 'wings': ctx.moveTo(px - d, py + d * 0.6); ctx.lineTo(px, py - d); ctx.lineTo(px + d, py + d * 0.6); break;
+      case 'fins': ctx.moveTo(px - d, py - d * 0.6); ctx.lineTo(px, py + d); ctx.lineTo(px + d, py - d * 0.6); break;
+      case 'hollow': ctx.moveTo(px - d, py); ctx.lineTo(px + d, py); break;
+      case 'ranged': ctx.moveTo(px, py - d); ctx.lineTo(px + d, py); ctx.lineTo(px, py + d); ctx.lineTo(px - d, py); ctx.closePath(); break;
+      case 'regen': ctx.moveTo(px - d, py); ctx.lineTo(px + d, py); ctx.moveTo(px, py - d); ctx.lineTo(px, py + d); break;
+      case 'curse': ctx.moveTo(px - d, py - d); ctx.lineTo(px + d, py + d); ctx.moveTo(px + d, py - d); ctx.lineTo(px - d, py + d); break;
+      case 'spikes': ctx.moveTo(px - d, py + d); ctx.lineTo(px, py - d); ctx.lineTo(px + d, py + d); break;
+      case 'brow': ctx.moveTo(px - d, py + d * 0.5); ctx.lineTo(px + d, py + d * 0.5); break;
+      case 'pack': ctx.moveTo(px - d, py - d * 0.6); ctx.lineTo(px - d, py + d * 0.6); ctx.moveTo(px + d, py - d * 0.6); ctx.lineTo(px + d, py + d * 0.6); break;
+      default: ctx.arc(px, py, d * 0.5, 0, Math.PI * 2);   /* venom, and any other */
+    }
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawTokenClassic(m, tint, dim) {
+  const x = m.x, y = m.y;
+  if (x < camX || y < camY || x >= camX + viewW || y >= camY + viewH) return;
+  const s = ts;
+  paintToken((x - camX) * s + s / 2, (y - camY) * s + s / 2, s * 0.36, 1, m, tint, dim);
+}
+
+function drawTokenIso(ax, ay, m, tint, dim) {
+  paintToken(ax, ay, ISO.TW * 0.30, 0.5, m, tint, dim);
+}
+
 /* ---------------- HUD ---------------- */
 function bar(fill, text, pct) {
   fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
@@ -3460,6 +3524,10 @@ function renderCodex(g) {
     'carriers-ubtao': 'The four families pay above scrap for everything you haul up.',
     'drowned-sisters': 'The Sisters have named you the safe channels: black water no longer costs you the ground.',
     'keepers-coils': 'Venn keeps the survey open to you: hidden seams give themselves up sooner.',
+    'tallymen': 'The table counts you a friend: the scribes’ haul-back toll bends down from half your gold.',
+    'drain-toll': 'The Drain Toll has you written down as paid: their wererat crews let you walk the Chute.',
+    'standing-order': 'The garrison knows its own: the marching bones and the walking statues let you pass.',
+    'lore-weavers': 'The Archive reads over your shoulder: whatever you lift, you can already name.',
   };
   const cleared = g.baseDungeonIds().filter((id) => g.isDungeonCleared(id)).length;
   const anyStanding = WORLD.factions.some((f) => g.standing(f.id) > 0);
@@ -3498,10 +3566,13 @@ function renderCodex(g) {
   for (const q of g.activeQuests()) {
     const giver = WORLD.npcs.find((n) => n.id === q.giver);
     const ready = g.questSatisfied(q);
+    const times = (g.questLedger()[q.id] || {}).times || 0;
     und.push('<div class="codex-item' + (ready ? '' : ' unread') + '"><b>' + esc(q.name) + '</b> ' +
       '<span class="tiny">· ' + esc(objectiveText(q, g.questProgressOf(q))) +
+      (q.repeatable ? ' · standing bounty' + (times ? ' · done ×' + times : '') : '') +
       (ready && giver ? ' · take it back to ' + esc(giver.name) : '') + '</span>' +
-      '<p class="flavor">' + esc(q.accepted || '') + '</p></div>');
+      '<p class="flavor">' + esc(q.accepted || '') + '</p>' +
+      '<button class="mini" data-abandon="' + esc(q.id) + '">SET ASIDE</button></div>');
   }
   const closed = QUESTS.filter((q) => g.questState(q.id) === 'done');
   for (const q of closed) {
@@ -3517,6 +3588,14 @@ function renderCodex(g) {
     codexSection('THE CHRONICLE', chronicle) +
     codexSection('POWERS OF THE WORLD', powers) +
     codexSection('THOSE YOU HAVE MET', cast);
+
+  /* Setting an undertaking aside returns it to the offering rather than
+   * refusing it forever — the list is one you can edit. */
+  els.dungeonCodex.querySelectorAll('[data-abandon]').forEach((b) => {
+    b.onclick = () => {
+      if (g.abandonQuest(b.dataset.abandon)) { renderCodex(g); saveGame(); }
+    };
+  });
 }
 
 /* ---------------- library ---------------- */
@@ -3546,6 +3625,19 @@ function renderLibrary(g) {
   const who = bound
     ? [oracle.provider, oracle.model].filter(Boolean).join(' · ')
     : '';
+  /* WHAT THE LIBRARY WANTS OF YOU. The Lore-Weavers keep no account of you,
+   * so their undertakings are posted on the petition rather than spoken —
+   * taken here, and read off the same ledger as any spoken quest. */
+  let posted = '';
+  for (const q of g.libraryQuestsOnOffer ? g.libraryQuestsOnOffer() : []) {
+    posted += '<div class="quest-offer"><b>' + esc(q.name) + '</b>' +
+      '<p class="flavor">' + esc(q.offer || '') + '</p>' +
+      '<button data-library-take="' + esc(q.id) + '">PIN IT TO THE LEDGER</button></div>';
+  }
+  for (const q of g.activeQuests ? g.activeQuests().filter((x) => x.via === 'library') : []) {
+    posted += '<div class="quest-offer done"><b>' + esc(q.name) + '</b>' +
+      '<p class="flavor">' + esc(objectiveText(q, g.questProgressOf(q))) + '</p></div>';
+  }
   els.libraryBlock.innerHTML =
     '<h3 class="pane">THE BLACK LIBRARY</h3>' +
     '<div class="lib-status">Base chronicle: ' + cleared + '/3 sanctums conquered. ' +
@@ -3555,10 +3647,14 @@ function renderLibrary(g) {
       ? '<div class="lib-status">Bound to <b>' + esc(who) + '</b>.</div>'
       : '<div class="lib-status"><b>No oracle is bound.</b> Choose which model writes the depths — ' +
         'a hosted one, or a machine on your own network.</div>') +
+    posted +
     '<div class="row"><button id="btn-open-library">' +
     (bound ? 'OPEN THE BLACK LIBRARY' : 'CHOOSE A MODEL &rarr;') + '</button></div>';
   const b = els.libraryBlock.querySelector('#btn-open-library');
   if (b) b.onclick = () => openLibrary(!bound);
+  els.libraryBlock.querySelectorAll('[data-library-take]').forEach((btn) => {
+    btn.onclick = () => { if (g.acceptQuest(btn.dataset.libraryTake)) { renderLibrary(g); renderCodex(g); saveGame(); } };
+  });
 }
 
 /* ---------------- keyboard & actions ---------------- */
@@ -4145,7 +4241,9 @@ function installExpansion(exp) {
   const type = exp.type || exp._t;
   if (type === 'dungeon') {
     const id = exp.id || ('exp-' + Math.random().toString(36).slice(2, 8));
-    if (registry.dungeons.some((d) => d.id === id)) return true;
+    /* Returning the id (not bare true) lets a fresh commission be signposted
+     * against the gates it was actually registered with. */
+    if (registry.dungeons.some((d) => d.id === id)) return id;
     const monsters = (exp.monsters || []).map((m, i) => ({ ...normaliseMonster(m), id: id + '-m' + i, type: 'monster' }));
     const boss = exp.boss ? { ...normaliseMonster(exp.boss), id: id + '-boss', type: 'monster' } : null;
     if (boss) registry.monsters = registry.monsters.filter((m) => m.id !== boss.id);
@@ -4161,13 +4259,14 @@ function installExpansion(exp) {
       monsterWeights: [...monsters.map((m) => m.id), boss ? boss.id : null].filter(Boolean),
       bossId: boss ? boss.id : null,
       requires: exp.requires || 'temple',
-      /* The strength it was cut for. The validator derives this from the
-       * boss's tier and the installer used to drop it on the floor, which
-       * left the gate unable to fire and the mouth unable to say what it
-       * asks of you. */
-      minLevel: exp.minLevel || 0,
+      /* The strength it was cut for — capped at the company's own level.
+       * The generator pitches the boss at the leader, but it can overshoot the
+       * company, and XP down here is finite: nothing respawns, so a gate the
+       * company cannot reach is not pacing, it is a wall. A written sanctum
+       * must never be a door the company that commissioned it cannot open. */
+      minLevel: Math.min(exp.minLevel || 0, game ? game.companyLevel() : (exp.minLevel || 0)),
     });
-    return true;
+    return id;
   }
   if (type === 'monster') {
     const id = exp.id || ('exp-' + Math.random().toString(36).slice(2, 8));
@@ -4199,6 +4298,27 @@ async function fetchExpansions() {
     for (const e of list) changed = installExpansion(e) || changed;
     if (changed) persistRegistry();
   } catch (e) { /* offline */ }
+}
+
+/* Where a freshly written dungeon's mouth is, and what it asks of you — said
+ * at the moment it is certified, so nobody commissions a sanctum and is left
+ * to discover the gate on their own. */
+function dungeonGateNote(d) {
+  if (!d || !game) return '';
+  const reqs = d.requires || d.unlockAfter;
+  const list = Array.isArray(reqs) ? reqs : (reqs ? [reqs] : []);
+  const unmet = list.filter((r) => !game.isDungeonCleared(r));
+  if (unmet.length) {
+    const names = unmet.map((r) => (game.dungeonById(r) || {}).name || r).join(' and ');
+    return 'Its mouth will open in the Whetstone’s east field once ' + names + ' is conquered.';
+  }
+  let note = 'Its mouth stands in the Whetstone’s east field';
+  const ml = d.minLevel || 0;
+  if (ml) {
+    note += ', cut for a company of level ' + ml;
+    if (game.companyLevel() < ml) note += ' — too deep for you yet';
+  }
+  return note + '.';
 }
 
 async function doExpand(action) {
@@ -4244,15 +4364,28 @@ async function doExpand(action) {
       return;
     }
     const exp = data.expansion;
-    if (installExpansion(exp)) {
+    const installedId = installExpansion(exp);
+    if (installedId) {
       persistRegistry();
       /* Into the character's own record too, so the next CONTINUE carries it
        * even if the server file is ever cleared. */
       saveGame();
       logLine('The Library certifies a new work: ' + (exp.name || exp.type || 'a binding'), 'good');
+      const dung = exp.type === 'dungeon'
+        ? (registry.dungeons || []).find((x) => x.id === (typeof installedId === 'string' ? installedId : exp.id))
+        : null;
+      const gate = dung ? dungeonGateNote(dung) : '';
       els.libResult.innerHTML = '<div class="expansion-card"><b>' + esc(exp.name || 'New ' + (exp.type || 'content')) + '</b>' +
-        '<p class="flavor">' + esc(exp.flavor || exp.description || '') + '</p></div>';
-      if (exp.type === 'dungeon') logLine('A dungeon unfolds on the map: ' + exp.name, 'gold');
+        '<p class="flavor">' + esc(exp.flavor || exp.description || '') + '</p>' +
+        (gate ? '<p class="tiny">' + esc(gate) + '</p>' : '') + '</div>';
+      if (exp.type === 'dungeon') {
+        logLine('A dungeon unfolds on the map: ' + (dung ? dung.name : exp.name) + '. ' + gate, 'gold');
+        /* A mouth is only ever laid when the town floor is built, so a sanctum
+         * commissioned while standing in the Whetstone used to stay invisible
+         * until the next climb down and back up. Rebuild the field now and the
+         * mouth is there when the Library closes. */
+        if (game && game.inTown && game.inTown()) game.loadTown('keep');
+      }
     } else {
       els.libResult.innerHTML = '<div class="lib-status">The worked page is blank.</div>';
     }

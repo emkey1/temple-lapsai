@@ -122,6 +122,84 @@ export const CREATURE_SHEETS = {
   'lapsai-demon': 'cursed_grave',  /* the temple's god, a hungering monument */
 };
 
+/* THE COMMONS A WRITTEN CREATURE MAY DRAW FROM. Every name here has a packed
+ * atlas and a def on disk, so a generated monster can only point at art that
+ * exists. It is the vocabulary the oracle is offered and the validator
+ * enforces; anything outside it earns the procedural token instead. */
+export const CREATURE_SHEET_NAMES = [
+  'antlion', 'antlion_small', 'cursed_grave', 'fire_ant', 'goblin',
+  'goblin_elite', 'ice_ant', 'minotaur', 'skeleton', 'skeleton_archer',
+  'skeleton_mage', 'skeleton_weak', 'stealth', 'wyvern', 'wyvern_adult',
+  'wyvern_air', 'wyvern_fire', 'wyvern_water', 'zombie',
+];
+
+/* Which sheet a monster draws from: its own `sheet` if a written one named
+ * it, else the base manifest's decision, else a commons stand-in chosen from
+ * its props and tier. A base monster mapped to null still earns the token —
+ * that is a deliberate founding decision (the cube, the elemental) — but a
+ * written beast the model left unnamed is dressed rather than left a letter. */
+export function sheetForMonster(tpl) {
+  if (!tpl) return null;
+  if (typeof tpl.sheet === 'string' && tpl.sheet) return tpl.sheet;
+  if (tpl.id in CREATURE_SHEETS) return CREATURE_SHEETS[tpl.id] || null;
+  return defaultSheetFor(tpl);
+}
+
+/* A stand-in for a written creature that named no sheet. Each prop suggests a
+ * family of commons art; the name hashes to one of them, so two wraiths need
+ * not wear the same skin and the SAME wraith always wears the same one. A
+ * creature with no telling props falls back to its tier. Every return is a
+ * name the vocabulary already trusts. */
+export function defaultSheetFor(tpl) {
+  const props = new Set((tpl && tpl.props) || []);
+  const family = [];
+  if (props.has('flying')) family.push('wyvern_air', 'wyvern');
+  if (props.has('aquatic')) family.push('wyvern_water', 'wyvern');
+  if (props.has('undead')) family.push('zombie', 'skeleton_weak', 'skeleton_mage');
+  if (props.has('cursed')) family.push('cursed_grave');
+  if (props.has('ranged')) family.push('skeleton_archer');
+  if (props.has('intelligent')) family.push('goblin_elite', 'stealth');
+  if (props.has('poison')) family.push('antlion', 'ice_ant');
+  if (props.has('pack')) family.push('goblin', 'fire_ant');
+  if (props.has('trap')) family.push('antlion');
+  if (props.has('regenerate')) family.push('minotaur');
+  if (!family.length) {
+    const tier = (tpl && tpl.tier) || 1;
+    if (tier >= 9) return 'wyvern';
+    if (tier >= 6) return 'minotaur';
+    if (tier >= 3) return 'goblin_elite';
+    return 'goblin';
+  }
+  const name = String((tpl && (tpl.name || tpl.id)) || '');
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return family[h % family.length];
+}
+
+/* THE TOKEN SPEC: what a creature with no sheet wears, decided from its props
+ * and name alone. Pure, so a test can hold it still; the renderer draws from
+ * it. Two creatures sharing props still differ, because the ring's notch
+ * count is hashed off the name — a bespoke bestiary never reads as one
+ * repeated stamp. */
+export function monsterTokenSpec(tpl) {
+  const props = new Set((tpl && tpl.props) || []);
+  const marks = [];
+  if (props.has('flying')) marks.push('wings');
+  if (props.has('aquatic')) marks.push('fins');
+  if (props.has('undead')) marks.push('hollow');
+  if (props.has('ranged')) marks.push('ranged');
+  if (props.has('regenerate')) marks.push('regen');
+  if (props.has('cursed')) marks.push('curse');
+  if (props.has('poison')) marks.push('venom');
+  if (props.has('pack')) marks.push('pack');
+  if (props.has('intelligent')) marks.push('brow');
+  if (props.has('trap')) marks.push('spikes');
+  const name = String((tpl && (tpl.name || tpl.id)) || '');
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { marks, hash: h, notches: 3 + (h % 4) };
+}
+
 /* What each calling wears when it walks out of the Muster: the paper-doll
  * layers drawn bottom-up. The real mapping from equipped items to layers is
  * the isometric renderer's to grow; this is the seam's promise that the

@@ -26,13 +26,22 @@ function rig(seed = 'q') {
 
 test('every quest names a giver who exists, and an objective the engine can read', async () => {
   const { WORLD } = await import('../public/js/world.js');
-  const kinds = new Set(['slay', 'gather', 'reach']);
+  const kinds = new Set(['slay', 'slayAny', 'gather', 'reach', 'deliver', 'altar', 'cleared', 'all']);
   for (const q of QUESTS) {
     assert.ok(q.id && q.name, 'a quest without a name');
-    assert.ok(WORLD.npcs.some((n) => n.id === q.giver), q.id + ' is given by nobody: ' + q.giver);
+    /* A library undertaking is posted, not spoken — it has no giver, and
+     * that is allowed; everything else must name a person who exists. */
+    if (q.via !== 'library') {
+      assert.ok(WORLD.npcs.some((n) => n.id === q.giver), q.id + ' is given by nobody: ' + q.giver);
+    }
     assert.ok(q.objective && kinds.has(q.objective.kind), q.id + ' has no readable objective');
     assert.ok(q.offer && q.done, q.id + ' has nothing to say');
     if (q.requires) assert.ok(questById(q.requires.quest), q.id + ' requires a quest that does not exist');
+    /* A bundled objective is only as readable as its leaves. */
+    if (q.objective.kind === 'all') {
+      assert.ok(Array.isArray(q.objective.of) && q.objective.of.length >= 2, q.id + ' bundles fewer than two parts');
+      for (const leaf of q.objective.of) assert.ok(kinds.has(leaf.kind) && leaf.kind !== 'all', q.id + ' has a part the engine cannot read');
+    }
   }
 });
 
@@ -153,6 +162,7 @@ test('every giver stands where a player can actually reach them', async () => {
   const { DUNGEONS } = await import('../public/js/base.js');
   const order = DUNGEONS.map((d) => d.id);
   for (const q of QUESTS) {
+    if (q.via === 'library' || !q.giver) continue;   /* posted, not spoken: no one to stand anywhere */
     const n = WORLD.npcs.find((x) => x.id === q.giver);
     assert.ok(npcsForDungeonFloor(n.dungeon, n.floor).some((x) => x.id === n.id),
       q.id + ': ' + n.id + ' never spawns on ' + n.dungeon + ' floor ' + n.floor);
@@ -265,4 +275,254 @@ test('the Keepers keep the survey open, and seams give sooner', async () => {
   g.earnStanding('keepers-coils', 3);
   const warm = found();
   assert.ok(warm > cold, `standing bought nothing: ${cold} found before, ${warm} after`);
+});
+
+/* --- THE WIDENED LEDGER: the machinery the new undertakings run on. --- */
+
+test('a field-closed undertaking (turnIn: false) pays out where you stand', () => {
+  const { g } = rig('q-field');
+  const q = questById('the-stairs-are-swept');
+  assert.equal(q.turnIn, false);
+  assert.ok(g.acceptQuest(q.id));
+  const purse = g.purse();
+  g.questKilled('skeleton');
+  g.questKilled('skeleton');
+  g.questKilled('skeleton');
+  assert.equal(g.questState(q.id), 'active', 'closed a kill early');
+  g.questKilled('skeleton');
+  /* The fourth greeter drops and the thing closes itself — no climb back. */
+  assert.equal(g.questState(q.id), 'done', 'a field-closed undertaking never closed itself');
+  assert.equal(g.purse(), purse + q.reward.gold, 'the coin never arrived');
+  assert.equal(g.standing('carriers-ubtao'), 1, 'the favour landed with nobody');
+});
+
+test('a repeatable bounty pays, hands over the goods, and reopens', () => {
+  const { g, p } = rig('q-repeat');
+  const q = questById('carriers-standing-order');
+  assert.equal(q.repeatable, true);
+  assert.ok(g.acceptQuest(q.id));
+  for (let cycle = 1; cycle <= 2; cycle++) {
+    for (let i = 0; i < q.objective.count; i++) p.inventory.push(deepItem(getItemTemplate('gem')));
+    const purse = g.purse();
+    assert.ok(g.completeQuest(q.id), 'cycle ' + cycle + ' would not close');
+    assert.equal(g.questState(q.id), 'active', 'a repeatable bounty left the list after cycle ' + cycle);
+    assert.equal(g.purse(), purse + q.reward.gold, 'cycle ' + cycle + ' was never paid');
+    assert.equal(p.inventory.filter((it) => it.id === 'gem').length, 0, 'cycle ' + cycle + ' kept the goods');
+  }
+  assert.equal(g.questLedger()[q.id].times, 2, 'the count of times stood was not kept');
+  assert.equal(g.standing('carriers-ubtao'), 2, 'standing only counted the first favour');
+});
+
+test('an undertaking can be set aside and taken up again', () => {
+  const { g } = rig('q-abandon');
+  const id = 'what-the-sea-returns';
+  assert.ok(g.questsOnOffer('priestess-eilyth').some((x) => x.id === id), 'never offered');
+  g.acceptQuest(id);
+  assert.equal(g.questState(id), 'active');
+  assert.ok(g.abandonQuest(id), 'would not let go');
+  assert.equal(g.questState(id), 'unoffered', 'a dropped undertaking did not return to the offering');
+  assert.ok(g.questsOnOffer('priestess-eilyth').some((x) => x.id === id), 'not offered again');
+  assert.ok(g.acceptQuest(id), 'could not be taken up again');
+});
+
+test('a cull counts any of its set, and nothing outside it', () => {
+  const { g } = rig('q-cull');
+  const q = questById('the-legible-entries');
+  assert.ok(g.questsOnOffer('tallyman-ress').some((x) => x.id === q.id), 'the tallyman never offered it');
+  g.acceptQuest(q.id);
+  g.questKilled('skeleton');
+  g.questKilled('zombie');
+  g.questKilled('ghoul');
+  g.questKilled('ghast');
+  g.questKilled('rat');
+  g.questKilled('otyugh');
+  assert.equal(g.questProgressOf(q), 4, 'a rat or an otyugh counted toward the bones');
+  assert.equal(g.questSatisfied(q), false, 'satisfied a bone short');
+  g.questKilled('ghast');
+  assert.ok(g.questSatisfied(q), 'the fifth of the set did not finish the cull');
+});
+
+test('a delivery arrives carrying, hands over the goods, and not before', () => {
+  const { g, p } = rig('q-deliver');
+  const q = questById('the-freight-runs');
+  assert.ok(g.questsOnOffer('drain-factor').some((x) => x.id === q.id), 'the factor never offered it');
+  g.acceptQuest(q.id);
+  g.questReached('upper', 3);
+  assert.equal(g.questProgressOf(q), 0, 'delivered with empty hands');
+  p.inventory.push(deepItem(getItemTemplate('statuette')));
+  g.questReached('upper', 1);
+  assert.equal(g.questProgressOf(q), 0, 'delivered on the wrong landing');
+  g.questReached('upper', 3);
+  assert.ok(g.questSatisfied(q), 'the freight never arrived');
+  assert.equal(p.inventory.filter((it) => it.id === 'statuette').length, 0, 'the crate was not handed over');
+});
+
+test('a bundled undertaking waits for every part, and pays the named faction', () => {
+  const { g, p } = rig('q-bundle');
+  /* The Long Arrears is chained behind the tallyman's intro cull. */
+  g.acceptQuest('the-legible-entries');
+  for (let i = 0; i < 5; i++) g.questKilled('skeleton');
+  assert.ok(g.completeQuest('the-legible-entries'));
+  assert.equal(g.standing('tallymen'), 1, 'the intro cull paid the wrong order');
+  assert.equal(g.standing('standing-order'), 0, 'the garrison was owed before anything was done for it');
+
+  const q = questById('the-long-arrears');
+  assert.equal(q.objective.kind, 'all');
+  assert.ok(g.acceptQuest(q.id), 'the bundle never opened');
+  /* Only the cull part done. */
+  for (let i = 0; i < 5; i++) g.questKilled('ghoul');
+  assert.equal(g.questSatisfied(q), false, 'a bundle closed on one part of two');
+  /* Now the delivery too. */
+  p.inventory.push(deepItem(getItemTemplate('crown')));
+  p.inventory.push(deepItem(getItemTemplate('crown')));
+  g.questReached('serpent', 3);
+  assert.ok(g.questSatisfied(q), 'the bundle never saw both parts done');
+  assert.equal(g.questProgressOf(q), 2, 'the bundle miscounted its own parts');
+  assert.ok(g.completeQuest(q.id));
+  assert.equal(g.standing('standing-order'), 1, 'the favour did not answer to the named faction');
+  assert.equal(g.standing('tallymen'), 1, 'the tallymen took credit for the garrison’s tithe');
+  assert.equal(p.inventory.filter((it) => it.id === 'crown').length, 0, 'the tithe was not handed over');
+});
+
+test('the altar-rite counts each distinct altar once', () => {
+  const { g } = rig('q-altar');
+  const q = questById('the-old-words');
+  assert.ok(g.questsOnOffer('priestess-eilyth').some((x) => x.id === q.id));
+  g.acceptQuest(q.id);
+  g.questAltarUsed('temple:0:5,7');
+  g.questAltarUsed('temple:0:5,7');
+  assert.equal(g.questProgressOf(q), 1, 'the same altar counted twice');
+  g.questAltarUsed('upper:1:9,3');
+  assert.equal(g.questProgressOf(q), 2);
+  assert.equal(g.questSatisfied(q), false);
+  g.questAltarUsed('serpent:2:2,11');
+  assert.ok(g.questSatisfied(q), 'the third altar did not keep the rite');
+});
+
+test('the capstone is posted in the Library, and closes the whole chronicle', () => {
+  const { g, p } = rig('q-capstone');
+  const q = questById('the-long-account-closed');
+  assert.equal(q.via, 'library');
+  assert.equal(q.giver, null, 'the Lore-Weavers keep no account of you — no one should give it');
+  assert.equal(q.turnIn, false);
+  /* Not a dialogue quest: no person offers it, but the Library posts it. */
+  assert.equal(g.questsOnOffer('tallyman-ress').some((x) => x.id === q.id), false);
+  assert.ok(g.libraryQuestsOnOffer().some((x) => x.id === q.id), 'the Library never posted it');
+  assert.ok(g.acceptQuest(q.id));
+  assert.equal(g.questSatisfied(q), false, 'the chronicle closed with nothing conquered');
+  /* Conquer the three sanctums and the thing closes itself. */
+  p.bossesSlain = { temple: true, upper: true, serpent: true };
+  const purse = g.purse();
+  g.refreshQuestProgress();
+  assert.equal(g.questState(q.id), 'done', 'the Long Account did not close when the last sanctum fell');
+  assert.ok(g.standing('lore-weavers') > 0, 'the Lore-Weavers never counted the favour');
+  assert.ok(p.inventory.some((it) => it.id === 'ring-arcana'), 'the Archive ring never arrived');
+});
+
+test('the newly met powers stand where the player can reach them', async () => {
+  const { WORLD } = await import('../public/js/world.js');
+  const { npcsForDungeonFloor } = await import('../public/js/npc.js');
+  const tally = WORLD.npcs.find((n) => n.id === 'tallyman-ress');
+  const factor = WORLD.npcs.find((n) => n.id === 'drain-factor');
+  assert.ok(tally && tally.faction === 'tallymen', 'no tallyman at the table');
+  assert.ok(factor && factor.faction === 'drain-toll', 'no factor in the Chute');
+  assert.ok(npcsForDungeonFloor('temple', 0).some((n) => n.id === 'tallyman-ress'),
+    'the tallyman never spawns at the bottom of the stairs');
+  assert.ok(npcsForDungeonFloor('upper', 1).some((n) => n.id === 'drain-factor'),
+    'the factor never spawns in the warrens');
+});
+
+/* --- THE REST OF THE POWERS: what standing with the four orders that were
+ * written at depth but never meant anything actually buys. --- */
+
+/* A monster placed in plain sight next to the company, asleep to it, on a
+ * guaranteed-floor tile so the AI can act without tripping on its own wall. */
+async function sightedMonster(g, p, id, dx, dy) {
+  const { T } = await import('../public/js/mapgen.js');
+  const t = {
+    id, name: id, glyph: 'x', color: 'red', tier: 1, hpMax: 20, ac: 10,
+    toHit: 0, damage: { dice: 1, sides: 2, bonus: 0 }, xp: 1,
+    goldMin: 0, goldMax: 0, props: [], speed: 1, aggroRange: 40,
+  };
+  const x = p.x + dx, y = p.y + dy;
+  g.currentFloor.tiles[y][x] = T.FLOOR;
+  return { t, x, y, hp: 20, maxhp: 20, boss: false, aggro: false, acted: false };
+}
+
+test('the Tallymen bend the rate for a friend of the table', () => {
+  const { g } = rig('tallymen-rate');
+  assert.equal(g.deathTollShare(), 0.5, 'a stranger is charged less than the standing rate');
+  g.earnStanding('tallymen');
+  const friend = g.deathTollShare();
+  assert.ok(friend < 0.5, 'a friend of the table still pays full freight');
+  assert.ok(friend >= 0.15, 'the rate reached nothing, and nothing is not a rate');
+  g.earnStanding('tallymen', 3);
+  assert.ok(g.deathTollShare() < friend, 'the rate did not bend further for a better friend');
+  assert.ok(g.deathTollShare() >= 0.15, 'the rate bent past nothing');
+});
+
+test('the haul-back toll itself is what bends', () => {
+  const { g } = rig('tallymen-toll');
+  g.earnGold(1000);
+  const before = g.purse();
+  g.returnToCamp(true);
+  assert.equal(before - g.purse(), Math.floor(before * 0.5), 'a stranger was not relieved of half');
+
+  const { g: g2 } = rig('tallymen-toll');
+  g2.earnGold(1000);
+  g2.earnStanding('tallymen');
+  const before2 = g2.purse();
+  g2.returnToCamp(true);
+  const toll2 = before2 - g2.purse();
+  assert.equal(toll2, Math.floor(before2 * g2.deathTollShare()), 'the friend’s toll was not the friend’s rate');
+  assert.ok(toll2 < Math.floor(before2 * 0.5), 'a friend of the table kept no more than a stranger');
+});
+
+test('the Drain Toll calls its crews off a customer, and only its crews', async () => {
+  const { g, p } = rig('drain-truce');
+  p.hp = 9999;
+  g.vis = g.vis.map((row) => row.map(() => true));
+  const rat = await sightedMonster(g, p, 'wererat', 2, 0);
+  g.currentFloor.monsters.push(rat);
+  /* A stranger is fair game on the toll road. */
+  for (let t = 0; t < 3 && !rat.aggro; t++) { g.turn = t; g.resolveMonsters(); }
+  assert.equal(rat.aggro, true, 'a wererat ignored a stranger in its road');
+  /* But a customer is left alone. */
+  rat.aggro = false; rat.ini = undefined;
+  g.earnStanding('drain-toll');
+  for (let t = 10; t < 14; t++) { g.turn = t; g.resolveMonsters(); }
+  assert.equal(rat.aggro, false, 'the crews still charged a customer');
+  /* The glowing rats are not theirs. */
+  assert.equal(g.pacifiedToward({ t: { id: 'giant-rat' } }), null, 'a truce with the toll quieted the vermin');
+});
+
+test('the Standing Order knows its own once the arrears are closed', async () => {
+  const { g, p } = rig('order-truce');
+  p.hp = 9999;
+  g.vis = g.vis.map((row) => row.map(() => true));
+  const bones = await sightedMonster(g, p, 'skeleton', 2, 0);
+  const statue = await sightedMonster(g, p, 'living-statue', -2, 0);
+  const vermin = await sightedMonster(g, p, 'goblin', 0, 2);   /* not the garrison's, and not aquatic */
+  g.currentFloor.monsters.push(bones, statue, vermin);
+  assert.equal(g.pacifiedToward(bones), null, 'the garrison was friendly before the tithe');
+  g.earnStanding('standing-order');
+  for (let t = 0; t < 5; t++) { g.turn = t; g.resolveMonsters(); }
+  assert.equal(bones.aggro, false, 'the marching bones still collected from a friend');
+  assert.equal(statue.aggro, false, 'the walking statues still barred a friend');
+  assert.equal(vermin.aggro, true, 'a truce with the garrison quieted a goblin');
+});
+
+test('the Archive names whatever a friend of the Library lifts', () => {
+  const { g, p } = rig('weavers-off');
+  const cold = deepItem(getItemTemplate('scroll-remove-curse'));
+  cold.identified = false;
+  g.pickupItem(cold, p);
+  assert.equal(cold.identified, false, 'a stranger’s find named itself');
+
+  const { g: g2, p: p2 } = rig('weavers-on');
+  const warm = deepItem(getItemTemplate('scroll-remove-curse'));
+  warm.identified = false;
+  g2.earnStanding('lore-weavers');
+  g2.pickupItem(warm, p2);
+  assert.equal(warm.identified, true, 'the Archive did not read what was lifted');
 });

@@ -701,6 +701,174 @@ export const LORE = {
         'Venn writes something down, underlines it, and looks at the underline for a while. “Noted. Ask again when I have the file.”',
         'Venn sets his pen down with great care. “I do not know, and I am not permitted to guess. The two are different and the difference is my whole profession.”'
       ]
+    },
+
+    /* THE GREY MAN AT THE TABLE. The Tallymen were always the mechanism the
+     * resurrection ran on and never a face you could talk to — the table at
+     * the bottom of the swept stairs, the near half of a book you will never
+     * be shown. Now they keep their ledger where the player can reach it. */
+    {
+      id: 'tallyman-ress', faction: 'tallymen',
+      name: 'Ress, at the Table',
+      title: 'a tallyman of the Whetstone',
+      dungeon: 'temple',
+      floor: 0,
+      color: 'gray',
+      intro: '“Name and company, for the book. We haul back what the hill keeps, at the standing rate, and we do not count wrong. State your business.”',
+      knowledge: ['rate', 'half', 'gold', 'book', 'entry', 'ledger', 'threshold', 'haul', 'tally', 'statue', 'order', 'tithe', 'traffic', 'death'],
+      topics: [
+        {
+          keys: ['rate', 'half', 'gold', 'price', 'cost', 'pay'],
+          replies: [
+            'Half of what is on the body, every time, and not the gear — gear is no use to us. It is not a price. A price is argued. A rate is kept.',
+            'You will not find it written down and you will not find it waived. Half, at the threshold, when we carry you back over it. Men have offered to die cheaper elsewhere. The hill does not honour it.'
+          ]
+        },
+        {
+          keys: ['book', 'entry', 'ledger', 'count', 'tally', 'write'],
+          replies: [
+            'Every name that goes down and every name that comes back up, in the same hand, on the same line. The book is the near half of an older one. We do not show the other half and we do not lose this one.',
+            'Legible entries and steady traffic. That is the whole of what the table wants. A name we cannot read is a debt we cannot close, and we close everything.'
+          ]
+        },
+        {
+          keys: ['statue', 'order', 'bone', 'skeleton', 'ghoul', 'collecting', 'door'],
+          replies: [
+            'The garrison below was posted to see a tithe delivered. The tithe stopped and the posting did not, and eight years back the arrears crossed some line nobody wrote down. Now the building collects for itself, and it makes the entries hard to read.',
+            'Bones that remember marching orders do not care what they collect, only that the count goes up. We would like the count to go down. It is bad for traffic.'
+          ]
+        },
+        {
+          keys: ['tithe', 'arrears', 'owed', 'deliver', 'crown', 'rent'],
+          replies: [
+            'The tithe was crowns — soft gold, carried down and handed over at the bottom of the serpent’s halls. It has not been carried in some years. We keep the near half of that book too, and an uncarried tithe is an entry we cannot close.'
+          ]
+        },
+        {
+          keys: ['threshold', 'haul', 'die', 'death', 'back', 'raise', 'resurrect'],
+          replies: [
+            'Die below and we bring you back over the threshold and take the rate off what you were carrying. You wake at the camp on the lintel with your gear and half your coin and a line in the book that reads the same as everyone’s.',
+            'It is not resurrection. It is retrieval. The god does not enter into it; the rate does.'
+          ]
+        },
+        {
+          keys: ['ogil', 'hermit', 'whetstone', 'eye'],
+          replies: [
+            'The hermit from the stone? He watched us carry this table down nine years ago and came in out of the weather after it. He has a claim he cannot serve and we have a book he is not in. We get along.'
+          ]
+        },
+        {
+          keys: ['who are you', 'your name', 'ress', 'yourself', 'grey', 'gray', 'two men'],
+          replies: [
+            'Ress. There were two of us at this table when it was carried down, and there are two of us still, in shifts you are not awake to see. The table does not empty.',
+            'A tallyman. The order is older than the stairs it sits at the bottom of. We keep the book, we haul the dead, we take the rate. It is steady work.'
+          ]
+        },
+        {
+          keys: ['this place', 'where am i', 'temple', 'what is this'],
+          replies: [
+            'The bottom of the swept stairs — the Temple of Lapsai below and the camp on the lintel above. You are at the first line of the book. Most names do not get a second.'
+          ]
+        },
+        {
+          keys: ['hello', 'hail', 'greet', 'good day'],
+          replies: [
+            'Name and company, for the book.',
+            'You are already written in — everyone is, the moment they pass the lintel. Now say what you want.'
+          ]
+        },
+        {
+          keys: ['help', 'advice', 'what should i'],
+          replies: [
+            'Keep your entries small and your name easy to spell. Spend your gold before the hill takes half of it. And do not make us carry you up twice in one week — it is allowed, and it is noticed.'
+          ]
+        }
+      ],
+      fallbacks: [
+        'Ress turns a page, runs a finger down a column, and looks up. “Not in this half of the book.”',
+        '“The rate is the rate,” Ress says, and returns to the ledger. “Everything else is traffic.”',
+        'Ress makes a small mark and does not explain it. “Asked and entered. Next.”'
+      ]
+    },
+
+    /* THE FACTOR OF THE CHUTE. The Drain Toll were "hostile, but negotiable"
+     * and there was never anyone to negotiate with — only wererats who tried
+     * to kill you. A factor you can talk to is the whole point of them. */
+    {
+      id: 'drain-factor', faction: 'drain-toll',
+      name: 'The Factor of the Chute',
+      title: 'a wererat who would rather bill you',
+      dungeon: 'upper',
+      floor: 1,
+      color: 'rust',
+      intro: '“Easy with the steel. You are on a toll road, not a battlefield. The Chute is crewed, the yardage is fair, and there is a rate for freight both ways. Talk first; it is cheaper.”',
+      knowledge: ['toll', 'yard', 'rate', 'freight', 'chute', 'route', 'crew', 'pay', 'debt', 'passage', 'rat', 'traffic'],
+      topics: [
+        {
+          keys: ['toll', 'yard', 'rate', 'price', 'pay', 'charge'],
+          replies: [
+            'By the yard, and the yard is fair. You are not paying for the road — the road was here before us. You are paying for the road to stay clear of the things we keep off it.',
+            'A debt with traffic on it is a toll road, and this one has had traffic for a hundred years. We would like the next hundred the same.'
+          ]
+        },
+        {
+          keys: ['freight', 'carry', 'deliver', 'package', 'idol', 'statuette', 'run'],
+          replies: [
+            'Freight pays better than flesh, both ways. We have stock that needs to move down the Chute and buyers who do not like to climb. Carry it and the rate on your own passage comes down.',
+            'An idol, sealed, to the third landing. Do not open it, do not drop it in the water, and do not ask what a carved god wants at the bottom of a drain. It is freight. Freight does not get asked about.'
+          ]
+        },
+        {
+          keys: ['route', 'sell', 'crew', 'next crew', 'map'],
+          replies: [
+            'Every route through here is written down, and what is written down is sold. Yours will be too, once you have finished walking it. That is not a threat. It is the business.',
+            'The next crew buys the route you are walking now. You are not the road. You are the traffic, and traffic is what a toll road is for.'
+          ]
+        },
+        {
+          keys: ['eilyth', 'sister', 'priestess', 'drowned', 'water', 'tide'],
+          replies: [
+            'The sister at the flood counts what the sea gives back. We count what moves past her. Two ledgers, same water, no love lost. She would have the road free. A free road is a road with nothing on it, and that is a road we cannot sell.'
+          ]
+        },
+        {
+          keys: ['rat', 'glow', 'wererat', 'whisker', 'man-shaped', 'vermin'],
+          replies: [
+            'The glowing ones are not ours. Ours are man-shaped and man-spoken and we keep our books better than most offices up top. Do not confuse the help with the vermin.'
+          ]
+        },
+        {
+          keys: ['who are you', 'your name', 'factor', 'yourself'],
+          replies: [
+            'Factor. The crews dig, the crews guard, and I keep the count and set the yardage. It is an honest post on a dishonest road, which is the only kind worth having.'
+          ]
+        },
+        {
+          keys: ['this place', 'where am i', 'chute', 'what is this'],
+          replies: [
+            'The Chute, where the works cross the warrens. A hundred years of crews skimming the same current. You are standing in the toll booth, so to speak.'
+          ]
+        },
+        {
+          keys: ['hello', 'hail', 'greet'],
+          replies: [
+            'Steel down and coin out, or steel down and no coin — the road is the same either way. Talk.',
+            'A live customer. Good. The dead ones are so much less flexible about the yardage.'
+          ]
+        },
+        {
+          keys: ['help', 'advice', 'what should i', 'survive', 'tip'],
+          replies: [
+            'Help is a service and services are billed — but the first one is free. Keep your coin where the water cannot reach it, and never take a chewed passage over a cut one.',
+            'Pay the yardage and the road stays clear of worse than us. That is the whole of the arrangement, and the only help on this road that has ever been worth the coin.'
+          ]
+        }
+      ],
+      fallbacks: [
+        'The factor strokes a whisker and recalculates. “That is not on the rate card. I can put it on the rate card.”',
+        '“Everything down here is for sale,” the factor says, “including that question. The first one is free.”',
+        'The factor makes a note. “You will be written down either way. Most people prefer to be written down as paid.”'
+      ]
     }
   ],
 };

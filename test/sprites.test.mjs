@@ -11,7 +11,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseAnimationDef, parseTilesetDef,
-  CREATURE_SHEETS, HERO_LAYERS, HERO_HEADS, TILESETS, ASSET_ROOT,
+  CREATURE_SHEETS, CREATURE_SHEET_NAMES, sheetForMonster, monsterTokenSpec,
+  HERO_LAYERS, HERO_HEADS, TILESETS, ASSET_ROOT,
   creatureSheetUrl, creatureDefUrl, heroLayerUrl, heroDefUrl,
   tilesetUrl, tilesetDefUrl,
 } from '../public/js/sprites.js';
@@ -192,4 +193,60 @@ test('every prop on the green names a real Kenney piece on a walkable tile', () 
     if (!pr.atlas) continue;
     assert.ok(gdef.tiles[pr.atlas], 'atlas dressing names a missing piece: ' + pr.atlas);
   }
+});
+
+/* ---- the commons a written creature may borrow ---- */
+
+test('every sheet a written creature may name is really on disk', () => {
+  assert.ok(CREATURE_SHEET_NAMES.length >= 10, 'the vocabulary is too thin to be useful');
+  for (const sheet of CREATURE_SHEET_NAMES) {
+    assert.ok(exists(creatureSheetUrl(sheet)), 'the vocabulary names a missing sheet: ' + sheet);
+    assert.ok(exists(creatureDefUrl(sheet)), 'the vocabulary names a sheet with no definition: ' + sheet);
+    const def = parseAnimationDef(fs.readFileSync(onDisk(creatureDefUrl(sheet)), 'utf8'));
+    assert.ok(def.animations.stance, sheet + ' has no [stance] to draw a written beast from');
+  }
+});
+
+test('and every sheet the bestiary already uses is in that vocabulary', () => {
+  const vocab = new Set(CREATURE_SHEET_NAMES);
+  for (const [monster, sheet] of Object.entries(CREATURE_SHEETS)) {
+    if (!sheet) continue;
+    assert.ok(vocab.has(sheet), monster + ' draws from a sheet a written creature cannot name: ' + sheet);
+  }
+});
+
+test('a monster draws from its own sheet first, then the manifest, then a stand-in', () => {
+  /* A written beast that named a sheet wins. */
+  assert.equal(sheetForMonster({ id: 'exp-x-m0', sheet: 'minotaur' }), 'minotaur');
+  /* A base monster keeps its manifest decision. */
+  assert.equal(sheetForMonster({ id: 'skeleton' }), CREATURE_SHEETS.skeleton);
+  /* A founding oddity the manifest deliberately nulled still earns the token —
+   * a base monster mapped to null is a decision, not an oversight. */
+  assert.equal(sheetForMonster({ id: 'gelatinous-cube' }), null);
+  assert.equal(sheetForMonster(null), null);
+});
+
+test('a written beast left unnamed is dressed from the commons, not left a letter', () => {
+  /* The real case that prompted this: an expansion monster written before the
+   * `sheet` field existed has props but no sheet. It must still wear art. */
+  const wraith = { id: 'exp-x-m1', name: 'Ink Wraith', tier: 10, props: ['undead', 'poison', 'intelligent'] };
+  const sheet = sheetForMonster(wraith);
+  assert.ok(sheet && CREATURE_SHEET_NAMES.includes(sheet), 'an unnamed beast got no commons skin');
+  /* The same creature wears the same skin on every visit... */
+  assert.equal(sheetForMonster(wraith), sheet);
+  /* ...and a creature with no telling prop still falls back to its tier. */
+  assert.ok(CREATURE_SHEET_NAMES.includes(sheetForMonster({ id: 'exp-x-m2', name: 'Thing', tier: 12, props: [] })),
+    'a prop-less beast did not fall back to a tier stand-in');
+});
+
+test('the procedural token spec is decided by props and name, and holds still', () => {
+  const flyer = monsterTokenSpec({ id: 'exp-x-m0', name: 'Chasm Wretch', props: ['flying', 'undead'] });
+  assert.ok(flyer.marks.includes('wings'), 'a flying thing earned no wings');
+  assert.ok(flyer.marks.includes('hollow'), 'an undead thing earned no hollow');
+  assert.ok(flyer.notches >= 3 && flyer.notches <= 6, 'the rim notch count ran off');
+  /* Same input, same spec — the token never flickers between frames. */
+  assert.deepEqual(flyer, monsterTokenSpec({ id: 'exp-x-m0', name: 'Chasm Wretch', props: ['flying', 'undead'] }));
+  /* Two creatures with the SAME props still differ, because the name hashes. */
+  const other = monsterTokenSpec({ id: 'exp-x-m1', name: 'Salt Revenant', props: ['flying', 'undead'] });
+  assert.notEqual(flyer.hash, other.hash, 'two named beasts share a token');
 });
