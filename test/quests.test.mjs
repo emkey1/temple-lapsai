@@ -581,3 +581,12 @@ test('the Keeper is heard once at each moment, and never twice', async () => {
   g.onBossSlain({ t: { name: 'The Lapsai Demon' } });
   assert.equal(g.logs.filter((l) => l === keeperLine('clear', 1)).length, 1, 'the first sanctum drew no notice');
 });
+
+test('the drowned quarter has its own giver, and its own undertaking', () => {
+  const { g } = rig('liss');
+  assert.ok(g.questsOnOffer('liss').some((q) => q.id === 'the-sluices'), 'Liss has nothing to ask');
+  const q = questById('the-sluices');
+  g.acceptQuest(q.id);
+  g.questKilled('tidewright');
+  assert.ok(g.questSatisfied(q), 'the sluices will not close on the tidewright');
+});

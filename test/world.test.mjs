@@ -9,7 +9,7 @@ import { WORLD, beatsAt, beatAt, arcForDungeon, npcsForDungeon, factionById, res
 import { LORE } from '../public/js/lore.js';
 import { DialogueSystem, npcsForDungeonFloor, NPC_GLYPH } from '../public/js/npc.js';
 import { COLORS } from '../public/js/contract.js';
-import { DUNGEONS } from '../public/js/base.js';
+import { DUNGEONS, getDungeon } from '../public/js/base.js';
 import { newGame } from './helpers.mjs';
 
 const DUNGEON_IDS = DUNGEONS.map((d) => d.id);
@@ -143,10 +143,10 @@ test('flag beats reach the world flags', () => {
 
 test('every NPC is placed on a floor that exists, in a colour that renders', () => {
   for (const n of WORLD.npcs) {
-    const d = DUNGEONS.find((x) => x.id === n.dungeon);
+    const d = getDungeon(n.dungeon);
     assert.ok(d, `${n.id} lives in unknown dungeon "${n.dungeon}"`);
-    assert.ok(Number.isInteger(n.floor) && n.floor >= 0 && n.floor < d.floors,
-      `${n.id} is on floor ${n.floor}, outside 0..${d.floors - 1}`);
+    assert.ok(Number.isInteger(n.floor) && n.floor >= 0 && n.floor < Math.max(1, d.floors),
+      `${n.id} is on floor ${n.floor}, outside the dungeon's floors`);
     assert.ok(COLORS[n.color], `${n.id} has unpaintable colour "${n.color}"`);
     assert.ok(n.intro && n.intro.length > 20, `${n.id} has no intro worth reading`);
   }

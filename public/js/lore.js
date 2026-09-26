@@ -944,6 +944,91 @@ export const LORE = {
         '“Everything down here is for sale,” the factor says, “including that question. The first one is free.”',
         'The factor makes a note. “You will be written down either way. Most people prefer to be written down as paid.”'
       ]
+    },
+
+    /* THE LAST LIGHT OF THE LOWER TOWN. The Drowned Quarter had no one in it to
+     * speak to; it has its holdout now — a woman who kept the lamp lit when the
+     * sea took the lower streets, and wants the water let out. */
+    {
+      id: 'liss', faction: 'drowned-sisters',
+      name: 'Liss', title: 'the last light of the lower town',
+      dungeon: 'drowned', floor: 0, color: 'cyan',
+      intro: 'You came down into it, then. Most do not. I kept the lamp lit when the water came, and the water stayed, and the streets are still down there under it, and so, in a manner, am I.',
+      recognise: [
+        '“You came down and came back up,” Liss says, checking it twice. “The Sisters note who does. So do I.”',
+        '“Sit — the dry chair, if you can find it.” She sets the lamp between you. “The count is better for you being in it.”',
+        '“Your name is in the margin now,” she says, “and the margin is where the survivors go. That is one more light than I had yesterday.”',
+        'Liss makes the sign the Sisters make for their own. “You are counted among us. It is not a debt and it is not a blessing; it is the same document, all the same.”'
+      ],
+      knowledge: ['water', 'tide', 'flood', 'sluice', 'tidewright', 'lower town', 'lamp', 'sea'],
+      topics: [
+        {
+          keys: ['tidewright', 'wright', 'keeper'],
+          replies: [
+            'It kept the sluices. It was posted to, and it went on doing it when the posting ended and everyone it kept them for had drowned. It does not know the difference, and that is the whole of the trouble.'
+          ]
+        },
+        {
+          keys: ['sluice', 'sluices'],
+          replies: [
+            'The sluices held the tide out, once, in the dry years. Somebody shut them when the water came, and the water stayed shut in with us. Open them, and the lower town comes back.'
+          ]
+        },
+        {
+          keys: ['water', 'tide', 'flood', 'green'],
+          replies: [
+            'It came up through the lower streets in a night and never went back. The upper town called it a flood and rebuilt on the rise. It was not a flood. It was the sluices, shut.'
+          ]
+        },
+        {
+          keys: ['lower town', 'town', 'drowned quarter', 'street', 'door'],
+          replies: [
+            'Shut doors, lamps lit, people at home — under the green, where the streets always ran. Do not go knocking. Nobody has answered in a long time, and the knocking is heard.'
+          ]
+        },
+        {
+          keys: ['lamp', 'light'],
+          replies: [
+            'I kept it lit the first night, and then the next, and I have not stopped. Somebody in the lower town should be able to see one light above the water. It is the last thing I have that is any use.'
+          ]
+        },
+        {
+          keys: ['far reach', 'harbour', 'salvage'],
+          replies: [
+            'The Far Reach is up the coast and does not like to talk about us. We were the harbour once. Now we are a thing they file under losses, and sell the salvage of.'
+          ]
+        },
+        {
+          keys: ['who are you', 'your name', 'liss', 'yourself'],
+          replies: [
+            'Liss. I kept the lamp. There were four of us holding the upper rooms at the start; then two; then the water and I, and the water does not talk.'
+          ]
+        },
+        {
+          keys: ['this place', 'where am i'],
+          replies: [
+            'The Drowned Quarter — the lower town of the Far Reach, under the water it was shut into. The streets run where they always ran. The doors are shut and the lamps are lit and the people are at home.'
+          ]
+        },
+        {
+          keys: ['hello', 'hail', 'greet'],
+          replies: [
+            'You are the first to come down and knock on the RIGHT door in a while. Sit, if you can find a dry chair.',
+            'Hello yourself. If you are up from the Far Reach, tell them the light is still on. They will not care. Tell them anyway.'
+          ]
+        },
+        {
+          keys: ['help', 'advice', 'what should i'],
+          replies: [
+            'Open the sluices and the quarter comes back. Or leave it drowned and go. There is no third thing worth doing.'
+          ]
+        }
+      ],
+      fallbacks: [
+        'Liss looks at the water the way people look at a wound. “It is still in there. All of it.”',
+        'She trims the lamp and says nothing for a while. “Ask me about the town, or the water, or the thing that shut it. Not about the rest.”',
+        '“The light is the whole of it,” Liss says. “Everything else is under the water, where it belongs.”'
+      ]
     }
   ],
 };

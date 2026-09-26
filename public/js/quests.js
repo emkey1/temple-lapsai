@@ -546,6 +546,30 @@ export const QUESTS = [
     done: 'Deep in the Library, a page four hundred years old is finally taken down, and the scratching of pens goes back to something it would rather be writing.',
     journal: 'The three sanctums went quiet, the Long Account closed, and the Lore-Weavers paid a debt they never spoke of.',
   },
+
+  /* THE DROWNED QUARTER'S OWN. Liss, who kept the lamp lit, wants the water let
+   * out — which means stopping the thing that shut the sluices. */
+  {
+    id: 'the-sluices',
+    name: 'Open the Sluices',
+    giver: 'liss',
+    faction: 'drowned-sisters',
+    offer:
+      'Liss sets the lamp down. “It was not a flood. Somebody shut the sluices when the water ' +
+      'came, and the water has been shut in with us ever since. The thing that shut them still ' +
+      'tends them, down at the last landing, and it cannot be argued out of a duty it drowned ' +
+      'doing. Put it down, and the sluices open, and the lower town comes back up for whoever ' +
+      'is left to see it. I would like to see it.”',
+    accepted: '“The Tidewright, at the last landing, where the water is deepest. Do not try to relieve it. Only stop it.”',
+    objective: { kind: 'slay', monster: 'tidewright' },
+    turnIn: true,
+    reward: { gold: 600, xp: 900 },
+    done:
+      'She is quiet a long moment when you tell her. “Then it is done, and the water will go ' +
+      'down, in a season, or in a year.” She looks at the lamp. “I will keep this lit until the ' +
+      'lower streets are dry enough to walk in. Even if it is only me that walks them.”',
+    journal: 'The Tidewright was stopped at the sluices, and the drowned quarter was given back to the water it was shut into.',
+  },
 ];
 
 export function questById(id) {

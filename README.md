@@ -182,8 +182,9 @@ A few rules worth knowing before you go down:
 - **A second town.** The **Far Reach** is down the coast, where the sea gave the lower town back: its
   own chandler, tide-reader and salt-house inn, people with the sea in their speech, and a mouth down
   into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet, with its own
-  bestiary: drowned things still in their coats, brine hounds that do not breathe, silt wretches, and
-  the **Tidewright** at the sluices it will not stop tending.
+  bestiary (drowned things still in their coats, brine hounds that do not breathe, silt wretches) and
+  its own holdout: **Liss**, who kept the lamp lit when the water came and wants the sluices opened,
+  which means stopping the **Tidewright** that shut them.
 
 ![The region map](docs/region.png)
 ![The Far Reach](docs/far-reach.png)
