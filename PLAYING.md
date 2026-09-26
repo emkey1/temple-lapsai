@@ -108,7 +108,9 @@ Down the coast, where the sea gave the lower town back: a second settlement with
 its own chandler, tide-reader and salt-house inn, and people who speak of the
 water. Its mouth leads down into **the Drowned Quarter** — the sunken district,
 where the streets still run where they always ran, the lamps are lit, and
-somebody is at home.
+somebody is at home. The things down there are the sea's own: drowned things
+still in their coats, brine hounds, silt wretches, and the Tidewright at the
+sluices.
 
 ## Fighting
 

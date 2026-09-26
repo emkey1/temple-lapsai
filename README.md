@@ -180,7 +180,9 @@ A few rules worth knowing before you go down:
   wanderers, a ford to wade, and a roadside altar, the near end home and the far end arrived.
 - **A second town.** The **Far Reach** is down the coast, where the sea gave the lower town back: its
   own chandler, tide-reader and salt-house inn, people with the sea in their speech, and a mouth down
-  into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet.
+  into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet, with its own
+  bestiary: drowned things still in their coats, brine hounds that do not breathe, silt wretches, and
+  the **Tidewright** at the sluices it will not stop tending.
 
 ![The region map](docs/region.png)
 ![The Far Reach](docs/far-reach.png)

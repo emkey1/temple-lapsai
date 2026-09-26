@@ -120,6 +120,10 @@ export const CREATURE_SHEETS = {
   'dracolisk': 'wyvern_fire',
   'great-wyrm': 'wyvern_adult',
   'lapsai-demon': 'cursed_grave',  /* the temple's god, a hungering monument */
+  'drowned-thing': 'zombie',       /* the sea's returned, still in their coat */
+  'brine-hound': 'stealth',        /* a low prowling shape in the flooded street */
+  'silt-wretch': 'cursed_grave',   /* crusted with the lower town, half buried */
+  'tidewright': 'minotaur',        /* big, and still tending the sluices */
 };
 
 /* THE COMMONS A WRITTEN CREATURE MAY DRAW FROM. Every name here has a packed

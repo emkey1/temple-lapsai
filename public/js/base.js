@@ -438,6 +438,18 @@ export const MONSTERS = [
       { name: 'claw', damage: { dice: 1, sides: 4, bonus: 0 } },
       { name: 'bite', damage: { dice: 1, sides: 6, bonus: 0 } },
     ] },
+
+  /* THE DROWNED QUARTER'S OWN. The sunken lower town off the Far Reach: what
+   * the sea kept, and then gave back, and then kept walking. */
+  M('drowned-thing', 'Drowned Thing', 'd', 4, 16, 9, 2, '1d8', 70, 6, 22, ['undead', 'aquatic'], 'Somebody the water kept a while and gave back, still walking, still in their coat.'),
+  M('brine-hound', 'Brine Hound', 'b', 5, 22, 8, 3, '1d8', 85, 8, 26, ['aquatic', 'pack'], 'It hunts the flooded streets in a pack, and it does not tire, and it does not breathe.'),
+  M('silt-wretch', 'Silt Wretch', 'w', 6, 26, 7, 3, '2d6', 110, 10, 32, ['undead', 'poison'], 'Crusted with the silt of the lower town, and smells of exactly that.'),
+  { ...M('tidewright', 'The Tidewright', 'W', 12, 170, 2, 7, '3d8', 1100, 250, 500, ['intelligent', 'aquatic', 'cursed'], 'It kept the sluices, and when the water came it went on keeping them; it still does, under the green water, in the drowned quarter it will not stop tending.', 2),
+    attacks: [
+      { name: 'slam', damage: { dice: 1, sides: 8, bonus: 2 } },
+      { name: 'slam', damage: { dice: 1, sides: 8, bonus: 2 } },
+      { name: 'undertow', damage: { dice: 1, sides: 10, bonus: 0 } },
+    ] },
 ];
 
 export function getMonster(id) {
@@ -660,8 +672,8 @@ export const DROWNED = {
   theme: 'sewers',
   threat: 5,
   requires: 'serpent',
-  monsterWeights: ['giant-leech', 'giant-snake', 'ghast', 'wraith', 'spectre', 'otyugh', 'gelatinous-cube', 'troll', 'umber-hulk'],
-  bossId: 'great-wyrm',
+  monsterWeights: ['drowned-thing', 'brine-hound', 'silt-wretch', 'giant-leech', 'ghast', 'wraith', 'spectre', 'otyugh', 'umber-hulk'],
+  bossId: 'tidewright',
 };
 
 const ALL_DUNGEONS = [...DUNGEONS, ENDLESS, DROWNED];

@@ -93,3 +93,13 @@ test('a town has no road to itself', () => {
   g.state.player.dungeonId = 'the-whetstone';
   assert.equal(g.travelTo('the-whetstone'), false, 'took the road to the town it already stood in');
 });
+
+test('the drowned quarter keeps its own bestiary, and its own keeper', async () => {
+  const { getDungeon, getMonster } = await import('../public/js/base.js');
+  const d = getDungeon('drowned');
+  assert.ok(d.monsterWeights.includes('drowned-thing'), 'the drowned quarter has no drowned things');
+  assert.ok(d.monsterWeights.includes('brine-hound'), 'no brine hounds in the drowned quarter');
+  assert.equal(d.bossId, 'tidewright', 'the drowned quarter is kept by somebody else');
+  assert.ok(getMonster('tidewright'), 'the tidewright does not exist');
+  assert.ok(getMonster('drowned-thing').props.includes('aquatic'), 'a drowned thing that does not swim');
+});
