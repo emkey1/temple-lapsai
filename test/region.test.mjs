@@ -44,12 +44,18 @@ test('the endless stair appears on the map once its gate is open', () => {
   assert.ok(g.regionPlaces().some((p) => p.id === 'deep'), 'the Lower Ledger never reached the map');
 });
 
-test('the road runs to a second town, and arrives there', () => {
+test('the road runs to a second town, walked the whole way', () => {
   const g = newGame('road');
   g.state.player.dungeonId = 'the-whetstone';
   g.state.player.bossesSlain = { serpent: true };
   assert.ok(g.regionPlaces().some((p) => p.id === 'far-reach'), 'the Far Reach is not on the map');
-  assert.ok(g.travelTo('far-reach'), 'could not take the road to the Far Reach');
+  assert.ok(g.travelTo('far-reach'), 'could not set out on the road');
+  assert.match(g.state.player.dungeonId, /^road:/, 'the road was not walked — it teleported');
+  assert.ok(g.currentFloor.road, 'the road floor is not a road');
+  /* Walk it to the far gate. */
+  const exit = g.currentFloor.roadExit;
+  assert.ok(exit, 'the road has no far end');
+  g.stepOn(exit.x, exit.y);
   assert.equal(g.state.player.dungeonId, 'far-reach', 'the road did not lead to the Far Reach');
   assert.equal(g.inTown(), true, 'the Far Reach is not treated as a town');
   assert.ok(g.currentFloor.npcs.some((n) => n.tpl.id === 'reach-chandler'), 'the Far Reach has no chandler');
@@ -57,7 +63,9 @@ test('the road runs to a second town, and arrives there', () => {
   assert.ok((g.currentFloor.mouths || []).some((m) => m.dungeonId === 'drowned'), 'the Far Reach has no way down to the drowned quarter');
   assert.ok(!(g.currentFloor.mouths || []).some((m) => m.dungeonId === 'temple'), 'the hill stairs reached the coast');
   /* And the road runs back. */
-  assert.ok(g.travelTo('the-whetstone'), 'could not take the road back');
+  assert.ok(g.travelTo('the-whetstone'), 'could not set out on the road back');
+  const back = g.currentFloor.roadExit;
+  g.stepOn(back.x, back.y);
   assert.equal(g.state.player.dungeonId, 'the-whetstone', 'the road back did not lead home');
 });
 

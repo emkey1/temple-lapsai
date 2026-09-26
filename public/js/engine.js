@@ -65,6 +65,18 @@ const CALM_RADIUS = 9;          /* nothing awake this close = out of combat */
  * that starts a fight from further off than a fight can reach. */
 const DOOR_NOISE = 6;
 export const TOWN_ID = 'the-whetstone';   /* the town is a place, not a dungeon */
+
+/* THE ROAD, MODELLED AS A ONE-FLOOR DUNGEON so the whole floor machinery —
+ * save, load, rest, death, the renderer — works on it unchanged. `road:` in a
+ * dungeon id means a journey between two towns; the id carries which two. */
+const ROAD_PREFIX = 'road:';
+const ROAD_WANDERERS = ['goblin', 'orc', 'giant-spider', 'skeleton', 'wererat', 'giant-snake', 'ogre'];
+export function roadIdFor(from, to) { return ROAD_PREFIX + from + ':' + to; }
+export function parseRoadId(id) {
+  if (typeof id !== 'string' || !id.startsWith(ROAD_PREFIX)) return null;
+  const parts = id.split(':');
+  return parts.length === 3 && isTownId(parts[1]) && isTownId(parts[2]) ? { from: parts[1], to: parts[2] } : null;
+}
 /* Halved from 0.02. It had made the altar — which mends 35% of maximum health
  * once, and lifts every curse — worth about a third of what one free keypress
  * of R gives you. Note what the max(1, ...) floor below does to this: at a
@@ -418,6 +430,14 @@ export class Game {
     return getItemTemplate(id) || this.registry.items.find((i) => i.id === id) || null;
   }
   dungeonById(id) {
+    const road = parseRoadId(id);
+    if (road) {
+      const town = townById(road.to);
+      return {
+        id, name: 'The road to ' + (town ? town.name : 'the coast'), title: 'the road between towns',
+        floors: 1, road, theme: 'town', threat: 0, monsterWeights: ROAD_WANDERERS, bossId: null,
+      };
+    }
     return getDungeon(id) || this.registry.dungeons.find((d) => d.id === id) || null;
   }
 
@@ -521,8 +541,14 @@ export class Game {
     const p = this.state.player;
     if (isTownId(id)) {
       if (p.dungeonId === id && p.floorIdx === 0) return false;
-      if (isTownId(p.dungeonId)) this.roadLeg(p.dungeonId, id);
-      else this.log('The company takes the road to ' + townById(id).name + '.');
+      if (isTownId(p.dungeonId)) {
+        /* A journey, walked rather than jumped: load the road between here and
+         * there, and let the company cross it. */
+        this.log('The company takes the road to ' + townById(id).name + '.');
+        p.dungeonId = roadIdFor(p.dungeonId, id);
+        this.loadFloor(0, 'up');
+        return true;
+      }
       this.enterTown(p.dungeonId, id);
       return true;
     }
@@ -974,9 +1000,11 @@ export class Game {
     const deepestSoFar = (p.deepest && p.deepest[d.id] !== undefined) ? p.deepest[d.id] : -1;
     const wentDeeper = floorIdx > deepestSoFar;
     p.floorIdx = floorIdx;
-    const isLast = !d.endless && floorIdx >= d.floors - 1;
-    /* An endless stair keeps a boss every fifth landing instead of a last one. */
-    const bossFloor = d.endless ? ((floorIdx + 1) % (d.bossEvery || 5) === 0) : isLast;
+    const isRoad = !!d.road;
+    const isLast = !d.endless && !isRoad && floorIdx >= d.floors - 1;
+    /* An endless stair keeps a boss every fifth landing instead of a last one;
+     * a road keeps none at all — its ends are gates, not a den. */
+    const bossFloor = isRoad ? false : (d.endless ? ((floorIdx + 1) % (d.bossEvery || 5) === 0) : isLast);
     const bossId = d.endless ? this.endlessBossFor(d, floorIdx) : d.bossId;
     const boss = bossFloor ? (this.monsterTemplate(bossId) || null) : null;
     /* No boss means bossesSlain is never set, which means the dungeon can never
@@ -1015,8 +1043,8 @@ export class Game {
     this.secretsRevealed = false;
     this.turn = 0;
     this.fireBeats('enter', floorIdx);
-    if (this.ui.setLocation) this.ui.setLocation(d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
-    if (this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
+    if (this.ui.setLocation) this.ui.setLocation(isRoad ? d.name : d.name + ' · ' + (floorIdx + 1) + '/' + d.floors);
+    if (!isRoad && this.ui.showFloor) this.ui.showFloor(d, floorIdx, isLast);
     /* A flight of stairs is worth a breath, so arriving on a new floor at two
      * hit points is not an automatic death. Once per new depth — see above. */
     const der = this.derived();
@@ -1031,7 +1059,7 @@ export class Game {
       p.power = Math.min(der.maxpower, p.power + Math.max(1, Math.round(der.maxpower * DESCENT_RECOVERY)));
     }
     this.questReached(d.id, floorIdx);
-    this.log('You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
+    this.log(isRoad ? 'You set out on ' + d.name + '.' : 'You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
@@ -1051,6 +1079,9 @@ export class Game {
    * from zero because every dungeon counted its own floors from zero. */
   dungeonStartDepth(d, seen) {
     if (!d) return 0;
+    /* A road hangs off nothing, so it is depth zero: the wanderers on it are
+     * the ones you would meet on the surface, not the ones under the hill. */
+    if (d.road) return 0;
     const guard = seen || new Set();
     if (guard.has(d.id)) return 0;   /* a cycle in the chain is not fatal here */
     guard.add(d.id);
@@ -1852,6 +1883,16 @@ export class Game {
     const floor = this.currentFloor;
     const tile = floor.tiles[y][x];
     const p = this.state.player;
+    /* ON THE ROAD: its two ends are the two gates. The near one takes you back
+     * where you set out, the far one lands you in the town. */
+    if (floor.road) {
+      if (floor.roadBack && x === floor.roadBack.x && y === floor.roadBack.y) { this.enterTown(undefined, floor.road.from); return; }
+      if (floor.roadExit && x === floor.roadExit.x && y === floor.roadExit.y) {
+        this.roadLeg(floor.road.from, floor.road.to);
+        this.enterTown(undefined, floor.road.to);
+        return;
+      }
+    }
     if (tile === T.DOWN) {
       /* In town, a stair down is a dungeon's mouth: step in and you are
        * under that world's first floor. */

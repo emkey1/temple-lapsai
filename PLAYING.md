@@ -98,7 +98,9 @@ Press **`m`** — or click the **north gate** in the Whetstone — to see the wo
 from above: the Whetstone at the foot of the hill, the stairs down to each
 sanctum, and the coast town of the Far Reach. **You are here** is marked. Click
 a place you have found and the company takes the road there. Travelling between
-towns is a journey, and the road has its own small say on the way.
+towns means **walking the road** between them — a strip of coast road with its
+own wanderers, a ford to wade, and a roadside altar. Step on the near gate to
+turn back, or the far one to arrive.
 
 ## The Far Reach
 

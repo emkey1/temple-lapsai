@@ -520,6 +520,10 @@ function findSpot(grid, rooms, up, rng, clearDist, den) {
 }
 
 export function generateFloor(opts) {
+  /* A ROAD IS A FLOOR you walk rather than a jump you make: a strip of coast
+   * road between two towns, built by its own generator, the whole floor
+   * machinery around it left exactly as it is for a dungeon. */
+  if (opts.dungeon && opts.dungeon.road) return generateRoadFloor(opts);
   const { dungeon, floorIdx, state } = opts;
   const seed = opts.seed || hashSeed(`${dungeon.id}:${floorIdx}`);
   const rng = new RNG(seed);
@@ -1064,5 +1068,76 @@ export function generateReachFloor(dungeons) {
     isLast: false, den: null, mouths, props,
     houseWalls, houseDoors, gateDoors: new Set(), gateTowers: new Set(),
     entry: { x: 30, y: 20 },
+  };
+}
+
+/* THE ROAD AS A FLOOR. A strip of coast road between two towns, walked rather
+ * than teleported: a winding path from the near gate to the far one, the road's
+ * own wanderers, a ford, and a roadside altar. The two ends ARE the two gates —
+ * step on the near one and you are back where you set out, on the far one and
+ * you have arrived. Its ends are T.UP and T.DOWN only so the stairs render. */
+export function generateRoadFloor(opts) {
+  const road = (opts.dungeon && opts.dungeon.road) || {};
+  const seed = opts.seed || hashSeed('road:' + road.from + ':' + road.to);
+  const rng = new RNG(seed);
+  const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
+  for (let y = 9; y <= 34; y++) {
+    for (let x = 2; x <= W - 3; x++) {
+      const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const edge = (y <= 11 || y >= 32) && (h % 3 === 0);
+      if (!edge) tiles[y][x] = T.FLOOR;
+    }
+  }
+  /* The road itself: a winding line west to east. */
+  let wy = Math.floor(H / 2);
+  const path = [];
+  for (let x = 3; x <= W - 4; x++) {
+    if (rng.chance(0.35)) wy += rng.int(0, 1) ? 1 : -1;
+    wy = Math.max(13, Math.min(30, wy));
+    tiles[wy][x] = T.FLOOR;
+    path.push({ x, y: wy });
+  }
+  const roadBack = path[0];
+  const roadExit = path[path.length - 1];
+  tiles[roadBack.y][roadBack.x] = T.UP;
+  tiles[roadExit.y][roadExit.x] = T.DOWN;
+  /* A ford: a band of water the road wades through. */
+  const fordX = 22 + rng.int(0, 8);
+  for (let yy = 10; yy <= 33; yy++) tiles[yy][fordX] = T.WATER;
+  for (const pt of path) if (pt.x === fordX) tiles[pt.y][fordX] = T.WATER;
+  /* A roadside altar, once, in the dry verge. */
+  const rooms = [{ x: 3, y: 12, w: W - 7, h: 20 }];
+  const ax = 12 + rng.int(0, 10);
+  const near = path.find((pt) => pt.x === ax) || path[0];
+  const ay = Math.max(12, Math.min(31, near.y - 2));
+  if (tiles[ay][ax] === T.FLOOR) tiles[ay][ax] = T.ALTAR;
+
+  const threat = (opts.dungeon && opts.dungeon.threat) || 0;
+  const pool = opts.monsterPool && opts.monsterPool.length ? opts.monsterPool : null;
+  const monsters = [];
+  for (let i = 0, n = 4 + rng.int(0, 3); i < n; i++) {
+    const t = pool ? pickWeighted(rng, pool) : null;
+    if (!t) continue;
+    const pos = findSpot(tiles, rooms, roadBack, rng, 5, null);
+    if (!pos) continue;
+    monsters.push(scaledMonster(t, pos, threat, 0, false));
+  }
+  const items = [];
+  for (let i = 0, n = 2 + rng.int(0, 2); i < n; i++) {
+    const it = opts.pickItem ? opts.pickItem(0, rng) : null;
+    if (!it) continue;
+    const pos = findSpot(tiles, rooms, roadBack, rng, 3, null);
+    if (!pos) continue;
+    items.push({ i: it, x: pos.x, y: pos.y, auto: it.kind === 'special' });
+  }
+  const props = [
+    { x: roadBack.x + 1, y: roadBack.y - 1, piece: 'barrels_S' },
+    { x: Math.floor(W / 2), y: path[Math.floor(path.length / 2)].y - 2, piece: 'woodenCrate_S' },
+  ];
+
+  return {
+    w: W, h: H, tiles, rooms: [], monsters, items, npcs: [],
+    up: roadBack, down: roadExit, isLast: false, den: null, mouths: [], props,
+    road, roadBack, roadExit, entry: roadBack,
   };
 }
