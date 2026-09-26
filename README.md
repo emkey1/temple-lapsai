@@ -1,31 +1,50 @@
-# Temple Lapsai — Turn-Based Homage
+# Temple Lapsai — a turn-based homage
 
-A zero-dependency, turn-based party dungeon crawler. It began as a top-down homage to the 1982
-classic and has grown toward the games that came after: an **isometric scene** in the Flare art
-style (the classic top-down grid is one `V` away, as the tactical map), a **company of four** with
-ToEE-style combat — ground and a blow, attacks of opportunity, flanking, initiative on the screen —
-**Arcanum-ish characters** with backgrounds and skills, and a walkable hamlet over the stairs.
-Optional LLM-driven world expansion. Client and server are plain ES modules — no build step, no
-npm install required.
-
-**New here? Start with the [player's manual](PLAYING.md).** This README is about how the thing is
-built.
+A zero-dependency, turn-based **party** dungeon crawler for the browser. It began as a top-down
+homage to the 1982 classic and grew toward the games that came after: an **isometric scene** in the
+Flare art style (the classic top-down grid is one `V` away, as the tactical map), a **company of
+four** with ToEE-style combat — a step and a blow, attacks of opportunity, flanking, initiative on
+the screen — **Arcanum-ish characters** with backgrounds, skills and ability ladders, and a walkable
+hamlet over the stairs. Optional LLM-driven world expansion. Client and server are plain ES modules:
+**no build step, no `npm install`**.
 
 ![A delver on the Temple's first floor](docs/scene.png)
 
 *The isometric scene in Flare art, the company's stat sheet, and the dark below.*
 [Title card](docs/title.png) · [Character creation](docs/charcreate.png)
 
-**What is in it:** four hand-authored sanctums and an **endless descent** past them that needs no
-LLM key — the Temple, the Upper Reaches, the **Emberworks** (the foundry under the west hill), and
-the Serpent's halls, plus the **Drowned Quarter** off the coast; a company of four with backgrounds,
-skills and ability ladders; **two walkable towns** — the Whetstone, and the coast-town Far Reach
-with its own mouth down — where you buy, sell, read, unbind, **enchant**, hire, rest and raise the
-dead; a **region map** for fast travel, drawn as a chart and signed with each area's **intended
-level**, and a **road** between the towns; seven factions that know you; a couple of dozen
-undertakings; a narrator who keeps the account; and a Hall of Accounts that remembers your dead.
-Optional LLM-driven expansion on top of all of it — and a **headless robot delver**
-(`npm run simulate`) that walks whole games to catch bugs and measure balance.
+**New here? Read the [player's manual](PLAYING.md)** for the first hour; this README is about how the
+thing is built, and the [design notes](#design-notes) at the end are the measurements behind the
+rules.
+
+## What is in it
+
+- **Six areas to go down.** Three founding sanctums — the **Temple of Lapsai**, the **Upper
+  Reaches**, the **Serpent's halls** — plus the **Emberworks** (the foundry under the west hill), the
+  **Drowned Quarter** off the coast, and an **endless descent** past them all that needs no LLM key.
+  Every one is signed with the **level band** it was cut for, so the open world past the story is a
+  choice rather than a guess.
+- **A company of four**, each a full character: class, background, practiced skills, an ability
+  ladder, a pack, a belt and a place in the marching order. Monsters hunt the nearest body; a fight
+  is a round in initiative order, shown on screen.
+- **Two walkable towns** — the **Whetstone** at the foot of the hill, and the coast-town **Far
+  Reach** — where you buy, sell, read, unbind, **enchant**, hire, rest and raise the dead.
+- **A region chart** (`M`) and a **walkable road** between the towns, with wanderers, a ford, a
+  roadside altar, a fire ring, a shrine, a pedlar and a toll-man.
+- **A world with opinions:** seven factions that remember what you do and cool toward each other's
+  rivals, a couple of dozen **undertakings** offered in conversation, a narrator who keeps the
+  account, and a Hall of Accounts that remembers your dead.
+- **Optional LLM expansion:** the Black Library writes new dungeons, monsters, items and abilities,
+  validates them, and inks them onto the chart — and the cast can speak in character when an oracle
+  is bound.
+- **A robot delver** (`npm run simulate`): a headless bot that plays whole games and reports bugs and
+  balance.
+
+## Contents
+
+- [Requirements](#requirements) · [Running](#running) · [The Black Library](#llm-driven-expansion-optional) · [HTTP API](#http-api)
+- [Delving](#delving) · [The undertakings](#the-undertakings) · [The writing](#the-writing)
+- [Development](#development) · [Project layout](#project-layout) · [Controls](#controls) · [Design notes](#design-notes)
 
 ## Requirements
 
@@ -60,6 +79,11 @@ The game runs entirely in the browser. Character sheet, inventory, codex, librar
 generation are all client-side; progression is saved to `localStorage`.
 
 ## LLM-driven expansion (optional)
+
+![The Black Library](docs/library.png)
+
+*The Black Library: bind an oracle (a hosted one, or a machine on your own network), then commission
+a work.*
 
 `data/expansions.json` is created on demand by the server and is git-ignored. With an LLM API key
 configured, the "Library" tab generates new dungeons, monsters, items and abilities on demand,
@@ -152,6 +176,12 @@ curl -sX POST http://localhost:8080/api/expand \
 
 ## Delving
 
+![A fight in initiative order](docs/combat.png)
+
+*The round along the top — the current actor arrowed and burning amber — the company's blood in the
+HUD, and a goblin that has already been hit. Everything hostile is drawn in the red family; nothing
+you can pick up is.*
+
 A few rules worth knowing before you go down:
 
 - **Secret doors** are walls until you find them. Walk into a suspicious wall to search it — thieves
@@ -205,9 +235,24 @@ A few rules worth knowing before you go down:
   bottom, still weighing a debt nobody came back to collect. It never counts toward the founding
   chronicle; it is a step up from the Upper Reaches, and the chart says so.
 
+![The Emberworks](docs/emberworks.png)
+
+*The Emberworks' first floor: fire stone, the foundry's furnaces, and Otway at his ledger.*
+
 ![The region map](docs/region.png)
+
+*The Region, drawn as a chart — the hill and the reach, the road dashed between the towns, and every
+place signed with the level band it was cut for.*
+
 ![The Far Reach](docs/far-reach.png)
 ![The coast road](docs/road.png)
+
+*The Far Reach, arrived at down the coast road — and the road itself above it, with its fence, its
+wanderers and its barrels.*
+
+![The high crossing](docs/toll.png)
+
+*The toll-man at the high crossing: pay for the dry road, or wade the ford for nothing.*
 
 ### The undertakings
 
@@ -216,6 +261,11 @@ salvage families; Venn has had thirty years to ask where the carved hands
 emptied themselves; the four families buy godlings "cash, no questions". That
 was writing for quests with no machinery behind it, so the machinery exists
 now and the hooks are kept.
+
+![An undertaking offered](docs/town-quest.png)
+
+*An undertaking offered in conversation — Orrin, the salvager, with his ask sitting above the input
+box, and TAKE IT ON under it.*
 
 **A quest is offered in conversation and closed in conversation.** Walk up to
 somebody who wants something and their offer sits in the dialogue card above
@@ -292,9 +342,10 @@ else — the same rule [lore.js](public/js/lore.js) follows.
 
 ## The writing
 
-The world — five eras of history, seven factions, a story arc per dungeon and a speaking cast —
-lives in `public/js/lore.js`. It is content only, no logic, so it can be edited by anyone who can
-count commas; `world.js` registers it on import and the engine reads it through the queries there.
+The world — five eras of history, seven factions, a story arc for the founding sanctums and the
+Emberworks, and a speaking cast — lives in `public/js/lore.js`. It is content only, no logic, so it
+can be edited by anyone who can count commas; `world.js` registers it on import and the engine reads
+it through the queries there.
 
 Story beats fire at `(dungeonId, kind, floorIdx)`. `kind` is `enter` (arriving on a floor), `boss`,
 `finish` (the dungeon cleared) or `condition` (a level-up); `type` is `narration` for a line in the
@@ -375,27 +426,11 @@ public/js/
 data/expansions.json  Persisted generated content (server-side; created on demand, git-ignored)
 ```
 
-## Controls
+## Design notes
 
-| Key | Action |
-| --- | ------ |
-| `WASD` / arrow keys | Move |
-| `Y` `U` `B` `N` / numpad | Move diagonally (numpad `5` waits) |
-| `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
-| `Space` / `X` | End your turn (wait) |
-| `R` | Rest until healed, or until something wakes |
-| `1`–`9` | Activate the matching ability (they fire for whoever holds the reins — the sheet must be theirs) |
-| `Shift+1`–`4` | Drink or read what is in that belt loop |
-| `V` | Switch between the isometric scene and the classic top-down map |
-| `T` | Kneel the walls to stubs, and raise them again |
-| `+` / `-` | Lean in or out of the scene — to 3x, which is the size the art was painted (the mouse wheel works too) |
-| `Tab` | Cycle panels (stats / gear / codex / library) |
-| `I` / `E` | Gear & inventory panel |
-| `C` | Codex panel |
-| `L` | Library (expansions) panel |
-| `Enter` | Start the game / send a dialogue line |
-| `Esc` | Close the active dialogue or the controls card |
-| `?` / `H` | Show the controls in-game |
+The sections above are the shape of the thing; these are the measurements behind it. Most of the
+numbers here were fitted against what the generator actually puts on the floors, and refitted
+whenever the floors changed — the XP curve's coefficient has been 150, 70 and 100.
 
 ### Healing
 
@@ -454,6 +489,10 @@ XP curve actually delivers: a pair wins 38/46/32% at the three bosses, a full co
 Alone, every boss fights exactly as it did.
 
 ### The party
+
+![Character creation](docs/charcreate.png)
+
+*Rolling a character: class, background, stats — and a preview of what each choice will do.*
 
 Tactical, ToEE-style: each member is a **body on the board**. Monsters hunt the *nearest* one —
 the distance field they descend is seeded at every member at once — a blow lands on the body it
@@ -564,6 +603,11 @@ the first boss fight against a Fighter's 77%, so the spark is the action and Ebb
 of the economy.
 
 ### The Whetstone
+
+![The Whetstone](docs/whetstone.png)
+
+*A keeper's door on the green at the Whetstone — the pond, the barrels, and a town you walk like any
+floor.*
 
 Camp grew a town around it, and gold finally has somewhere to go besides the resurrection ledger —
 which was the oldest open playtest note: *"what is the purpose of gold?"* Climb out of any first
@@ -735,3 +779,25 @@ what the floors hold and refitted whenever they change: it has been 150, 70 and 
 Colour is not decoration. Everything alive is drawn in the red family, tinted by tier — dull rust
 for vermin, deep red and bright red as it gets worse, ember and a searing pale for the things at the
 bottom. Nothing you can pick up is ever red, and nothing but you is drawn `@`.
+
+## Controls
+
+| Key | Action |
+| --- | ------ |
+| `WASD` / arrow keys | Move |
+| `Y` `U` `B` `N` / numpad | Move diagonally (numpad `5` waits) |
+| `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
+| `Space` / `X` | End your turn (wait) |
+| `R` | Rest until healed, or until something wakes |
+| `1`–`9` | Activate the matching ability (they fire for whoever holds the reins — the sheet must be theirs) |
+| `Shift+1`–`4` | Drink or read what is in that belt loop |
+| `V` | Switch between the isometric scene and the classic top-down map |
+| `T` | Kneel the walls to stubs, and raise them again |
+| `+` / `-` | Lean in or out of the scene — to 3x, which is the size the art was painted (the mouse wheel works too) |
+| `Tab` | Cycle panels (stats / gear / codex / library) |
+| `I` / `E` | Gear & inventory panel |
+| `C` | Codex panel |
+| `L` | Library (expansions) panel |
+| `Enter` | Start the game / send a dialogue line |
+| `Esc` | Close the active dialogue or the controls card |
+| `?` / `H` | Show the controls in-game |
