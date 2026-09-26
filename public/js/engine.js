@@ -50,6 +50,21 @@ const STRENGTH_BUFF = 4;
  * climb never dead-ends for want of a quest to take. */
 const STANDING_RANKS = ['a stranger', 'noticed', 'owed a favour', 'a friend of the order', 'one of their own'];
 
+/* WHO DISAGREES WITH WHOM. A favour to one order is an insult to its rival — a
+ * company that breaks the toll for the Sisters is not the Drain Toll's friend,
+ * and one that strips the hill for the four families is not the Keepers'. The
+ * pairs are symmetric, so the rule reads the same from either side, and the
+ * standing ledger stops being a ladder you can only climb. The Lore-Weavers
+ * keep no account of you, and so keep no quarrel either. */
+const RIVALS = {
+  'drain-toll': 'drowned-sisters',
+  'drowned-sisters': 'drain-toll',
+  'carriers-ubtao': 'keepers-coils',
+  'keepers-coils': 'carriers-ubtao',
+  'tallymen': 'standing-order',
+  'standing-order': 'tallymen',
+};
+
 /* THE STANDING ORDER'S OWN, by kind: the bones that remember marching orders
  * and the carved guards that stopped waiting. Listed rather than swept up by
  * prop, because the garrison is a specific set of creatures — not everything
@@ -3728,10 +3743,29 @@ export class Game {
     const was = this.standing(faction);
     this.state.standing[faction] = was + n;
     const f = getFaction(faction);
-    if (!f) return;
-    const rank = STANDING_RANKS[Math.min(STANDING_RANKS.length - 1, was + n)];
-    this.log('Word travels: ' + f.name + ' now count you ' + rank + '.');
-    this.journal(f.name + ' count you ' + rank + '.');
+    if (f) {
+      const rank = STANDING_RANKS[Math.min(STANDING_RANKS.length - 1, was + n)];
+      this.log('Word travels: ' + f.name + ' now count you ' + rank + '.');
+      this.journal(f.name + ' count you ' + rank + '.');
+    }
+    /* A favour to one order is an insult to its rival. */
+    const rival = RIVALS[faction];
+    const rf = rival ? getFaction(rival) : null;
+    if (rf) {
+      const rb = this.state.standing[rival] || 0;
+      if (rb > 0) {
+        const down = Math.max(0, rb - n);
+        this.state.standing[rival] = down;
+        if (down !== rb) {
+          this.log('The ' + rf.name + ' hear of it, and cool toward you — ' + STANDING_RANKS[Math.min(STANDING_RANKS.length - 1, down)] + ' now.');
+          this.journal('The ' + rf.name + ' cooled toward the company, for work done at ' + (f ? f.name : faction) + '\u2019s door.');
+        }
+      }
+    }
+  }
+
+  rivalsOf(faction) {
+    return RIVALS[faction] ? [RIVALS[faction]] : [];
   }
 
   /* Who a working of this kind answers to — the faction whose door the

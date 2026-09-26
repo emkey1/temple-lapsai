@@ -264,6 +264,13 @@ statues know their own once the long arrears are closed, and the Lore-Weavers'
 Archive names whatever you lift. A truce only ever stops a creature *starting*
 something — strike it and it defends itself, as ever.
 
+**And they disagree.** A favour to one order is a slight to its rival: break
+the toll for the Sisters and the Drain Toll cools toward you by as much, strip
+the hill for the four families and the Keepers cool, serve the Tallymen and the
+garrison cools. The Codex names each order's rival, so the standing ledger stops
+being a ladder you can only climb. (The Lore-Weavers keep no account of you, and
+so keep no quarrel.)
+
 Content lives in [quests.js](public/js/quests.js), which is data and nothing
 else — the same rule [lore.js](public/js/lore.js) follows.
 

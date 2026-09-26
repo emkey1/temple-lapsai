@@ -390,7 +390,7 @@ test('a bundled undertaking waits for every part, and pays the named faction', (
   assert.equal(g.questProgressOf(q), 2, 'the bundle miscounted its own parts');
   assert.ok(g.completeQuest(q.id));
   assert.equal(g.standing('standing-order'), 1, 'the favour did not answer to the named faction');
-  assert.equal(g.standing('tallymen'), 1, 'the tallymen took credit for the garrison’s tithe');
+  assert.equal(g.standing('tallymen'), 0, 'the tallymen were not cooled by the garrison’s tithe');
   assert.equal(p.inventory.filter((it) => it.id === 'crown').length, 0, 'the tithe was not handed over');
 });
 
@@ -616,4 +616,35 @@ test('the townsfolk ask for things too', () => {
   assert.equal(g.purse(), purse + q.reward.gold, 'Essa paid nothing');
   assert.ok(g.standing('drowned-sisters') > 0, 'the favour did not reach the Sisters');
   assert.ok(p.inventory.length >= 0);
+});
+
+/* --- RIVALRIES: earning with one order costs you with its rival. --- */
+
+test('a favour to one order is a slight to its rival', () => {
+  const { g } = rig('rivals');
+  g.earnStanding('drain-toll', 3);
+  assert.equal(g.standing('drain-toll'), 3);
+  assert.equal(g.standing('drowned-sisters'), 0);
+  /* A favour to the Sisters cools the toll by as much. */
+  g.earnStanding('drowned-sisters', 2);
+  assert.equal(g.standing('drowned-sisters'), 2);
+  assert.equal(g.standing('drain-toll'), 1, 'the toll did not cool for the Sisters');
+  /* And the other way. */
+  g.earnStanding('drain-toll', 1);
+  assert.equal(g.standing('drain-toll'), 2);
+  assert.equal(g.standing('drowned-sisters'), 1, 'the Sisters did not cool for the toll');
+  /* The Lore-Weavers keep no account of you, and so keep no quarrel. */
+  assert.deepEqual(g.rivalsOf('lore-weavers'), []);
+  assert.ok(g.rivalsOf('carriers-ubtao').includes('keepers-coils'), 'the families have no rival');
+});
+
+test('closing an undertaking cools the order behind its rival', () => {
+  const { g } = rig('rival-quest');
+  g.earnStanding('drain-toll', 3);
+  /* Breaking the toll is Eilyth's, and files under the Drowned Sisters. */
+  g.acceptQuest('the-toll-by-the-yard');
+  for (let i = 0; i < 4; i++) g.questKilled('wererat');
+  assert.ok(g.completeQuest('the-toll-by-the-yard'));
+  assert.ok(g.standing('drowned-sisters') > 0, 'the Sisters were not credited');
+  assert.ok(g.standing('drain-toll') < 3, 'the toll did not cool for work done against it');
 });

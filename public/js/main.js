@@ -3635,11 +3635,15 @@ function renderCodex(g) {
       const n = g.standing(f.id);
       const rank = g.standingRank(f.id);
       const favour = n > 0 ? FAVOURS[f.id] : '';
+      const rivals = g.rivalsOf(f.id)
+        .map((id) => (WORLD.factions.find((x) => x.id === id) || {}).name)
+        .filter(Boolean);
       return '<div class="codex-item' + (n > 0 ? '' : ' unread') + '"><b>' + esc(f.name) + '</b> ' +
         '<span class="tiny">· ' + esc(f.stance) + '</span>' +
         '<div class="tiny">They count you <b>' + esc(rank) + '</b>' +
         (n > 0 ? ' <span class="qty">&times;' + n + '</span>' : '') + '</div>' +
         (favour ? '<p class="flavor" style="color:var(--grn)">' + esc(favour) + '</p>' : '') +
+        (rivals.length ? '<p class="flavor" style="color:var(--red)">At odds with ' + esc(rivals.join(', ')) + ' — every favour to you is a slight to them.</p>' : '') +
         '<p class="flavor">' + esc(f.note) + '</p></div>';
     }).join('');
   }

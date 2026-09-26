@@ -148,6 +148,10 @@ the garrison knows its own, and the Archive names what you lift. The
 **Powers of the World** page in the Codex says where you stand and what it has
 bought.
 
+And the orders disagree. A favour to one is a slight to its rival — break the
+toll for the Sisters and the Drain Toll cools toward you by as much. The Codex
+names each order's rival, so choosing a side is choosing one.
+
 ## Dying
 
 You will die. When the company falls, the temple scribes haul you back from the
