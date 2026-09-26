@@ -35,6 +35,29 @@ export function buildDialogueSystemPrompt(npc, opts = {}) {
   const where = opts.where ? 'You are met at ' + opts.where + '.' : '';
   const register = opts.register || loreBriefing({ budget: 700 });
   const knowledge = npcKnowledge(npc);
+
+  /* A SMALL MODEL CANNOT HOLD A LONG BRIEF, AND INVENTS WHEN IT DRIFTS. The
+   * full prompt — rules, order, world register — is fine for a hosted model and
+   * drowning for a 0.5B, which then starts muddling who is speaking and making
+   * up dwarves. Compact mode says only what matters: who you are, that you are
+   * not the adventurer, a few things you know, and a hard rule against
+   * inventing anything not in that list. */
+  if (opts.compact) {
+    const few = (npc.topics || []).slice(0, 5).map((t) => {
+      const keys = (t.keys || []).slice(0, 2).join(', ');
+      const reply = (t.replies || [])[0] || '';
+      return keys && reply ? 'If asked about ' + keys + ': ' + reply : '';
+    }).filter(Boolean).join('\n');
+    return [
+      'You are ' + npc.name + ', ' + (npc.title || 'a denizen of the dark') + ', in a grim, plain-spoken dungeon game.',
+      'Reply ONLY as ' + npc.name + ', in the FIRST PERSON, in one or two short sentences. Never write the adventurer’s words or actions; never speak of yourself in the third person; never narrate.',
+      'Use ONLY the facts listed below. Invent NOTHING — no new people, places, creatures, numbers or events. If you do not know, say so in character and turn the question back. Do not repeat the adventurer’s line.',
+      'YOUR OPENING LINE: ' + (npc.intro || ''),
+      few ? 'THINGS YOU KNOW:\n' + few : '',
+      'Keep the dry, commercial voice of a ledger: account, tally, arrears, rate, remit, in kind. No modern words.',
+    ].filter(Boolean).join('\n');
+  }
+
   return [
     'You are ' + npc.name + ', ' + (npc.title || 'a denizen of the dark') + '.',
     RULES,

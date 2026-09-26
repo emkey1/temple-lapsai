@@ -3901,6 +3901,12 @@ function openDialogue(npc) {
   dialogueOpen = true;
   els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name, tpl.sex) + '" alt=""> ' +
     esc(tpl.name) + ' — ' + esc(tpl.title || 'a denizen of the dark');
+  /* While the local voice is still downloading, the cast have nothing but
+   * their written lines — say so, so the canned text is not read as a
+   * failure. Shown only when there is no bound oracle to answer instead. */
+  if (voiceBusy && !(oracle && oracle.ready)) {
+    els.dlgName.innerHTML += ' <span class="tiny">· the local voice is still waking — written lines for now</span>';
+  }
   els.dlgLog.innerHTML = '';
   /* How their order counts the company decides how they open their mouth. */
   const faction = game ? game.factionOfNpc(tpl.id) : null;
@@ -4209,15 +4215,21 @@ function note(text, kind) {
  * with it off the cast are back on their written lines. */
 
 const VOICE_MODELS = [
-  { id: 'SmolLM2-360M-Instruct-q4f16_1-MLC', label: 'SmolLM2 360M — tiny and quick' },
-  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B — small, decent' },
-  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B — the sweet spot' },
-  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B — heavier, better' },
+  { id: 'SmolLM2-360M-Instruct-q4f16_1-MLC', label: 'SmolLM2 360M — smallest; poor at staying in character' },
+  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B — tiny; may muddle who is speaking' },
+  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B — recommended; much steadier' },
+  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B — heaviest; the best of these' },
 ];
 let voiceEngine = null;
 let voiceBusy = false;
-let voiceModelId = VOICE_MODELS[1].id;
+let voiceLoadedId = '';
+let voiceModelId = VOICE_MODELS[2].id;
 try { voiceModelId = localStorage.getItem('lapsai-voice') || voiceModelId; } catch { /* private mode */ }
+
+function voiceLabel(id) {
+  const m = VOICE_MODELS.find((x) => x.id === id);
+  return m ? m.label : id;
+}
 
 function paintVoice() {
   if (!els.voicePanel) return;
@@ -4227,34 +4239,58 @@ function paintVoice() {
     els.voiceModel.value = voiceModelId;
   }
   const gpu = typeof navigator !== 'undefined' && !!navigator.gpu;
-  els.voiceStatus.textContent = voiceEngine ? 'awake' : (voiceBusy ? 'waking…' : (gpu ? 'asleep' : 'no WebGPU here'));
+  const selected = els.voiceModel.value || voiceModelId;
+  const switching = !!voiceEngine && selected !== voiceLoadedId;
+  els.voiceStatus.textContent = voiceBusy ? 'waking…'
+    : voiceEngine ? (switching ? 'awake · another chosen' : 'awake')
+    : (gpu ? 'asleep' : 'no WebGPU here');
   els.voiceStatus.className = 'lib-status ' + (voiceEngine ? 'bound' : 'unbound');
-  els.btnVoiceOn.disabled = voiceBusy || !!voiceEngine || !gpu;
+  els.btnVoiceOn.disabled = voiceBusy || !gpu || (!!voiceEngine && !switching);
+  els.btnVoiceOn.textContent = switching ? 'SWITCH TO THIS MODEL' : (voiceEngine ? 'AWAKE' : 'WAKE THE LOCAL VOICE');
   els.btnVoiceOff.disabled = voiceBusy || !voiceEngine;
+  if (!voiceBusy && switching) {
+    els.voiceNote.textContent = 'Loaded: ' + voiceLabel(voiceLoadedId) + '. Press SWITCH to load ' +
+      voiceLabel(selected) + ' instead — the old one is freed first.';
+  }
 }
 
 async function enableLocalVoice() {
-  if (voiceBusy || voiceEngine) return;
+  if (voiceBusy) return;
+  const selected = els.voiceModel.value || voiceModelId;
+  if (voiceEngine && selected === voiceLoadedId) return;
   if (!(typeof navigator !== 'undefined' && navigator.gpu)) {
     els.voiceNote.textContent = 'This browser has no WebGPU, so the local voice cannot run here.';
     return;
   }
   voiceBusy = true;
-  voiceModelId = els.voiceModel.value || voiceModelId;
+  voiceModelId = selected;
   try { localStorage.setItem('lapsai-voice', voiceModelId); } catch { /* private mode */ }
-  els.voiceNote.textContent = 'Fetching the engine (one time)…';
+  /* Changing the model frees the old one first — two will not sit in the GPU at
+   * once, and a stale one answering is worse than none. */
+  if (voiceEngine) {
+    const old = voiceEngine;
+    voiceEngine = null;
+    voiceLoadedId = '';
+    try { if (old.unload) old.unload(); } catch { /* nothing to do */ }
+    els.voiceNote.textContent = 'Unloading the old voice…';
+  } else {
+    els.voiceNote.textContent = 'Fetching the engine (one time)…';
+  }
   paintVoice();
   try {
     const webllm = await import('https://esm.run/@mlc-ai/web-llm');
-    els.voiceNote.textContent = 'Loading ' + voiceModelId + ' — the first run downloads the model, and caches it after that.';
+    els.voiceNote.textContent = 'Loading ' + voiceLabel(voiceModelId) + ' — the first run downloads it, and caches it after that.';
     const engine = await webllm.CreateMLCEngine(voiceModelId, {
       initProgressCallback: (r) => { els.voiceStatus.textContent = 'waking… ' + Math.round((r.progress || 0) * 100) + '%'; },
     });
     voiceEngine = engine;
-    els.voiceNote.textContent = 'The local voice is awake. Walk up to anyone and speak.';
+    voiceLoadedId = voiceModelId;
+    els.voiceNote.textContent = 'Awake (' + voiceLabel(voiceLoadedId) + '). Walk up to anyone and speak. While it is awake it speaks in place of any bound oracle; ' +
+      'PUT IT AWAY to hand the cast back to the oracle or their written lines. Be warned: on-device models this small invent details — treat them as a novelty. If you have an oracle bound, it is the better voice.';
     syncDialogueAdapter();
   } catch (e) {
     voiceEngine = null;
+    voiceLoadedId = '';
     els.voiceNote.textContent = 'The local voice would not wake: ' + (e.message || e);
   } finally {
     voiceBusy = false;
@@ -4265,6 +4301,7 @@ async function enableLocalVoice() {
 function disableLocalVoice() {
   const engine = voiceEngine;
   voiceEngine = null;
+  voiceLoadedId = '';
   if (engine && engine.unload) { try { engine.unload(); } catch { /* nothing to do */ } }
   if (els.voiceNote) els.voiceNote.textContent = 'Put away. The cast are back on their written lines.';
   syncDialogueAdapter();
@@ -4279,9 +4316,11 @@ function syncDialogueAdapter() {
     dialogue.setAdapter(async ({ npc, history, input }) => {
       const g = game;
       const standing = (npc.faction && g && g.standingRank) ? g.standingRank(npc.faction) : 'a stranger';
-      const system = buildDialogueSystemPrompt(npc, { standing });
+      /* Compact: a small in-page model drowns in the full briefing and starts
+       * muddling who is speaking. */
+      const system = buildDialogueSystemPrompt(npc, { standing, compact: true });
       const messages = buildDialogueMessages({ history, input }, system);
-      const out = await voiceEngine.chat.completions.create({ messages, temperature: 0.85, max_tokens: 220 });
+      const out = await voiceEngine.chat.completions.create({ messages, temperature: 0.5, max_tokens: 160, repetition_penalty: 1.1 });
       const reply = out && out.choices && out.choices[0] && out.choices[0].message && out.choices[0].message.content;
       if (!reply) throw new Error('the local voice said nothing');
       return String(reply).trim();
