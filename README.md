@@ -74,11 +74,8 @@ Genuinely new art is the same seam: drop a packed Flare atlas and def under
 **The cast can speak.** The dialogue machinery in `npc.js` has carried an adapter seam for an LLM
 since the beginning; it is finally used. Bind an oracle and the people you meet answer **in
 character** — the prompt is built from each NPC's own lore and your standing with their order
-(`public/js/voice.js`, shared by server and browser), and a failed call falls back to the written
-line rather than an error. Or switch on **THE LOCAL VOICE** in the Library: a small model
-([WebLLM](https://github.com/mlc-ai/web-llm), loaded lazily from a CDN only when you ask) runs **in
-the page** — no key, no server, offline after a one-time download, needs WebGPU. With neither on, the
-cast answer from their written lines and nothing is downloaded.
+(`public/js/voice.js`), and a failed call falls back to the written line rather than an error. With
+no oracle bound, the cast answer from their written lines.
 
 ### Configuration
 

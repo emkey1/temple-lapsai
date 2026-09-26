@@ -10,7 +10,6 @@ import {
 import { T, W, H, isTravelable } from './mapgen.js';
 import { QUESTS, objectiveText } from './quests.js';
 import { dialogue, NPC_GLYPH } from './npc.js';
-import { buildDialogueSystemPrompt, buildDialogueMessages } from './voice.js';
 import { WORLD, loreBriefing } from './world.js';
 import { WEARABLE_SLOTS as WEARABLE, isWorn, abilityReach, monsterTint, PLAYER_GLYPH, partyTint } from './contract.js';
 import { PROVIDERS, providerById } from './providers.js';
@@ -116,13 +115,6 @@ const els = {
   btnOracleTest: $('btn-oracle-test'),
   btnOracleModels: $('btn-oracle-models'),
   btnOracleForget: $('btn-oracle-forget'),
-
-  voicePanel: $('voice-panel'),
-  voiceModel: $('voice-model'),
-  voiceStatus: $('voice-status'),
-  voiceNote: $('voice-note'),
-  btnVoiceOn: $('btn-voice-on'),
-  btnVoiceOff: $('btn-voice-off'),
   libResult: $('lib-result'),
   btnLibClose: $('btn-library-close'),
   itemDetail: $('item-detail'),
@@ -3901,12 +3893,6 @@ function openDialogue(npc) {
   dialogueOpen = true;
   els.dlgName.innerHTML = '<img class="portrait-sm" src="' + npcPortrait(tpl.id || tpl.name, tpl.sex) + '" alt=""> ' +
     esc(tpl.name) + ' — ' + esc(tpl.title || 'a denizen of the dark');
-  /* While the local voice is still downloading, the cast have nothing but
-   * their written lines — say so, so the canned text is not read as a
-   * failure. Shown only when there is no bound oracle to answer instead. */
-  if (voiceBusy && !(oracle && oracle.ready)) {
-    els.dlgName.innerHTML += ' <span class="tiny">· the local voice is still waking — written lines for now</span>';
-  }
   els.dlgLog.innerHTML = '';
   /* How their order counts the company decides how they open their mouth. */
   const faction = game ? game.factionOfNpc(tpl.id) : null;
@@ -4150,7 +4136,6 @@ function openLibrary(openTheOracle) {
   els.libActions.innerHTML = EXP_ACTIONS.map(([a, label]) =>
     '<button data-act="' + a + '">' + label + '</button>').join('');
   paintOracle();
-  paintVoice();
   overlayShow(els.libOverlay);
   /* Arriving with nothing bound, the fold opens itself: the settings ARE the
    * errand, and a collapsed <details> is one more thing to find. */
@@ -4208,125 +4193,10 @@ function note(text, kind) {
 
 /* One sentence in the summary line, because that is all you see when the panel
  * is folded away — and folded away is where it lives once it works. */
-/* ---- the local voice: a small model, in the page, optional ---- *
- *
- * Loaded lazily from a CDN only when the player asks for it, so the base game
- * stays zero-dependency and nothing is downloaded by default. Needs WebGPU;
- * with it off the cast are back on their written lines. */
-
-const VOICE_MODELS = [
-  { id: 'SmolLM2-360M-Instruct-q4f16_1-MLC', label: 'SmolLM2 360M — smallest; poor at staying in character' },
-  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B — tiny; may muddle who is speaking' },
-  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B — recommended; much steadier' },
-  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B — heaviest; the best of these' },
-];
-let voiceEngine = null;
-let voiceBusy = false;
-let voiceLoadedId = '';
-let voiceModelId = VOICE_MODELS[2].id;
-try { voiceModelId = localStorage.getItem('lapsai-voice') || voiceModelId; } catch { /* private mode */ }
-
-function voiceLabel(id) {
-  const m = VOICE_MODELS.find((x) => x.id === id);
-  return m ? m.label : id;
-}
-
-function paintVoice() {
-  if (!els.voicePanel) return;
-  if (!els.voiceModel.options.length) {
-    els.voiceModel.innerHTML = VOICE_MODELS.map((m) =>
-      '<option value="' + m.id + '">' + esc(m.label) + '</option>').join('');
-    els.voiceModel.value = voiceModelId;
-  }
-  const gpu = typeof navigator !== 'undefined' && !!navigator.gpu;
-  const selected = els.voiceModel.value || voiceModelId;
-  const switching = !!voiceEngine && selected !== voiceLoadedId;
-  els.voiceStatus.textContent = voiceBusy ? 'waking…'
-    : voiceEngine ? (switching ? 'awake · another chosen' : 'awake')
-    : (gpu ? 'asleep' : 'no WebGPU here');
-  els.voiceStatus.className = 'lib-status ' + (voiceEngine ? 'bound' : 'unbound');
-  els.btnVoiceOn.disabled = voiceBusy || !gpu || (!!voiceEngine && !switching);
-  els.btnVoiceOn.textContent = switching ? 'SWITCH TO THIS MODEL' : (voiceEngine ? 'AWAKE' : 'WAKE THE LOCAL VOICE');
-  els.btnVoiceOff.disabled = voiceBusy || !voiceEngine;
-  if (!voiceBusy && switching) {
-    els.voiceNote.textContent = 'Loaded: ' + voiceLabel(voiceLoadedId) + '. Press SWITCH to load ' +
-      voiceLabel(selected) + ' instead — the old one is freed first.';
-  }
-}
-
-async function enableLocalVoice() {
-  if (voiceBusy) return;
-  const selected = els.voiceModel.value || voiceModelId;
-  if (voiceEngine && selected === voiceLoadedId) return;
-  if (!(typeof navigator !== 'undefined' && navigator.gpu)) {
-    els.voiceNote.textContent = 'This browser has no WebGPU, so the local voice cannot run here.';
-    return;
-  }
-  voiceBusy = true;
-  voiceModelId = selected;
-  try { localStorage.setItem('lapsai-voice', voiceModelId); } catch { /* private mode */ }
-  /* Changing the model frees the old one first — two will not sit in the GPU at
-   * once, and a stale one answering is worse than none. */
-  if (voiceEngine) {
-    const old = voiceEngine;
-    voiceEngine = null;
-    voiceLoadedId = '';
-    try { if (old.unload) old.unload(); } catch { /* nothing to do */ }
-    els.voiceNote.textContent = 'Unloading the old voice…';
-  } else {
-    els.voiceNote.textContent = 'Fetching the engine (one time)…';
-  }
-  paintVoice();
-  try {
-    const webllm = await import('https://esm.run/@mlc-ai/web-llm');
-    els.voiceNote.textContent = 'Loading ' + voiceLabel(voiceModelId) + ' — the first run downloads it, and caches it after that.';
-    const engine = await webllm.CreateMLCEngine(voiceModelId, {
-      initProgressCallback: (r) => { els.voiceStatus.textContent = 'waking… ' + Math.round((r.progress || 0) * 100) + '%'; },
-    });
-    voiceEngine = engine;
-    voiceLoadedId = voiceModelId;
-    els.voiceNote.textContent = 'Awake (' + voiceLabel(voiceLoadedId) + '). Walk up to anyone and speak. While it is awake it speaks in place of any bound oracle; ' +
-      'PUT IT AWAY to hand the cast back to the oracle or their written lines. Be warned: on-device models this small invent details — treat them as a novelty. If you have an oracle bound, it is the better voice.';
-    syncDialogueAdapter();
-  } catch (e) {
-    voiceEngine = null;
-    voiceLoadedId = '';
-    els.voiceNote.textContent = 'The local voice would not wake: ' + (e.message || e);
-  } finally {
-    voiceBusy = false;
-    paintVoice();
-  }
-}
-
-function disableLocalVoice() {
-  const engine = voiceEngine;
-  voiceEngine = null;
-  voiceLoadedId = '';
-  if (engine && engine.unload) { try { engine.unload(); } catch { /* nothing to do */ } }
-  if (els.voiceNote) els.voiceNote.textContent = 'Put away. The cast are back on their written lines.';
-  syncDialogueAdapter();
-  paintVoice();
-}
-
-/* WHEN A VOICE IS ON, the cast stop reading from the wall. The local model
- * (if awake) speaks first; otherwise a bound oracle; otherwise the canned
- * lines in npc.js are all that answer. */
+/* WHEN AN ORACLE IS BOUND, the cast stop reading from the wall and answer in
+ * character, through the server. With none, the written lines in npc.js are
+ * all that answer. */
 function syncDialogueAdapter() {
-  if (voiceEngine) {
-    dialogue.setAdapter(async ({ npc, history, input }) => {
-      const g = game;
-      const standing = (npc.faction && g && g.standingRank) ? g.standingRank(npc.faction) : 'a stranger';
-      /* Compact: a small in-page model drowns in the full briefing and starts
-       * muddling who is speaking. */
-      const system = buildDialogueSystemPrompt(npc, { standing, compact: true });
-      const messages = buildDialogueMessages({ history, input }, system);
-      const out = await voiceEngine.chat.completions.create({ messages, temperature: 0.5, max_tokens: 160, repetition_penalty: 1.1 });
-      const reply = out && out.choices && out.choices[0] && out.choices[0].message && out.choices[0].message.content;
-      if (!reply) throw new Error('the local voice said nothing');
-      return String(reply).trim();
-    });
-    return;
-  }
   if (!oracle || !oracle.ready) { dialogue.setAdapter(null); return; }
   dialogue.setAdapter(async ({ npc, history, input }) => {
     const g = game;
@@ -4341,7 +4211,14 @@ function syncDialogueAdapter() {
     const res = await fetch('/api/dialogue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ npcId: npc.id, history, input, standing, where }),
+      /* Send the person too, not just their id: the town's residents are not in
+       * the lore the server holds (they are built in mapgen), so an id-only
+       * lookup 404s them straight back to their written lines. */
+      body: JSON.stringify({
+        npcId: npc.id,
+        npc: { id: npc.id, name: npc.name, title: npc.title, intro: npc.intro, topics: npc.topics, faction: npc.faction },
+        history, input, standing, where,
+      }),
     });
     if (!res.ok) throw new Error('the oracle is silent');
     const data = await res.json();
@@ -4755,13 +4632,6 @@ async function boot() {
   els.btnOracleTest.onclick = () => testOracle();
   els.btnOracleModels.onclick = () => askWhatItServes();
   els.btnOracleForget.onclick = () => forgetOracle();
-
-  if (els.btnVoiceOn) els.btnVoiceOn.onclick = () => enableLocalVoice();
-  if (els.btnVoiceOff) els.btnVoiceOff.onclick = () => disableLocalVoice();
-  if (els.voiceModel) els.voiceModel.onchange = () => {
-    voiceModelId = els.voiceModel.value;
-    try { localStorage.setItem('lapsai-voice', voiceModelId); } catch { /* private mode */ }
-  };
 
   document.querySelectorAll('#sheets-tabs .tab').forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);

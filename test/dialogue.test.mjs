@@ -37,14 +37,3 @@ test('the history is trimmed and role-mapped for the wire', () => {
 test('an NPC with no id builds nothing rather than throwing', () => {
   assert.equal(buildDialogueSystemPrompt(null), '');
 });
-
-test('the compact prompt drops the briefing and says who is speaking', () => {
-  const npc = getNPC('hermit-ogil');
-  const full = buildDialogueSystemPrompt(npc, { standing: 'noticed' });
-  const compact = buildDialogueSystemPrompt(npc, { standing: 'noticed', compact: true });
-  assert.ok(compact.length < full.length / 2, 'compact is not markedly shorter than the full briefing');
-  assert.match(compact, /Reply ONLY as Ogil the Whetstone/, 'compact does not pin the speaker');
-  assert.match(compact, /first person/i, 'compact does not ask for the first person');
-  assert.match(compact, /Invent NOTHING/i, 'compact does not forbid invention');
-  assert.doesNotMatch(compact, /THE WORLD \(for your own reference/, 'compact still carries the world register');
-});

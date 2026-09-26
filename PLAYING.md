@@ -137,9 +137,6 @@ three sanctums forever. Setup is in the [README](README.md#llm-driven-expansion-
 
 **And the people can speak.** Bind an oracle and the characters you meet answer
 in their own voice — leave it unbound and they fall back to their written lines.
-If you would rather not use a key at all, the Library's **THE LOCAL VOICE** runs
-a small model **in your browser** (needs WebGPU; downloads once, then offline).
-With none of it on, nothing is downloaded and the base game is unchanged.
 
 ## Saving
 
