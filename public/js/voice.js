@@ -72,3 +72,20 @@ export function buildDialogueMessages(body = {}, system) {
   messages.push({ role: 'user', content: input || '…' });
   return messages;
 }
+
+/* A REPLY THAT STOPS MID-THOUGHT IS WORSE THAN A SHORT ONE. A model told to
+ * keep to a few sentences will sometimes run on anyway and be cut by the token
+ * ceiling — "...before you reach the Whetstone. The Muster" — so a truncated
+ * tail is trimmed back to the last full sentence. If the whole reply is one
+ * unfinished clause, it is left as it is rather than emptied. */
+export function endCleanly(text) {
+  const t = String(text || '').trim();
+  if (!t) return t;
+  if (/[.!?…”"]$/.test(t)) return t;
+  const cut = Math.max(t.lastIndexOf('.'), t.lastIndexOf('!'), t.lastIndexOf('?'));
+  if (cut < 0) return t;
+  let end = cut + 1;
+  while (end < t.length && /[”")\]]/.test(t[end])) end++;
+  return t.slice(0, end);
+}
+
