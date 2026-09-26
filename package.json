@@ -8,6 +8,7 @@
     "start": "node server.js",
     "open": "node scripts/open.mjs",
     "test": "node --test test/*.test.mjs",
+    "simulate": "node scripts/simulate.mjs",
     "lint": "node scripts/lint.mjs",
     "check": "npm run lint && npm test",
     "serve": "node scripts/serve.mjs start",
