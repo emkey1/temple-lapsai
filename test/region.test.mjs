@@ -145,3 +145,20 @@ test('the road keeps a shrine that shows the way, and a toll-man who charges for
   g.stepOn(f.shrine.x, f.shrine.y);
   assert.ok(g.seen.some((row) => row.some((v) => v)), 'the shrine did not show the way');
 });
+
+test('the toll is real: it takes the coin and shows the road', () => {
+  const g = newGame('road-toll');
+  g.state.player.dungeonId = 'the-whetstone';
+  g.travelTo('far-reach');
+  const toll = (g.currentFloor.npcs || []).find((n) => n.tpl.id === 'road-tollman');
+  assert.ok(toll, 'nobody crews the crossing');
+  assert.equal(toll.tpl.service, 'toll', 'the toll-man is not a counter');
+  g.earnGold(1000);
+  const cost = g.tollCost();
+  const purse = g.purse();
+  assert.ok(cost > 0, 'the toll is free');
+  g.seen = g.seen.map((row) => row.map(() => false));
+  assert.ok(g.payToll(), 'the toll could not be paid');
+  assert.equal(g.purse(), purse - cost, 'the toll did not take the coin');
+  assert.ok(g.seen.some((row) => row.some((v) => v)), 'paying the toll did not show the road');
+});

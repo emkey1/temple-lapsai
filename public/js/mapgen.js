@@ -1182,7 +1182,7 @@ export function generateRoadFloor(opts) {
   }];
   const tollAt = path.find((p) => p.x === fordX - 1) || path[Math.max(0, path.length - 2)] || mid;
   npcs.push({ tpl: {
-    id: 'road-tollman', name: 'A Toll-Man', sex: 'male', title: 'of the high crossings', color: 'rust',
+    id: 'road-tollman', name: 'A Toll-Man', sex: 'male', title: 'of the high crossings', color: 'rust', service: 'toll',
     intro: 'You are at the crossing, so you are on the road, so you are on OUR road. The toll is mine to take and yours to pay. Or go round through the thorns and lose a boot. Talk.',
     topics: [
       { keys: ['toll', 'pay', 'price', 'cost'], replies: ['A few coins for a dry crossing. Cheaper than the thorns, cheaper than the water, cheaper than arguing with me.'] },

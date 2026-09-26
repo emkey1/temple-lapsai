@@ -661,6 +661,28 @@ function showInn(g) {
   };
 }
 
+/* THE HIGH CROSSING. The toll is real — pay it and the road opens, or wade the
+ * ford for nothing. A counter has no conversation, so the card carries the
+ * toll-man's own voice. */
+function showToll(g, npc) {
+  const paid = !!(g.currentFloor && g.currentFloor.tollPaid);
+  const cost = g.tollCost();
+  const poor = g.purse() < cost;
+  const body = paid
+    ? purseLine(g) + '<div class="tiny">Paid. The crossing is open and the road ahead charted; the toll-man has stepped aside.</div>'
+    : purseLine(g) +
+      '<div class="tiny">The toll is <b>' + cost + ' gp</b>: a dry crossing, and the road ahead shown plain.</div>' +
+      '<div class="row"><button id="btn-pay-toll"' + (poor ? ' disabled' : '') + '>PAY THE TOLL · ' + cost + ' GP</button></div>' +
+      '<div class="tiny">' + (poor ? 'Your purse is light. The ford is right there, and free, if colder.' : 'Or wade the ford for nothing. He will not stop you; he only watches.') + '</div>';
+  const box = townCard('toll-card', 'THE HIGH CROSSING',
+    (npc && npc.intro) || 'A toll-man stands where the road crosses the water.',
+    body, 'WALK AWAY', npcPortrait((npc && npc.id) || 'tollman', (npc && npc.sex) || 'male'));
+  const btn = box.querySelector('#btn-pay-toll');
+  if (btn) btn.onclick = () => {
+    if (g.payToll()) { saveGame(); renderHud(g); renderStats(g); box.remove(); showToll(g, npc); }
+  };
+}
+
 function showSage(g) {
   const unread = unreadItems(g);
   /* The Lector READS. The loosening moved up the lane to the Little
@@ -3901,6 +3923,7 @@ function openDialogue(npc) {
     else if (tpl.service === 'muster') showMuster(game);
     else if (tpl.service === 'inn') showInn(game);
     else if (tpl.service === 'temple') showTemple(game);
+    else if (tpl.service === 'toll') showToll(game, tpl);
     return;
   }
   if (game && tpl && tpl.id) game.introduceNpc(tpl.id);

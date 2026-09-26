@@ -547,6 +547,24 @@ export class Game {
     if (this.journal) this.journal('The company camped ' + (where || 'by the road') + ' and rose whole.');
   }
 
+  /* THE TOLL AT THE HIGH CROSSING. Pay it and the crossing opens, and the road
+   * shows itself ahead — the map-scroll's gift, for a price that climbs with
+   * the company. Walk away and the toll-man only watches you go; the road runs
+   * through the ford either way, water being cheaper than coin. */
+  tollCost() { return 20 + this.companyLevel() * 5; }
+
+  payToll() {
+    const cost = this.tollCost();
+    if (this.purse() < cost) { this.log('The toll is ' + cost + ' gold, and your purse says no.'); return false; }
+    this.spendGold(cost);
+    if (this.currentFloor) this.currentFloor.tollPaid = true;
+    this.log('You pay the toll (' + cost + ' gold). The toll-man steps aside, and the crossing opens.');
+    this.revealMap();
+    for (const m of this.livingMembers()) this.mendWounds(1, m);
+    if (this.journal) this.journal('Paid the toll at the high crossing — ' + cost + ' gold — and the road ahead lay plain.');
+    return true;
+  }
+
   /* Fast travel, by the map. To a town is a climb out, or a road taken if you
    * are already in one; to a sanctum, a road taken. Refuses a place with no way
    * in, or the one you are already at. */

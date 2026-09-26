@@ -100,8 +100,10 @@ sanctum, and the coast town of the Far Reach. **You are here** is marked. Click
 a place you have found and the company takes the road there. Travelling between
 towns means **walking the road** between them — a strip of coast road with its
 own wanderers, a ford to wade, a roadside altar, a **fire ring where the company
-can bed down** and rise whole, once a crossing, and a pedlar who walks it both
-ways. Step on the near gate to turn back, or the far one to arrive.
+can bed down** and rise whole, once a crossing, a **ruined shrine** where a coin
+shows the road ahead, a pedlar who walks it both ways, and a **toll-man who
+wants paying** for the dry crossing (or wade for nothing). Step on the near gate
+to turn back, or the far one to arrive.
 
 ## The Far Reach
 
