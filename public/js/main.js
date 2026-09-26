@@ -1399,6 +1399,13 @@ function onCanvasClick(e) {
   cancelWalk();
   const t = tileFromEvent(e);
   if (!t) return;
+  /* THE GATE. The north gate is a wall, not a road — but it is the way out of
+   * town, so a click on it opens the region map, exactly as M does. */
+  const townGate = g.currentFloor.gate;
+  if (townGate && g.inTown() && t.y === townGate.y && t.x >= townGate.x && t.x <= townGate.x + 1) {
+    openRegion();
+    return;
+  }
   const p = g.state.player;
   if (t.x === p.x && t.y === p.y) {
     /* your own feet: loot them (into the focused character's pack), or

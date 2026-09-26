@@ -647,10 +647,43 @@ export const ENDLESS = {
   bossId: 'great-wyrm',
 };
 
-const ALL_DUNGEONS = [...DUNGEONS, ENDLESS];
+/* THE DROWNED QUARTER. The sunken lower town off the Far Reach: the sea gave
+ * it back, and some of what it gave back walks. Reached from the Far Reach's
+ * mouth, gated on the serpent like the endless stair, and — like the stair —
+ * not one of the founding three, so it never counts toward the chronicle. */
+export const DROWNED = {
+  id: 'drowned',
+  name: 'The Drowned Quarter',
+  title: 'the sunken district',
+  flavor: 'Below the Far Reach the lower town is still down there, under green water. The streets run where they always ran. The doors are shut and the lamps are lit and the people are at home, in so much as any of them are people now.',
+  floors: 4,
+  theme: 'sewers',
+  threat: 5,
+  requires: 'serpent',
+  monsterWeights: ['giant-leech', 'giant-snake', 'ghast', 'wraith', 'spectre', 'otyugh', 'gelatinous-cube', 'troll', 'umber-hulk'],
+  bossId: 'great-wyrm',
+};
+
+const ALL_DUNGEONS = [...DUNGEONS, ENDLESS, DROWNED];
 
 export function getDungeon(id) {
   return ALL_DUNGEONS.find((d) => d.id === id) || null;
+}
+
+/* THE TOWNS. Two now: the Whetstone at the foot of the hill, and the Far Reach
+ * down the coast, where the sea gives the lower town back. A town is a place
+ * the company stands in, not a dungeon; mapgen builds each from its own spec. */
+export const TOWNS = [
+  { id: 'the-whetstone', name: 'The Whetstone', arrive: 'The Whetstone: lamplight, wet cobbles, and the ledger kept open for you.' },
+  { id: 'far-reach', name: 'The Far Reach', arrive: 'The Far Reach: salt on the wind, a harbour of sorts, and a town that files the sea under losses.' },
+];
+
+export function townById(id) {
+  return TOWNS.find((t) => t.id === id) || null;
+}
+
+export function isTownId(id) {
+  return !!townById(id);
 }
 
 /* ---------------- Theme palettes (map rendering) ---------------- */

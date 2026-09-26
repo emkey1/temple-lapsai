@@ -43,3 +43,45 @@ test('the endless stair appears on the map once its gate is open', () => {
   g.state.player.bossesSlain = { serpent: true };
   assert.ok(g.regionPlaces().some((p) => p.id === 'deep'), 'the Lower Ledger never reached the map');
 });
+
+test('the road runs to a second town, and arrives there', () => {
+  const g = newGame('road');
+  g.state.player.dungeonId = 'the-whetstone';
+  g.state.player.bossesSlain = { serpent: true };
+  assert.ok(g.regionPlaces().some((p) => p.id === 'far-reach'), 'the Far Reach is not on the map');
+  assert.ok(g.travelTo('far-reach'), 'could not take the road to the Far Reach');
+  assert.equal(g.state.player.dungeonId, 'far-reach', 'the road did not lead to the Far Reach');
+  assert.equal(g.inTown(), true, 'the Far Reach is not treated as a town');
+  assert.ok(g.currentFloor.npcs.some((n) => n.tpl.id === 'reach-chandler'), 'the Far Reach has no chandler');
+  /* The coast town's way down is the drowned quarter, not the hill's stairs. */
+  assert.ok((g.currentFloor.mouths || []).some((m) => m.dungeonId === 'drowned'), 'the Far Reach has no way down to the drowned quarter');
+  assert.ok(!(g.currentFloor.mouths || []).some((m) => m.dungeonId === 'temple'), 'the hill stairs reached the coast');
+  /* And the road runs back. */
+  assert.ok(g.travelTo('the-whetstone'), 'could not take the road back');
+  assert.equal(g.state.player.dungeonId, 'the-whetstone', 'the road back did not lead home');
+});
+
+test('taking a road from within a town makes an event of it', () => {
+  const g = newGame('road-event');
+  g.state.player.dungeonId = 'the-whetstone';
+  const before = g.logs.length;
+  g.travelTo('far-reach');
+  /* At least the road event's own line lands in the log. */
+  assert.ok(g.logs.length > before, 'the road passed in silence');
+});
+
+test('the drowned quarter opens once the serpent is quiet', () => {
+  const g = newGame('drowned');
+  g.state.player.dungeonId = 'the-whetstone';
+  assert.equal(g.travelTo('drowned'), false, 'the drowned quarter opened too early');
+  g.state.player.bossesSlain = { serpent: true };
+  assert.ok(g.regionPlaces().some((p) => p.id === 'drowned'), 'the drowned quarter never reached the map');
+  assert.ok(g.travelTo('drowned'), 'could not take the road to the drowned quarter');
+  assert.equal(g.state.player.dungeonId, 'drowned', 'the road did not lead to the drowned quarter');
+});
+
+test('a town has no road to itself', () => {
+  const g = newGame('self-road');
+  g.state.player.dungeonId = 'the-whetstone';
+  assert.equal(g.travelTo('the-whetstone'), false, 'took the road to the town it already stood in');
+});

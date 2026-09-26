@@ -344,6 +344,15 @@ export const LORE = {
       { name: 'The Drowned Quarter', x: 14, y: 80 }
     ]
   },
+  /* THE ROAD BETWEEN TOWNS. Short, and only now and then eventful. */
+  road: [
+    { text: 'The road runs quiet, and the company makes good time.' },
+    { text: 'A toll-man takes a few coins for a bridge that is not a bridge.', gold: -15 },
+    { text: 'A pedlar trades you a draught for the story of where you have been.', item: 'potion-heal' },
+    { text: 'Something follows for a mile, and then does not. Nobody looks back twice.', hp: -3 },
+    { text: 'A cart going the other way shares its fire, and its salt fish.', hp: 4 },
+    { text: 'A scrap of a song, from a cart passing the other way, sticks for the rest of the walk.' }
+  ],
   npcs: [
     {
       id: 'hermit-ogil', faction: 'carriers-ubtao',

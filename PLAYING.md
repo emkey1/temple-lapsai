@@ -94,12 +94,19 @@ The town at the top of the stairs, where gold finally means something:
 
 ## The region
 
-Press **`m`** to see the world from above: the Whetstone at the foot of the
-hill, the stairs down to each sanctum, and the names the stories keep — the
-Chute, the Far Reach, the Drowned Quarter. **You are here** is marked. Click a
-place you have found and the company takes the road there, so you need never
-walk the green to reach a mouth again. The rest are not roads yet; they wait to
-be found.
+Press **`m`** — or click the **north gate** in the Whetstone — to see the world
+from above: the Whetstone at the foot of the hill, the stairs down to each
+sanctum, and the coast town of the Far Reach. **You are here** is marked. Click
+a place you have found and the company takes the road there. Travelling between
+towns is a journey, and the road has its own small say on the way.
+
+## The Far Reach
+
+Down the coast, where the sea gave the lower town back: a second settlement with
+its own chandler, tide-reader and salt-house inn, and people who speak of the
+water. Its mouth leads down into **the Drowned Quarter** — the sunken district,
+where the streets still run where they always ran, the lamps are lit, and
+somebody is at home.
 
 ## Fighting
 

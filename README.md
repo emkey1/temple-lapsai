@@ -17,10 +17,11 @@ built.
 [Title card](docs/title.png) · [Character creation](docs/charcreate.png)
 
 **What is in it:** three hand-authored sanctums and an **endless descent** past them that needs no
-LLM key; a company of four with backgrounds, skills and ability ladders; the walkable Whetstone
-(buy, sell, read, unbind, **enchant**, hire, rest, raise the dead); a **region map** for fast travel;
-seven factions that know you; twenty undertakings; a narrator who keeps the account; and a Hall of
-Accounts that remembers your dead. Optional LLM-driven expansion on top of all of it.
+LLM key; a company of four with backgrounds, skills and ability ladders; **two walkable towns** — the
+Whetstone, and the coast-town Far Reach with its own mouth down — where you buy, sell, read, unbind,
+**enchant**, hire, rest and raise the dead; a **region map** for fast travel, and a **road** between
+the towns; seven factions that know you; twenty undertakings; a narrator who keeps the account; and a
+Hall of Accounts that remembers your dead. Optional LLM-driven expansion on top of all of it.
 
 ## Requirements
 
@@ -171,12 +172,17 @@ A few rules worth knowing before you go down:
 - **The Lower Ledger never ends.** Clear the three founding sanctums and the stair keeps going down:
   an endless descent drawn from the whole bestiary, a boss every fifth landing, no bottom — only how
   deep you got, and whether you came back to say so. It needs no LLM key.
-- **The region** (press **`M`**) is the world from above: the Whetstone at the foot of the hill, its
-  stairs, and the names the stories keep — the Chute, the Far Reach, the Drowned Quarter. **You are
-  here** is marked; click a place you have found and the company takes the road there. No walking the
-  green to reach a mouth.
+- **The region** (press **`M`**, or click the **north gate** in the Whetstone) is the world from
+  above: the Whetstone at the foot of the hill, its stairs, the coast town of **the Far Reach**, and
+  the names the stories keep — the Chute, the Drowned Quarter. **You are here** is marked; click a
+  place you have found and the company takes the road there — a town is a climb out, a sanctum a road
+  taken, and a **road between towns** has its own small say on the way.
+- **A second town.** The **Far Reach** is down the coast, where the sea gave the lower town back: its
+  own chandler, tide-reader and salt-house inn, people with the sea in their speech, and a mouth down
+  into **the Drowned Quarter** — the sunken district, opened once the serpent is quiet.
 
 ![The region map](docs/region.png)
+![The Far Reach](docs/far-reach.png)
 
 ### The undertakings
 

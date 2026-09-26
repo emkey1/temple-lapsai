@@ -7,12 +7,12 @@ import { QUESTS, questById, questsFrom, objectiveText } from './quests.js';
 import {
   CLASSES, getAbility, abilityMod, XP_FOR_LEVEL,
   getMonster, monstersForFloor, getItemTemplate, ALL_ITEMS, abilitiesFor,
-  scaleDice, randomTreasureValue, getDungeon, ENDLESS,
+  scaleDice, randomTreasureValue, getDungeon, ENDLESS, DROWNED, TOWNS, townById, isTownId,
   healFractionForItem, healFractionForAbility, RECOVERY,
   BACKGROUNDS, backgroundById, SKILLS, skillById,
 } from './base.js';
 import {
-  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, GEN_VERSION,
+  T, W, H, isTravelable, isSlowGoing, isWall, isDoor, generateFloor, generateTownFloor, generateReachFloor, GEN_VERSION,
 } from './mapgen.js';
 import { npcsForDungeonFloor } from './npc.js';
 import { beatsAt, arcForDungeon, setFlag, getFlag, getNPC, getFaction, keeperLine, WORLD } from './world.js';
@@ -444,6 +444,10 @@ export class Game {
      * serpent is quiet, and then it does not end. */
     const endless = this.dungeonById(ENDLESS.id);
     if (endless && bossSlain(endless.requires) && !order.some((o) => o && o.id === endless.id)) order.push(endless);
+    /* THE DROWNED QUARTER: the sunken lower town off the Far Reach. Also not
+     * one of the three, and also opened once the serpent is quiet. */
+    const drowned = this.dungeonById(DROWNED.id);
+    if (drowned && bossSlain(drowned.requires) && !order.some((o) => o && o.id === drowned.id)) order.push(drowned);
     return order.filter(Boolean);
   }
 
@@ -461,21 +465,22 @@ export class Game {
     const here = this.state.player.dungeonId;
     const out = [];
     const place = (id, kind) => {
-      const d = id === TOWN_ID ? null : this.dungeonById(id);
+      const town = townById(id);
+      const d = town ? null : this.dungeonById(id);
       const s = spec[id] || {};
       let h = 0;
       for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
       out.push({
         id,
-        name: s.name || (d ? d.name : 'The Whetstone'),
-        note: s.note || (d ? (d.title || d.name) : 'the town at the top of the stairs'),
+        name: s.name || (town ? town.name : (d ? d.name : id)),
+        note: s.note || (town ? 'a town' : (d ? (d.title || d.name) : 'somewhere below')),
         x: s.x != null ? s.x : 28 + (h % 44),
         y: s.y != null ? s.y : 22 + ((h >> 5) % 56),
         kind,
         here: here === id,
       });
     };
-    place(TOWN_ID, 'town');
+    for (const t of TOWNS) place(t.id, 'town');
     for (const d of this.availableDungeons()) place(d.id, d.endless ? 'endless' : 'dungeon');
     return out;
   }
@@ -484,18 +489,46 @@ export class Game {
     return ((WORLD.region && WORLD.region.landmarks) || []).slice();
   }
 
-  /* Fast travel, by the map. To the town is a climb out; to a sanctum, a road
-   * taken. Refuses a place with no way in, or the one you are already at. */
+  /* THE ROAD. A short walk between towns, and whatever the road happens to
+   * bring — a toll, a find, a scare, most often nothing at all. The events are
+   * content; this rolls one and lays its small effect on. */
+  roadLeg(fromId, toId) {
+    const list = (WORLD && WORLD.road) || [];
+    if (!list.length) return null;
+    const ev = list[this.rngOfTurn().int(0, list.length - 1)];
+    if (!ev) return null;
+    this.log(ev.text);
+    if (ev.gold) {
+      if (ev.gold < 0) this.spendGold(Math.min(this.purse(), -ev.gold));
+      else this.earnGold(ev.gold);
+    }
+    if (ev.item) {
+      const tpl = this.itemTemplate(ev.item);
+      const p = this.state.player;
+      if (tpl && p.inventory.length < PACK_LIMIT) { p.inventory.push(deepItem(tpl)); this.log('Taken: ' + tpl.name + '.'); }
+    }
+    if (ev.hp) {
+      const p = this.state.player;
+      p.hp = ev.hp < 0 ? Math.max(1, p.hp + ev.hp) : Math.min(p.maxhp, p.hp + ev.hp);
+    }
+    return ev;
+  }
+
+  /* Fast travel, by the map. To a town is a climb out, or a road taken if you
+   * are already in one; to a sanctum, a road taken. Refuses a place with no way
+   * in, or the one you are already at. */
   travelTo(id) {
-    if (id === TOWN_ID) {
-      if (this.inTown()) return false;
-      this.log('The company takes the road back to the Whetstone.');
-      this.enterTown(this.state.player.dungeonId);
+    const p = this.state.player;
+    if (isTownId(id)) {
+      if (p.dungeonId === id && p.floorIdx === 0) return false;
+      if (isTownId(p.dungeonId)) this.roadLeg(p.dungeonId, id);
+      else this.log('The company takes the road to ' + townById(id).name + '.');
+      this.enterTown(p.dungeonId, id);
       return true;
     }
     const d = this.dungeonById(id);
     if (!d || !this.availableDungeons().some((x) => x.id === id)) { this.log('There is no road there yet.'); return false; }
-    if (this.state.player.dungeonId === id && this.state.player.floorIdx === 0) return false;
+    if (p.dungeonId === id && p.floorIdx === 0) return false;
     this.log('The company takes the road to ' + d.name + '.');
     this.enterDungeon(id);
     return true;
@@ -776,7 +809,8 @@ export class Game {
 
   /* ---- floors ---- */
   inTown() {
-    return !!(this.state && this.state.player && this.state.player.dungeonId === TOWN_ID);
+    const id = this.state && this.state.player && this.state.player.dungeonId;
+    return !!isTownId(id);
   }
 
   /* T5, THE LIVING TOWN: The Whetstone stops being a card of buttons and
@@ -784,19 +818,22 @@ export class Game {
    * green: houses with their keepers at the door, and a row of dungeon
    * mouths in the east field. The services are the same functions town.js
    * always ran — walking up to a keeper is how you ask for them now. */
-  enterTown(fromDungeonId) {
+  enterTown(fromDungeonId, townId = TOWN_ID) {
+    const town = townById(townId) || townById(TOWN_ID);
     const p = this.state.player;
     this.snapshotFloor();   /* remember the floor being climbed out of */
-    p.lastDungeon = fromDungeonId && fromDungeonId !== TOWN_ID ? fromDungeonId : (p.lastDungeon || 'temple');
-    p.dungeonId = TOWN_ID;
+    p.lastDungeon = fromDungeonId && !isTownId(fromDungeonId) ? fromDungeonId : (p.lastDungeon || 'temple');
+    p.dungeonId = town.id;
     p.floorIdx = 0;
-    this.loadTown('arrive');
-    this.log('The Whetstone: lamplight, wet cobbles, and the ledger kept open for you.');
+    this.loadTown('arrive', town.id);
+    this.log(town.arrive);
   }
 
-  loadTown(arriveAt) {
+  loadTown(arriveAt, townId) {
+    const town = townById(townId || this.state.player.dungeonId) || townById(TOWN_ID);
     const p = this.state.player;
-    const floor = generateTownFloor(this.availableDungeons());
+    const dungeons = this.availableDungeons();
+    const floor = town.id === 'far-reach' ? generateReachFloor(dungeons) : generateTownFloor(dungeons);
     this.currentFloor = floor;
     for (const m of (this.state.party && this.state.party.members) || []) {
       if (!m) continue;
@@ -816,11 +853,11 @@ export class Game {
     }
     p.x = spot.x; p.y = spot.y;
     this.placePartyAround(floor, p);
-    for (const m of this.livingMembers()) { m.dungeonId = TOWN_ID; m.floorIdx = 0; }
+    for (const m of this.livingMembers()) { m.dungeonId = town.id; m.floorIdx = 0; }
     this.charted = Array.from({ length: H }, () => Array(W).fill(false));
     this.seen = Array.from({ length: H }, () => Array(W).fill(true));
     this.computeVisibility();
-    if (this.ui.setLocation) this.ui.setLocation('The Whetstone');
+    if (this.ui.setLocation) this.ui.setLocation(town.name);
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
     this.advanceQueue();
@@ -916,7 +953,7 @@ export class Game {
    * stairs that go up AGAIN rather than on the ones you had just come down. */
   loadFloor(floorIdx, arriveAt = 'up') {
     const p = this.state.player;
-    if (p.dungeonId === TOWN_ID) { this.loadTown(arriveAt); return; }
+    if (isTownId(p.dungeonId)) { this.loadTown(arriveAt, p.dungeonId); return; }
     const d = this.dungeonById(p.dungeonId);
     if (!d) return;
     this.snapshotFloor();   /* remember the floor we are stepping off */
@@ -1979,7 +2016,7 @@ export class Game {
     }
     if (p.inventory.length >= PACK_LIMIT) {
       this.log(me ? 'Your pack is full.' : p.name + '’s pack is full.');
-      if (me) this.tip('pack', 'Your pack is full. The Provisioner in the Whetstone buys what you haul up — sell, then come back for the rest.');
+      if (me) this.tip('pack', 'Your pack is full. The Provisioner buys what you haul up — sell, then come back for the rest.');
       return false;
     }
     p.inventory.push(it);
@@ -2167,7 +2204,7 @@ export class Game {
         /* The unlock was one log line in the middle of a boss kill, and a
          * player who missed it walked back into the cleared mouth and
          * wondered why the world had stopped. Say it durably. */
-        this.journal('The way into ' + opened.name + ' opened — its mouth stands in the Whetstone\u2019s east field.');
+        this.journal('The way into ' + opened.name + ' opened — a mouth for it stands in the town’s east field.');
         if (this.ui.unlock) this.ui.unlock(opened);
       }
     }
@@ -3278,7 +3315,7 @@ export class Game {
     if (!s.journal) s.journal = [];
     const p = s.player;
     const d = p && this.dungeonById(p.dungeonId);
-    const where = this.inTown() ? 'The Whetstone'
+    const where = this.inTown() ? ((townById(p.dungeonId) || {}).name || 'town')
       : d ? d.name + ', floor ' + ((p.floorIdx || 0) + 1) : '';
     s.journal.push({ turn: this.turn || 0, where, text });
     if (s.journal.length > 200) s.journal.splice(0, s.journal.length - 200);
@@ -4570,7 +4607,7 @@ export class Game {
    * halls twice — monsters do not respawn, so the trip up is pure toll.
    * Refusals follow the refused-draught law: no scroll spent, no turn. */
   scrollRecall() {
-    if (this.inTown()) { this.log('You are already under the Whetstone’s lamps.'); return false; }
+    if (this.inTown()) { this.log('You are already in town.'); return false; }
     if (!this.outOfCombat()) { this.log('Not with something awake this close.'); return false; }
     const p = this.state.player;
     this.log('The words lift off the page and take the company with them.');

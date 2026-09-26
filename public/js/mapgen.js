@@ -880,7 +880,7 @@ export function generateTownFloor(dungeons) {
    * the next one you commissioned was reachable by id and by nothing else.
    * Two columns, spaced four: eleven ways down before anything is lost. */
   const mouths = [];
-  (dungeons || []).forEach((d, i) => {
+  (dungeons || []).filter((d) => d.id !== 'drowned').forEach((d, i) => {
     const col = Math.floor(i / 6);
     const x = 52 - col * 4, y = 10 + (i % 6) * 4;
     if (y > 36 || col > 1) return;
@@ -955,6 +955,114 @@ export function generateTownFloor(dungeons) {
     w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
     up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
     isLast: false, den: null, mouths, props, houseWalls, houseDoors, gateDoors, gateTowers,
+    gate: { x: GATE_X, y: GATE_Y },
     entry: { x: 36, y: 22 },
+  };
+}
+
+/* THE FAR REACH: the second town, down the coast, where the sea gave the lower
+ * town back. Smaller than the Whetstone — a chandler, a tide-reader, a salt-
+ * house inn, and a couple of people with the sea in their speech — and a mouth
+ * down into the drowned quarter. Its keepers carry the SAME service ids as the
+ * Whetstone's, so the same counters open without a second line of code. */
+export function generateReachFloor(dungeons) {
+  const tiles = Array.from({ length: H }, () => Array(W).fill(T.WALL));
+  for (let y = 8; y <= 36; y++) {
+    for (let x = 8; x <= 50; x++) {
+      const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const edge = (x <= 9 || x >= 49 || y <= 9 || y >= 35) && (h % 3 === 0);
+      if (!edge) tiles[y][x] = T.FLOOR;
+    }
+  }
+  /* The sea takes the south and the west: the drowned quarter comes up to the
+   * quay, and everything below it is water you can see across, not into. */
+  for (let y = 37; y <= 41; y++) for (let x = 6; x <= 52; x++) tiles[y][x] = T.WATER;
+  for (let y = 8; y <= 41; y++) for (let x = 4; x <= 7; x++) tiles[y][x] = T.WATER;
+
+  const houseWalls = new Set();
+  const houseDoors = new Set();
+  const house = (hx, hy, depth) => {
+    for (let y = hy; y < hy + depth; y++) {
+      for (let x = hx; x < hx + 2; x++) { tiles[y][x] = T.WALL; houseWalls.add(y * W + x); }
+    }
+    const dy = hy + depth - 1;
+    houseDoors.add(dy * W + (hx + 1));
+    return { x: hx + 2, y: dy };
+  };
+  const npcs = [];
+  const post = (spot, tpl) => npcs.push({ tpl, x: spot.x, y: spot.y });
+
+  post(house(14, 12, 4), {
+    id: 'reach-chandler', name: 'The Chandler', sex: 'female', color: 'gold', service: 'shop',
+    desc: 'Oil, rope, and draughts; buys whatever the sea gives back.',
+  });
+  post(house(28, 10, 4), {
+    id: 'reach-reader', name: 'The Tide-Reader', sex: 'male', color: 'cyan', service: 'sage',
+    desc: 'Reads what the water left in your pack, for coin.',
+  });
+  post(house(38, 14, 5), {
+    id: 'reach-innkeep', name: 'The Salt House', sex: 'female', color: 'amber', service: 'inn',
+    desc: 'Beds, salt fish, and a fire that never quite dries the walls.',
+  });
+
+  post(house(16, 26, 3), {
+    id: 'reach-netmender', name: 'Essa', sex: 'female', title: 'a netmender', color: 'white',
+    intro: 'You are up from the Whetstone, then. We can smell the hill on you. Sit, and mind the wet.',
+    topics: [
+      { keys: ['sea', 'tide', 'water'], replies: ['The sea gives back what it takes, only it keeps it a while first. What comes up after is never in the mood to be thanked.'] },
+      { keys: ['drowned', 'quarter', 'lower town'], replies: ['The lower town is still down there. We do not go in. The lamps are lit and somebody is at home, and that is the whole of what I will say.'] },
+      { keys: ['reach', 'coast'], replies: ['They call it the Far Reach because it is the far one of what is left. There were other towns once.'] },
+    ],
+    fallbacks: [
+      'Mind the quay. The green water is deeper than it looks.',
+      'Everything here smells of fish, and salt, and loss. Not always in that order.',
+    ],
+  });
+  post(house(30, 28, 3), {
+    id: 'reach-salvager', name: 'Orrin', sex: 'male', title: 'a salvager', color: 'brightgreen',
+    intro: 'Anything comes up, I buy it or I dive for it. Talk quick — the tide is turning.',
+    topics: [
+      { keys: ['salvage', 'buy', 'gold'], replies: ['I pay for what the water left. I do not ask what else it left on you.'] },
+      { keys: ['family', 'families', 'whetstone'], replies: ['The four families send a man down the coast every season. He does not like it here. Good.'] },
+    ],
+    fallbacks: [
+      'The tide is turning. Come back at the ebb.',
+      'I have dived that quarter. That is all I will say about it.',
+    ],
+  });
+
+  /* The mouths: the drowned quarter, and any other way down the company has
+   * found, in a column along the eastern green. */
+  const mouths = [];
+  (dungeons || []).filter((d) => d.id === 'drowned').forEach((d, i) => {
+    const x = 45, y = 12 + (i % 5) * 5;
+    if (y > 34) return;
+    tiles[y][x] = T.DOWN;
+    mouths.push({
+      x, y, dungeonId: d.id,
+      name: d.minLevel ? `${d.name} (Lv ${d.minLevel}+)` : d.name,
+      minLevel: d.minLevel || 0,
+    });
+  });
+
+  /* The quay: a path from the keepers' lane down to the water, and the odds
+   * and ends a harbour accumulates. */
+  const props = [
+    { x: 18, y: 30, piece: 'barrelsStacked_S' },
+    { x: 19, y: 31, piece: 'woodenCrate_S' },
+    { x: 40, y: 30, piece: 'woodenPile_S' },
+    { x: 13, y: 22, piece: 'barrels_S' },
+    { x: 26, y: 15, piece: 'woodenCrate_S' },
+  ];
+  for (let x = 14; x <= 46; x++) {
+    if (tiles[22] && tiles[22][x] === T.FLOOR) props.push({ x, y: 22, piece: x % 4 === 0 ? 'dirtTiles_S' : 'dirt_S', flat: true });
+  }
+
+  return {
+    w: W, h: H, tiles, rooms: [], monsters: [], items: [], npcs,
+    up: null, down: mouths.length ? { x: mouths[0].x, y: mouths[0].y } : null,
+    isLast: false, den: null, mouths, props,
+    houseWalls, houseDoors, gateDoors: new Set(), gateTowers: new Set(),
+    entry: { x: 30, y: 20 },
   };
 }
