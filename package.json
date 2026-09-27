@@ -2,7 +2,10 @@
   "name": "temple-lapsai",
   "version": "2.0.0",
   "description": "A turn-based isometric party dungeon crawler — a 1982 homage grown a world — with optional LLM-driven expansion.",
-  "author": "Mike Miller",
+  "author": {
+    "name": "Mike Miller",
+    "email": "emkey1@users.noreply.github.com"
+  },
   "type": "module",
   "main": "desktop/main.js",
   "private": true,
@@ -40,8 +43,8 @@
     "mac": {
       "category": "public.app-category.games",
       "target": [
-        "dmg",
-        "zip"
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
       ]
     },
     "win": {
@@ -52,6 +55,7 @@
     },
     "linux": {
       "category": "Game",
+      "maintainer": "Mike Miller <emkey1@users.noreply.github.com>",
       "target": [
         "AppImage",
         "deb"
