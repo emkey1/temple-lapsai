@@ -146,6 +146,7 @@ const els = {
   helpKeys: $('help-keys'),
   btnHelp: $('btn-help'),
   btnSaves: $('btn-saves'),
+  btnView: $('btn-view'),
   btnHelpClose: $('btn-help-close'),
   partyStrip: $('party-strip'),
   ledger: $('ledger'),
@@ -3789,6 +3790,20 @@ function renderLibrary(g) {
 /* ---------------- keyboard & actions ---------------- */
 function canvasFocus() { els.canvas.focus(); }
 
+/* One place that switches the view, so the key, the top-bar button and the
+ * saved preference can never disagree — a player was left in the top-down map
+ * with no way back but a key they did not know. */
+function setView(mode) {
+  viewMode = mode === 'classic' ? 'classic' : 'iso';
+  try { localStorage.setItem('lapsai-view', viewMode); } catch { /* private mode */ }
+  lastTiles = '';
+  if (els.btnView) {
+    els.btnView.textContent = viewMode === 'iso' ? 'ISO' : 'TOP';
+    els.btnView.title = 'Switch to the ' + (viewMode === 'iso' ? 'top-down map' : 'isometric scene') + ' (V)';
+  }
+  if (game) renderGame(game);
+}
+
 function onKey(e) {
   /* The keyboard outranks the autopilot: any key stops the walk. */
   if (walkPath || walkDest) cancelWalk();
@@ -3894,10 +3909,7 @@ function onKey(e) {
     return;
   }
   if (k === 'v' && !cardUp) {
-    viewMode = viewMode === 'iso' ? 'classic' : 'iso';
-    try { localStorage.setItem('lapsai-view', viewMode); } catch { /* private mode */ }
-    lastTiles = '';
-    if (game) renderGame(game);
+    setView(viewMode === 'iso' ? 'classic' : 'iso');
     e.preventDefault();
     return;
   }
@@ -4880,6 +4892,11 @@ async function boot() {
   els.btnLedgerNew.onclick = () => beginCreate();
   els.btnLedgerClose.onclick = () => closeLedger();
   els.btnSaves.onclick = () => openLedger(true);
+  els.btnView.onclick = () => setView(viewMode === 'iso' ? 'classic' : 'iso');
+  if (els.btnView) {
+    els.btnView.textContent = viewMode === 'iso' ? 'ISO' : 'TOP';
+    els.btnView.title = 'Switch to the ' + (viewMode === 'iso' ? 'top-down map' : 'isometric scene') + ' (V)';
+  }
   els.btnLedgerImport.onclick = () => els.ledgerImportFile.click();
   els.ledgerImportFile.onchange = () => {
     const f = els.ledgerImportFile.files && els.ledgerImportFile.files[0];
