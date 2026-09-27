@@ -139,6 +139,24 @@ body {
   gap: 4px;
   z-index: 5;
 }
+
+/* A quiet line while a big atlas is still arriving. */
+#asset-note {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 4px 12px;
+  border: 1px solid var(--amb-dim);
+  background: rgba(6, 8, 6, .82);
+  color: var(--amb-dim);
+  font: 10px "Courier New", monospace;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+#asset-note.hidden { display: none; }
 .hudbar {
   display: flex;
   align-items: center;

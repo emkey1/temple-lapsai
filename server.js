@@ -231,8 +231,27 @@ async function staticServe(req, res, pathname) {
       res.writeHead(301, { Location: pathname.replace(/\/?$/, '/') + 'index.html' }); res.end(); return;
     }
     const ext = path.extname(filePath).toLowerCase();
+    /* A VALIDATOR, so a nine-megabyte atlas is not re-sent on every load.
+     * It was `no-cache` with no ETag and no Last-Modified, which a browser can
+     * only answer by asking for the whole file again. Now the browser keeps
+     * the bytes and revalidates cheaply: unchanged files return 304, and the
+     * edit-while-playing workflow still sees a changed file at once. */
+    const etag = '"' + stat.size.toString(16) + '-' + Math.floor(stat.mtimeMs).toString(16) + '"';
+    const lastMod = stat.mtime.toUTCString();
+    const ims = req.headers['if-modified-since'];
+    const fresh = req.headers['if-none-match']
+      ? req.headers['if-none-match'] === etag
+      : (ims && Math.floor(Date.parse(ims) / 1000) >= Math.floor(stat.mtimeMs / 1000));
+    if (fresh) {
+      res.writeHead(304, { 'ETag': etag, 'Last-Modified': lastMod, 'Cache-Control': 'no-cache' });
+      res.end();
+      return;
+    }
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'ETag': etag,
+      'Last-Modified': lastMod,
       'Cache-Control': 'no-cache',
     });
     /* The stream gets its own error handler: a file swapped or deleted

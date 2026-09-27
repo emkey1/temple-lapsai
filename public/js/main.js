@@ -70,6 +70,7 @@ function migrateLegacyStorage() {
 const $ = (id) => document.getElementById(id);
 const els = {
   canvas: $('game'),
+  assetNote: $('asset-note'),
   ctx: $('game').getContext('2d'),
   iniBar: $('initiative-bar'),
   location: $('location'),
@@ -144,6 +145,7 @@ const els = {
   help: $('help'),
   helpKeys: $('help-keys'),
   btnHelp: $('btn-help'),
+  btnSaves: $('btn-saves'),
   btnHelpClose: $('btn-help-close'),
   partyStrip: $('party-strip'),
   ledger: $('ledger'),
@@ -188,11 +190,12 @@ const CONTROLS = [
     ['C', 'Codex: the depths you know about.'],
     ['L', 'The Black Library, where new depths get written.'],
     ['M', 'The region: where you are, and the roads out of it.'],
+    ['O  ·  SAVES', 'The ledger, from anywhere in a run: EXPORT an adventurer to a file, or IMPORT one back.'],
     ['Tab', 'Cycle those four panels.'],
   ]],
   ['Talking and dialogs', [
     ['Enter', 'Start the game, or send a line of dialogue.'],
-    ['OTHER ADVENTURERS', 'On the title card: everyone you have sent down. Play any of them, or erase one. Whoever went down last is who CONTINUE opens.'],
+    ['OTHER ADVENTURERS', 'On the title card: everyone you have sent down. Play any of them, EXPORT one to a file, IMPORT one back, or erase one. Whoever went down last is who CONTINUE opens.'],
     ['Esc', 'Leave a conversation.'],
     ['?  ·  H', 'This card.'],
   ]],
@@ -970,6 +973,18 @@ function getTileset(name) {
     lastTiles = '';
   });
   return null;
+}
+
+/* A one-line status over the scene while a big atlas is still arriving, so a
+ * slow load reads as loading rather than as broken. */
+let assetNoteText = '';
+function noteAsset(text) {
+  if (!els.assetNote) return;
+  const t = text || '';
+  if (t === assetNoteText) return;
+  assetNoteText = t;
+  els.assetNote.textContent = t;
+  els.assetNote.classList.toggle('hidden', !t);
 }
 
 /* AN ATLAS'S OWN SCALE. Flare's tilesets are drawn for a 192px diamond;
@@ -2669,6 +2684,10 @@ function renderIsoScene(g, sa) {
   isoCamX = centre.sx - cw / 2;
   isoCamY = centre.sy - ch / 2;
   const tset = getTileset(town ? 'tileset_grassland' : (THEME_TILESET[dungeon.theme] || 'tileset_dungeon'));
+  /* The atlas is megabytes; until it arrives the walls are painted prisms. Say
+   * so, rather than leaving a player staring at geometry that never grows its
+   * skin and assuming the game is broken. */
+  noteAsset(tset ? '' : 'streaming the stone\u2026');
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = getUnknownPattern(ctx);
@@ -3806,7 +3825,7 @@ function onKey(e) {
   }
   if (e.code === 'Numpad5' && !cardUp) { game.handleKey(' ', {}); e.preventDefault(); saveGame(); return; }
 
-  if (k >= '1' && k <= '9') {
+  if (k >= '1' && k <= '9' && !cardUp) {
     /* The digits fire the powers of whoever the SHEET shows — the numbers
      * on screen are the numbers that fire. For the member at the reins that
      * is the classic path; for a companion, between fights, it is the
@@ -3874,7 +3893,7 @@ function onKey(e) {
     e.preventDefault();
     return;
   }
-  if (k === 'v') {
+  if (k === 'v' && !cardUp) {
     viewMode = viewMode === 'iso' ? 'classic' : 'iso';
     try { localStorage.setItem('lapsai-view', viewMode); } catch { /* private mode */ }
     lastTiles = '';
@@ -3883,10 +3902,18 @@ function onKey(e) {
     return;
   }
   if (k === '?' || k === 'h') { helpOpen ? closeHelp() : showHelp(); e.preventDefault(); return; }
-  if (k === 'i' || k === 'e') { setTab('gear'); e.preventDefault(); return; }
-  if (k === 'c') { setTab('codex'); e.preventDefault(); return; }
-  if (k === 'l') { setTab('library'); e.preventDefault(); return; }
+  if ((k === 'i' || k === 'e') && !cardUp) { setTab('gear'); e.preventDefault(); return; }
+  if (k === 'c' && !cardUp) { setTab('codex'); e.preventDefault(); return; }
+  if (k === 'l' && !cardUp) { setTab('library'); e.preventDefault(); return; }
   if (k === 'm') { if (!cardUp) openRegion(); e.preventDefault(); return; }
+  if (k === 'o') {
+    /* The ledger, from wherever you are — the save you want to export is
+     * usually the one you are in the middle of. */
+    if (els.ledger && !els.ledger.classList.contains('hidden')) closeLedger();
+    else if (!cardUp) openLedger(!!game);
+    e.preventDefault();
+    return;
+  }
   if (k === 'escape') {
     if (els.regionOverlay && !els.regionOverlay.classList.contains('hidden')) closeRegion();
     else if (helpOpen) closeHelp();
@@ -4149,6 +4176,21 @@ function renderLedger() {
   overlayShow(els.ledger);
 }
 
+/* The ledger is reachable from the title AND from the middle of a run — the
+ * SAVES button in the top bar, or `O` — because the save you want to export
+ * is usually the one you are in the middle of. Opened mid-run it comes back to
+ * the game rather than the title. */
+let ledgerMidGame = false;
+function openLedger(midGame) {
+  ledgerMidGame = !!midGame && !!game;
+  renderLedger();
+}
+function closeLedger() {
+  if (ledgerMidGame && game) { ledgerMidGame = false; overlayHideAll(); canvasFocus(); return; }
+  ledgerMidGame = false;
+  doRoster();
+}
+
 /* ---------------- export & import ----------------
  *
  * A save lives in the browser's own storage, which is tied to one origin: the
@@ -4398,8 +4440,20 @@ function openLibrary(openTheOracle) {
  * Everything it needs is here now, and nothing it changes needs a restart.
  */
 
-/* What the server last told us. `null` means we have not managed to ask. */
+/* What the server last told us. `null` means we have not managed to ask.
+ * `serverReachable` is set false only when the ask itself failed — which is the
+ * difference between a bound Oracle and the static build that has no server. */
 let oracle = null;
+let serverReachable = null;
+
+/* The Oracle is the server's job. With no server to ask, disable the controls
+ * rather than let someone type a key that cannot possibly work. */
+function disableOracleControls(off) {
+  for (const el of [els.oracleProvider, els.oracleBase, els.oracleModel, els.oracleKey,
+    els.btnOracleSave, els.btnOracleTest, els.btnOracleModels, els.btnOracleForget]) {
+    if (el) el.disabled = !!off;
+  }
+}
 
 function fillProviderMenu() {
   if (els.oracleProvider.options.length) return;
@@ -4478,11 +4532,21 @@ function paintOracle() {
   fillProviderMenu();
   const cur = oracle && oracle.current;
   if (!cur) {
-    els.libStatus.textContent = 'not reachable — is the server running?';
+    /* No /api/oracle to ask. On the static browser build (GitHub Pages) there
+     * is no server at all, so say that plainly rather than inviting a key that
+     * cannot work — a bound Oracle is the one thing the browser link lacks. */
+    els.libStatus.textContent = serverReachable === false
+      ? 'offline in this build — no local server here'
+      : 'not reachable — is the server running?';
     els.libStatus.className = 'lib-status unbound';
+    note(serverReachable === false
+      ? 'The Oracle needs the little local server, which the browser build does not have. Play from the download bundle or the desktop app to bind one — the game is complete without it.'
+      : 'Waiting on the local server. If you bound an Oracle it may just be starting; press TEST IT once it answers.', serverReachable === false ? 'warn' : '');
+    disableOracleControls(true);
     setExpandEnabled(false);
     return;
   }
+  disableOracleControls(false);
   els.oracleProvider.value = cur.provider;
   els.oracleBase.value = cur.baseUrl;
   els.oracleModel.value = cur.model;
@@ -4508,8 +4572,10 @@ function setExpandEnabled(on) {
 async function refreshOracle() {
   try {
     const res = await fetch('/api/oracle', { headers: { 'Content-Type': 'application/json' } });
+    serverReachable = res.ok;
     oracle = res.ok ? await res.json() : null;
   } catch {
+    serverReachable = false;
     oracle = null;
   }
   paintOracle();
@@ -4810,9 +4876,10 @@ async function boot() {
   els.btnArrivalOk.onclick = () => nextCard();
   els.btnVictoryOk.onclick = () => { clearCards(); doRoster(); };
   els.btnLibClose.onclick = () => { overlayHideAll(); canvasFocus(); };
-  els.btnLedger.onclick = () => renderLedger();
+  els.btnLedger.onclick = () => openLedger(false);
   els.btnLedgerNew.onclick = () => beginCreate();
-  els.btnLedgerClose.onclick = () => doRoster();
+  els.btnLedgerClose.onclick = () => closeLedger();
+  els.btnSaves.onclick = () => openLedger(true);
   els.btnLedgerImport.onclick = () => els.ledgerImportFile.click();
   els.ledgerImportFile.onchange = () => {
     const f = els.ledgerImportFile.files && els.ledgerImportFile.files[0];
