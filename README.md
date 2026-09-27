@@ -398,9 +398,14 @@ debug debris, and the two conventions the content depends on.
 `npm run simulate` is a **headless robot delver**: it plays whole games without a browser and prints
 two reports — **BALANCE** (outcomes, depth, level, gold, kills, party) and **BUGS** (any exception,
 deduped with the seeds that hit it). Flags: `--runs N`, `--seed S`, `--cls C`, `--gold G`, `--cap N`,
-`--verbose`, and `--at <dungeon>` to drop a funded, geared company straight into a named area (the
-Emberworks, the Drowned Quarter, the endless stair) at the level it was cut for — so deep content can
-be tested without clearing the founding three first.
+`--verbose`, `--at <dungeon>` to drop a funded, geared company straight into a named area (the
+Emberworks, the Drowned Quarter, the endless stair) at the level it was cut for, and `--party a,b,c`
+to pin the companions' classes.
+
+Runs **cycle party shapes** rather than always hiring one of each — a balanced four, a cleric behind
+two mages, three mages, three fighters, and so on — and the report prints a **PARTY SHAPES** table so
+the lines can be compared side by side (won/died, depth, level, average size). `--party mage,mage`
+means a leader and exactly two mages; a three-class `--party` is the full four.
 
 `npm run package` builds the **download bundle** — one zip carrying the game and a launcher for each
 OS — into `dist/`. `npm run desktop:build` builds the **native installers** with Electron into

@@ -373,8 +373,11 @@ function nudge(g, st) {
   g.handleKey(' '); return 'wait';
 }
 
-/* The town errand: dump loot, mend at the inn, stock up, fill the ranks. */
-function townRoutine(g) {
+/* The town errand: dump loot, mend at the inn, stock up, fill the ranks.
+ * `comp` is the class list the company hires into — the party shape under
+ * test — so the bot can muster an all-mage line or a cleric behind two mages
+ * rather than the same balanced four every time. */
+function townRoutine(g, comp) {
   for (const m of g.state.party.members) {
     if (!m) continue;
     for (const it of [...m.inventory]) {
@@ -387,12 +390,15 @@ function townRoutine(g) {
   if (g.state.player.hp < g.state.player.maxhp) takeRoom(g);
   /* Companions first: a second body is worth more than a belt of draughts. */
   let guard = 6;
-  const order = ['fighter', 'thief', 'cleric', 'mage'];
-  while (guard-- > 0 && g.state.party.members.length < 4) {
+  const order = (comp && comp.length) ? comp : ['fighter', 'thief', 'cleric'];
+  /* Fill to leader + companions: a three-entry comp is the full four, a
+   * two-entry one is exactly a trio (--party mage,mage is "a leader and two
+   * mages"), so a shape can be sized as well as chosen. */
+  while (guard-- > 0 && g.state.party.members.length < 1 + order.length) {
     /* Keep enough coin for a room: a company that hires itself broke and then
      * cannot afford to mend loops between the inn and the door for ever. */
     if (g.purse() - hireCost(g) < 45) break;
-    const cls = order[g.state.party.members.length % order.length];
+    const cls = order[(g.state.party.members.length - 1) % order.length];
     if (!hireMember(g, cls)) break;
   }
   /* Steel before swill: equip what the company already hauls, then buy the best
@@ -470,10 +476,10 @@ function playRun(seed, clsId, opts = {}) {
     /* Kit out first, the way a run would: the point is to test the area, not to
      * watch a naked level-six company die at the door. */
     g.enterTown('temple', 'the-whetstone');
-    townRoutine(g);
+        townRoutine(g, opts.comp);
     g.enterDungeon(d.id);
   }
-  const report = { seed, cls: clsId, outcome: 'cap', deepest: 0, level: 1, gold: 0, kills: 0, turns: 0, party: 1, error: null, actions: {} };
+  const report = { seed, cls: clsId, comp: opts.compName || 'balanced', outcome: 'cap', deepest: 0, level: 1, gold: 0, kills: 0, turns: 0, party: 1, error: null, actions: {} };
   try {
     let turns = 0;
     let townTrips = 0;
@@ -485,7 +491,7 @@ function playRun(seed, clsId, opts = {}) {
       report.deepest = Math.max(report.deepest, (p.floorIdx || 0));
       report.party = g.state.party.members.length;
       if (g.inTown()) {
-        townRoutine(g);
+    townRoutine(g, opts.comp);
         townTrips++;
         if (townTrips > 60) { report.outcome = 'loop'; break; }   /* never left town */
         const next = pickDungeon(g, opts.at);
@@ -529,7 +535,7 @@ function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -538,26 +544,55 @@ function parseArgs(argv) {
     else if (a === '--cls') o.cls = argv[++i];
     else if (a === '--gold') o.gold = Math.max(0, parseInt(argv[++i], 10) || 0);
     else if (a === '--at') o.at = argv[++i];
+    else if (a === '--party') o.party = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--verbose') o.verbose = true;
   }
   return o;
 }
 
 const CLASSES = ['fighter', 'thief', 'cleric', 'mage'];
+/* PARTY SHAPES. One of each class is one shape among many, and not the one the
+ * game rewards most — a cleric holding up two mages is a classic for a reason.
+ * Runs cycle through these (the leader class cycling separately, so a shape and
+ * a leader vary independently), and --party pins the companions to measure one
+ * shape on its own. The companions are what offerCompanions would hire. */
+const COMPOSITIONS = [
+  ['fighter', 'thief', 'cleric'],    // balanced: a second wall, a knife, a healer
+  ['cleric', 'mage', 'mage'],        // a healer behind two casters
+  ['mage', 'mage', 'mage'],          // glass, all of it
+  ['fighter', 'fighter', 'fighter'], // the wall
+  ['fighter', 'cleric', 'mage'],     // one of each, without the thief
+  ['thief', 'thief', 'thief'],       // knives
+];
+const compLabel = (comps) => (comps && comps.length ? comps.join('+') : 'balanced');
 const mean = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : 0);
 const pct = (n, d) => (d ? Math.round((n / d) * 100) + '%' : '0%');
 
 function main() {
   const o = parseArgs(process.argv.slice(2));
+  /* Reject a typo'd class before spending minutes simulating it — a bad --cls
+   * used to become ninety-six percent exceptions. */
+  if (o.cls && !CLASSES.includes(o.cls)) {
+    console.error('no such class: ' + o.cls + '  (one of: ' + CLASSES.join(', ') + ')');
+    return 2;
+  }
+  if (o.party) {
+    const bad = o.party.filter((c) => !CLASSES.includes(c));
+    if (bad.length) {
+      console.error('no such class in --party: ' + bad.join(', ') + '  (one of: ' + CLASSES.join(', ') + ')');
+      return 2;
+    }
+  }
   const runs = [];
   const errors = [];
   for (let i = 0; i < o.runs; i++) {
     const seed = o.seed ? `${o.seed}-${i}` : `${o.baseSeed}-${i}`;
     const cls = o.cls || CLASSES[i % CLASSES.length];
-    const r = playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at });
+    const comps = (o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length];
+    const r = playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName: compLabel(comps) });
     runs.push(r);
     if (o.verbose) {
-      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town`);
+      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town`);
       if (r.tail && r.outcome !== 'won') console.log('         ' + r.tail.slice(-4).join('  |  ').slice(0, 200));
       console.log('         actions: ' + Object.entries(r.actions).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => k + ' ' + v).join(' · '));
     }
@@ -577,6 +612,30 @@ function main() {
   console.log('gold      mean ' + Math.round(mean(runs.map((r) => r.gold))) + '   kills mean ' + Math.round(mean(runs.map((r) => r.kills))));
   console.log('survived  ' + pct(won.length, runs.length) + ' won · ' + pct(died.length, runs.length) + ' died · ' + pct(runs.filter((r) => r.outcome === 'error').length, runs.length) + ' errored');
   console.log('party     mean ' + mean(runs.map((r) => r.party)).toFixed(1) + ' of 4');
+
+  /* PARTY SHAPES, SIDE BY SIDE — which line of four actually survives. Only
+   * when more than one shape was run, so a pinned --party stays a single line. */
+  const byComp = new Map();
+  for (const r of runs) {
+    const b = byComp.get(r.comp) || { n: 0, won: 0, died: 0, other: 0, depth: 0, level: 0, party: 0 };
+    b.n++;
+    b.depth += r.deepest + 1;
+    b.level += r.level;
+    b.party += r.party;
+    if (r.outcome === 'won') b.won++;
+    else if (r.outcome === 'died') b.died++;
+    else b.other++;
+    byComp.set(r.comp, b);
+  }
+  if (byComp.size > 1) {
+    console.log('\n=== PARTY SHAPES ===');
+    const rows = [...byComp].sort((a, b) => b[1].n - a[1].n);
+    for (const [name, b] of rows) {
+      console.log('  ' + name.padEnd(24) + String(b.n).padStart(3) + ' runs · ' +
+        pct(b.won, b.n).padStart(4) + ' won · ' + pct(b.died, b.n).padStart(4) + ' died · ' +
+        (b.depth / b.n).toFixed(1) + ' deep · lvl ' + (b.level / b.n).toFixed(1) + ' · party ' + (b.party / b.n).toFixed(1));
+    }
+  }
 
   console.log('\n=== BUGS ===');
   if (!errors.length) {
