@@ -407,6 +407,14 @@ two mages, three mages, three fighters, and so on — and the report prints a **
 the lines can be compared side by side (won/died, depth, level, average size). `--party mage,mage`
 means a leader and exactly two mages; a three-class `--party` is the full four.
 
+An **optional LLM advisor** is **off by default** and given **no endpoint in the repo**:
+`--advisor <url> --model <name>` (and `--advisor-key <key>` if the server wants one) points it at any
+OpenAI-compatible endpoint and lets it set a per-floor **stance** — cautious, steady or bold, which
+scales how readily the company turns back. It is asked **once per floor** and cached by state, so a
+sweep stays fast and identical seeds stay reproducible, and any failure (no server, a timeout, a
+reply with no stance) quietly falls back to the scripted rule. The bot's real tactics — focus fire,
+party healing, boss prep — are all local and need no model at all.
+
 `npm run package` builds the **download bundle** — one zip carrying the game and a launcher for each
 OS — into `dist/`. `npm run desktop:build` builds the **native installers** with Electron into
 `dist-desktop/` (run `npm ci` first; those are the repo's only dependencies, and they are dev-only —

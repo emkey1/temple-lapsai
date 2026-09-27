@@ -46,6 +46,23 @@ function hostiles(g) {
   return ((floor && floor.monsters) || []).filter((m) => m.hp > 0 && !m.submerged);
 }
 
+/* WHICH ENEMY IS WORTH HITTING FIRST. The win condition outranks everything,
+ * then the bigger threat (a tier-9 thing over a tier-3 one), then the wounded —
+ * so a monster someone has already cut is finished rather than left at one hit
+ * point to keep dealing damage. Because every member re-reads hp as they act,
+ * wounding-first is also FOCUS FIRE: the second attacker picks whoever the
+ * first just bloodied, and the party removes one target instead of scratching
+ * four. */
+function cmpTarget(a, b, p) {
+  const boss = (b.boss ? 1 : 0) - (a.boss ? 1 : 0);
+  if (boss) return boss;
+  const tier = ((b.t && b.t.tier) || 1) - ((a.t && a.t.tier) || 1);
+  if (tier) return tier;
+  if (a.hp !== b.hp) return a.hp - b.hp;
+  return cheb(a, p) - cheb(b, p);
+}
+const sortTargets = (list, p) => [...list].sort((a, b) => cmpTarget(a, b, p));
+
 /* The first step of a shortest path from `start` to any tile a predicate likes.
  * Paths treat closed doors as passable (a bump opens them) and secret doors as
  * wall (a search is a separate act). */
@@ -152,7 +169,12 @@ function dungeonTurn(g, st) {
    * so a retreat mid-fight is not a breather — it is a reset. Commit: only the
    * last sliver of health sends the company home from the last floor. */
   const bossHere = !!(floor.isLast && hostiles(g).some((m) => m.boss));
-  const hurt = p.hp < p.maxhp * (bossHere ? 0.12 : 0.28);
+  /* The advisor's stance scales how early the company turns back: cautious
+   * runs home sooner, bold presses on. Absent an advisor it is always 'steady',
+   * which is exactly the old rule. */
+  const stance = st.stance || 'steady';
+  const riskMul = stance === 'cautious' ? 1.6 : stance === 'bold' ? 0.6 : 1;
+  const hurt = p.hp < p.maxhp * (bossHere ? 0.12 : 0.28) * riskMul;
   const laden = p.inventory.length >= PACK_LIMIT - 1 && !bossHere;
   if (hurt || laden) st.wantsTown = true;
   if (st.wantsTown) {
@@ -173,15 +195,29 @@ function dungeonTurn(g, st) {
     st.retreat = 0;
   }
 
+  /* 0b. BOSS PREP. The floor below is the last one — the boss — so do not walk
+   *     into it hurt. Top up here, where it is quiet, instead of finding out at
+   *     the door. (The boss is whole again on every re-entry, so arriving at
+   *     full is the only way a retreat ever helps.) */
+  const dungeon = g.dungeonById(p.dungeonId) || {};
+  const nextIsBoss = !floor.isLast && (p.floorIdx + 1) >= ((dungeon.floors || 0) - 1);
+  if (nextIsBoss && g.outOfCombat() && p.hp < p.maxhp * 0.92) {
+    if (p.hp < p.maxhp * 0.6 && potion(g)) return 'drink';
+    if (p.hp < Math.min(p.maxhp * 0.95, g.restedCap(p))) {
+      g.rest(Math.min(50, Math.max(4, Math.round((p.maxhp - p.hp) / 2))));
+      return 'rest';
+    }
+  }
+
   /* 1. A class power, if one fits: mend when hurt, strike when something is in
    *    reach. A refused working costs nothing, so this is safe to try. */
   if (tryAbility(g)) return 'power';
 
-  /* 2. Something beside us: hit it. */
-  const near = hostiles(g).filter((m) => cheb(m, p) <= 1);
+  /* 2. Something beside us: hit the one worth hitting. */
+  const near = sortTargets(hostiles(g).filter((m) => cheb(m, p) <= 1), p);
   if (near.length) {
-    setGoal(st, { kind: 'monster', m: near[0] });
     const m = near[0];
+    setGoal(st, { kind: 'monster', m });
     g.handleKey(null, { dx: Math.sign(m.x - p.x), dy: Math.sign(m.y - p.y) });
     return 'fight';
   }
@@ -237,12 +273,13 @@ function dungeonTurn(g, st) {
   const cands = [];
   if (floor.isLast && boss) cands.push({ kind: 'monster', m: boss });
   /* A monster at your heels bars the descent ("Something at your heels..."),
-   * so clear the ones within a step or two before trying the stairs. */
-  for (const m of hostiles(g).filter((m) => cheb(m, p) <= 2)) cands.push({ kind: 'monster', m });
+   * so clear the ones within a step or two before trying the stairs — in the
+   * order that removes the danger fastest. */
+  for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) <= 2), p)) cands.push({ kind: 'monster', m });
   /* On a floor that is not the last, clear it before moving on: experience is
    * the only armour that never comes off, and the boss waits whole no matter how
    * many times you retreat from it. */
-  if (!floor.isLast) for (const m of hostiles(g).filter((m) => cheb(m, p) > 2)) cands.push({ kind: 'monster', m });
+  if (!floor.isLast) for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) > 2), p)) cands.push({ kind: 'monster', m });
   for (const it of (floor.items || []).filter((x) => !x.auto)) cands.push({ kind: 'item', x: it.x, y: it.y });
   /* On the last floor the way on is back up — but you ARRIVE on the up-stair,
    * so until the boss is dead that stair is a trap: the bot would step down,
@@ -343,8 +380,13 @@ function tryAbility(g) {
     g.activateAbility(a.id);
     return p.power < power || (p.cooldowns[a.id] || 0) > cd || p.hp !== hp;   /* did it take? */
   };
-  /* Heal first, when hurt. */
-  if (p.hp < p.maxhp * 0.45) {
+  /* Heal first, when anyone is hurt — by the company's worst wound, not only
+   * our own, so a healer mends the member who needs it rather than watching
+   * them fall while it swings a mace. */
+  const living = g.state.party.members.filter((m) => m && m.hp > 0);
+  const worst = living.length ? Math.min(...living.map((m) => m.hp / Math.max(1, m.maxhp))) : 1;
+  const hurtPc = Math.min(p.hp / Math.max(1, p.maxhp), worst);
+  if (hurtPc < 0.5) {
     const heal = ready.find((a) => a.kind === 'heal');
     if (heal && fire(heal)) return true;
   }
@@ -459,7 +501,69 @@ function pickDungeon(g, at) {
 
 /* ---- one whole run ---- */
 
-function playRun(seed, clsId, opts = {}) {
+/* ---- the optional oracle advisor ----
+ *
+ * OFF by default, and it is never given a default endpoint: `--advisor <url>
+ * --model <name>` points it at any OpenAI-compatible server the player runs
+ * (a local one, a federated one — their business, not the repo's). It is
+ * consulted ONCE per floor, keyed by a fingerprint of class, company, place and
+ * level, and answers with one word — cautious, steady or bold — that scales how
+ * readily the company turns back. Anything else (no server, a timeout, a bad
+ * reply) leaves the scripted 'steady' rule standing.
+ *
+ * The caching is the point: the verdict is fetched at most once per distinct
+ * state, so a sweep stays fast, and identical seeds get identical advice, so
+ * the balance numbers stay reproducible. This is the whole of the LLM's job —
+ * a rare, high-level judgement call, never a turn-by-turn one. */
+const advisorCache = new Map();
+const STANCES = new Set(['cautious', 'steady', 'bold']);
+
+async function adviseStance(g, opts, fingerprint) {
+  const cfg = opts.advisor;
+  if (!cfg || !cfg.url) return 'steady';
+  if (advisorCache.has(fingerprint)) return advisorCache.get(fingerprint);
+  const p = g.state.player;
+  const ask = 'Choose a stance for this party. Reply with ONE word only — cautious, steady, or bold — and nothing else.\n'
+    + 'cautious: turn back to town early. bold: press on regardless.\n'
+    + JSON.stringify({
+      class: p.cls, party: g.state.party.members.map((m) => m.cls), level: p.level,
+      place: p.dungeonId, floor: (p.floorIdx || 0) + 1, hp: p.hp, maxhp: p.maxhp,
+    });
+  let stance = 'steady';
+  try {
+    const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined;
+    const res = await fetch(String(cfg.url).replace(/\/+$/, '') + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cfg.key ? { Authorization: 'Bearer ' + cfg.key } : {}) },
+      body: JSON.stringify({
+        model: cfg.model || undefined,
+        messages: [
+          { role: 'system', content: 'You answer with a single lowercase word and no other text.' },
+          { role: 'user', content: ask },
+        ],
+        /* A reasoning model thinks before it answers, so the cap is generous:
+         * a tiny one truncates the thinking before any stance is spoken. */
+        temperature: 0, max_tokens: 400, stream: false,
+      }),
+      signal,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const msg = ((data.choices || [])[0] || {}).message || {};
+      const text = String((msg.content || '') + ' ' + (msg.reasoning || ''));
+      /* Prefer a JSON stance; else the LAST mention, since a model that weighs
+       * the options settles on the one it names last. */
+      const jm = text.match(/"stance"\s*:\s*"(cautious|steady|bold)"/i);
+      const hits = (text.toLowerCase().match(/cautious|steady|bold/g) || []);
+      const pick = jm ? jm[1].toLowerCase() : hits[hits.length - 1];
+      if (pick && STANCES.has(pick)) stance = pick;
+    }
+  } catch { /* no server, no answer — the scripted rule stands */ }
+  advisorCache.set(fingerprint, stance);
+  return stance;
+}
+
+async function playRun(seed, clsId, opts = {}) {
   const cap = opts.cap || 4000;
   const g = makeGame(seed, clsId);
   if (opts.gold) g.earnGold(opts.gold);
@@ -476,7 +580,7 @@ function playRun(seed, clsId, opts = {}) {
     /* Kit out first, the way a run would: the point is to test the area, not to
      * watch a naked level-six company die at the door. */
     g.enterTown('temple', 'the-whetstone');
-        townRoutine(g, opts.comp);
+    townRoutine(g, opts.comp);
     g.enterDungeon(d.id);
   }
   const report = { seed, cls: clsId, comp: opts.compName || 'balanced', outcome: 'cap', deepest: 0, level: 1, gold: 0, kills: 0, turns: 0, party: 1, error: null, actions: {} };
@@ -502,6 +606,19 @@ function playRun(seed, clsId, opts = {}) {
         st.avoid = new Set();
         g.enterDungeon(next.id);
       } else {
+        /* The optional advisor speaks once per floor: a stance that scales how
+         * readily the company turns back. The fingerprint is deliberately coarse
+         * — the LEADER's class, the party shape, the place, the floor — so a
+         * level-up, a hire or whose turn it is does not re-ask, and identical
+         * states across seeds reuse one answer. (Using the active member's class
+         * here asked afresh on every member's turn.) */
+        const leader = g.state.party.members[0] || p;
+        const fingerprint = leader.cls + '|' + (opts.compName || '') + '|' + p.dungeonId + '|' + (p.floorIdx || 0);
+        if (opts.advisor && fingerprint !== st.advisedFor) {
+          st.stance = await adviseStance(g, opts, fingerprint);
+          st.advisedFor = fingerprint;
+          (report.stances = report.stances || []).push(st.stance);
+        }
         const flBefore = p.floorIdx;
         const a = dungeonTurn(g, st);
         report.actions[a] = (report.actions[a] || 0) + 1;
@@ -535,7 +652,7 @@ function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -545,6 +662,9 @@ function parseArgs(argv) {
     else if (a === '--gold') o.gold = Math.max(0, parseInt(argv[++i], 10) || 0);
     else if (a === '--at') o.at = argv[++i];
     else if (a === '--party') o.party = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--advisor') o.advisor = argv[++i];
+    else if (a === '--model') o.model = argv[++i];
+    else if (a === '--advisor-key') o.advisorKey = argv[++i];
     else if (a === '--verbose') o.verbose = true;
   }
   return o;
@@ -568,8 +688,11 @@ const compLabel = (comps) => (comps && comps.length ? comps.join('+') : 'balance
 const mean = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : 0);
 const pct = (n, d) => (d ? Math.round((n / d) * 100) + '%' : '0%');
 
-function main() {
+async function main() {
   const o = parseArgs(process.argv.slice(2));
+  /* The advisor is opt-in and its endpoint is only ever given at the call: no
+   * default lives in the repo, because the server is the player's own. */
+  const advisor = o.advisor ? { url: o.advisor, model: o.model || null, key: o.advisorKey || null } : null;
   /* Reject a typo'd class before spending minutes simulating it — a bad --cls
    * used to become ninety-six percent exceptions. */
   if (o.cls && !CLASSES.includes(o.cls)) {
@@ -589,10 +712,10 @@ function main() {
     const seed = o.seed ? `${o.seed}-${i}` : `${o.baseSeed}-${i}`;
     const cls = o.cls || CLASSES[i % CLASSES.length];
     const comps = (o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length];
-    const r = playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName: compLabel(comps) });
+    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName: compLabel(comps), advisor });
     runs.push(r);
     if (o.verbose) {
-      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town`);
+      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town` + (advisor ? '  advisor: ' + [...new Set(r.stances || [])].join(',') : ''));
       if (r.tail && r.outcome !== 'won') console.log('         ' + r.tail.slice(-4).join('  |  ').slice(0, 200));
       console.log('         actions: ' + Object.entries(r.actions).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => k + ' ' + v).join(' · '));
     }
@@ -605,7 +728,7 @@ function main() {
   const won = runs.filter((r) => r.outcome === 'won');
 
   console.log('\n=== BALANCE ===');
-  console.log('runs      ' + runs.length + '  (cap ' + o.cap + ' turns)' + (o.at ? '   at ' + o.at : ''));
+  console.log('runs      ' + runs.length + '  (cap ' + o.cap + ' turns)' + (o.at ? '   at ' + o.at : '') + (advisor ? '   advisor on' : ''));
   console.log('outcomes  ' + Object.entries(outcomes).map(([k, v]) => k + ' ' + v).join(' · '));
   console.log('depth     mean ' + (mean(runs.map((r) => r.deepest)) + 1).toFixed(1) + ' floors   deepest ' + (Math.max(...runs.map((r) => r.deepest)) + 1));
   console.log('level     mean ' + mean(runs.map((r) => r.level)).toFixed(1) + '   at death ' + (died.length ? mean(died.map((r) => r.level)).toFixed(1) : '—'));
@@ -637,6 +760,17 @@ function main() {
     }
   }
 
+  /* WHAT THE ADVISOR SAID, when one was bound: the stance mix it handed down,
+   * and how many times it was actually asked (the rest were cache hits). */
+  if (advisor) {
+    const counts = {};
+    for (const r of runs) for (const s of (r.stances || [])) counts[s] = (counts[s] || 0) + 1;
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    console.log('advisor   ' + (total
+      ? Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + v).join(' · ') + '  (' + total + ' calls)'
+      : 'on, but made no calls'));
+  }
+
   console.log('\n=== BUGS ===');
   if (!errors.length) {
     console.log('none — ' + runs.length + ' runs, no exceptions thrown');
@@ -658,4 +792,4 @@ function main() {
 const isMain = (() => {
   try { return import.meta.url === `file://${process.argv[1]}`; } catch { return false; }
 })();
-if (isMain) process.exit(main());
+if (isMain) process.exit(await main());
