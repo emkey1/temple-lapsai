@@ -17,6 +17,7 @@
  *   node scripts/simulate.mjs --seed hello --verbose
  */
 
+import fs from 'node:fs';
 import { Game, initialStats, PACK_LIMIT } from '../public/js/engine.js';
 import { abilitiesFor, getItemTemplate } from '../public/js/base.js';
 import { T, W, H, isTravelable } from '../public/js/mapgen.js';
@@ -24,7 +25,38 @@ import { shopStock, buyItem, sellItem, takeRoom, hireMember, hireCost, raiseMemb
 
 /* ---- the rig ---- */
 
-function makeGame(seed, clsId) {
+/* A Library expansion file (data/expansions.json) is a flat list of validated
+ * entries, each with an id and a type. Fold them into the registry shape the
+ * engine reads — the same mapping main.js's installExpansion does — so a
+ * written dungeon can be entered with --registry and --at. */
+function registryFromEntries(entries) {
+  const reg = { items: [], monsters: [], dungeons: [], abilities: [] };
+  for (const exp of Array.isArray(entries) ? entries : []) {
+    if (!exp || !exp.id) continue;
+    if (exp.type === 'monster') { reg.monsters.push(exp); continue; }
+    if (exp.type === 'item') { reg.items.push(exp); continue; }
+    if (exp.type === 'ability') { reg.abilities.push(exp); continue; }
+    if (exp.type !== 'dungeon') continue;
+    const monsters = (exp.monsters || []).filter((m) => m && m.id);
+    const boss = exp.boss && exp.boss.id ? exp.boss : null;
+    reg.dungeons.push({
+      id: exp.id, type: 'dungeon',
+      name: exp.name, title: exp.title, flavor: exp.flavor,
+      floors: exp.floors || 3, theme: exp.theme || 'temple', threat: exp.threat || 0,
+      monsterWeights: [...monsters.map((m) => m.id), boss ? boss.id : null].filter(Boolean),
+      bossId: boss ? boss.id : null,
+      requires: exp.requires || 'serpent',
+      minLevel: exp.minLevel || 0,
+      level: exp.level || null,
+      region: exp.region || null,
+      regionNote: exp.regionNote || '',
+      written: true,
+    });
+  }
+  return reg;
+}
+
+function makeGame(seed, clsId, registry) {
   const logs = [];
   const ui = {
     log: (m) => logs.push(String(m)),
@@ -32,7 +64,7 @@ function makeGame(seed, clsId) {
     showFloor() {}, showVictory() {}, showCamp() {}, unlock() {}, prepareTransition() {},
     openDialogue() {}, recordAccount() {}, showWelcome() {},
   };
-  const g = new Game({ ui });
+  const g = new Game({ ui, registry: registry || undefined });
   g.state.seed = seed;
   g.foundAdventurer('Bot', clsId, initialStats(clsId));
   g.logs = logs;
@@ -439,11 +471,13 @@ function townRoutine(g, comp) {
   if (g.state.player.hp < g.state.player.maxhp) takeRoom(g);
   /* Companions first: a second body is worth more than a belt of draughts. */
   let guard = 6;
-  const order = (comp && comp.length) ? comp : ['fighter', 'thief', 'cleric'];
+  /* An empty list is a choice: --solo hires nobody. No list at all is the
+   * balanced default. */
+  const order = Array.isArray(comp) ? comp : ['fighter', 'thief', 'cleric'];
   /* Fill to leader + companions: a three-entry comp is the full four, a
    * two-entry one is exactly a trio (--party mage,mage is "a leader and two
    * mages"), so a shape can be sized as well as chosen. */
-  while (guard-- > 0 && g.state.party.members.length < 1 + order.length) {
+  while (guard-- > 0 && order.length && g.state.party.members.length < 1 + order.length) {
     /* Keep enough coin for a room: a company that hires itself broke and then
      * cannot afford to mend loops between the inn and the door for ever. */
     if (g.purse() - hireCost(g) < 45) break;
@@ -572,11 +606,21 @@ async function adviseStance(g, opts, fingerprint) {
 
 async function playRun(seed, clsId, opts = {}) {
   const cap = opts.cap || 4000;
-  const g = makeGame(seed, clsId);
+  const g = makeGame(seed, clsId, opts.registry);
   if (opts.gold) g.earnGold(opts.gold);
   /* --at: drop the company straight into a named place at the level it was cut
    * for, with the founding gates already open, so the bot can test any area. */
-  if (opts.at) {
+  if (opts.at === 'road') {
+    /* The road between the towns, which nothing else ever walks: set out from
+     * the Whetstone and play it. It has no stairs down, so the bot will roam
+     * its length collecting and fighting rather than leave — enough to prove
+     * the generation, the wanderers and the toll all hold up. */
+    g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
+    if (!opts.gold) g.earnGold(600);
+    g.enterTown('temple', 'the-whetstone');
+    townRoutine(g, opts.comp);
+    g.travelTo('far-reach');
+  } else if (opts.at) {
     const d = g.dungeonById(opts.at);
     if (!d) throw new Error('no such dungeon: ' + opts.at);
     g.state.player.bossesSlain = { temple: true, upper: true, serpent: true };
@@ -659,7 +703,7 @@ async function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, registry: null, solo: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -672,6 +716,8 @@ function parseArgs(argv) {
     else if (a === '--advisor') o.advisor = argv[++i];
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--advisor-key') o.advisorKey = argv[++i];
+    else if (a === '--registry') o.registry = argv[++i];
+    else if (a === '--solo') { o.solo = true; o.party = []; }
     else if (a === '--verbose') o.verbose = true;
   }
   return o;
@@ -700,6 +746,14 @@ async function main() {
   /* The advisor is opt-in and its endpoint is only ever given at the call: no
    * default lives in the repo, because the server is the player's own. */
   const advisor = o.advisor ? { url: o.advisor, model: o.model || null, key: o.advisorKey || null } : null;
+  /* --registry folds a Library expansion file into the game, so a written
+   * dungeon can be entered with --at and played like any other. */
+  let registry = null;
+  if (o.registry) {
+    try { registry = registryFromEntries(JSON.parse(fs.readFileSync(o.registry, 'utf8'))); }
+    catch (err) { console.error('could not read --registry ' + o.registry + ': ' + err.message); return 2; }
+    if (!registry.dungeons.length) console.error('note: ' + o.registry + ' holds no dungeons');
+  }
   /* Reject a typo'd class before spending minutes simulating it — a bad --cls
    * used to become ninety-six percent exceptions. */
   if (o.cls && !CLASSES.includes(o.cls)) {
@@ -713,13 +767,15 @@ async function main() {
       return 2;
     }
   }
+  const solo = !!o.solo;
   const runs = [];
   const errors = [];
   for (let i = 0; i < o.runs; i++) {
     const seed = o.seed ? `${o.seed}-${i}` : `${o.baseSeed}-${i}`;
     const cls = o.cls || CLASSES[i % CLASSES.length];
-    const comps = (o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length];
-    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName: compLabel(comps), advisor });
+    const comps = (solo || (o.party && o.party.length === 0)) ? [] : ((o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length]);
+    const compName = (solo || comps.length === 0) ? 'solo' : compLabel(comps);
+    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName, advisor, registry });
     runs.push(r);
     if (o.verbose) {
       console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town` + (advisor ? '  advisor: ' + [...new Set(r.stances || [])].join(',') : ''));

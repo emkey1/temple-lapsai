@@ -399,8 +399,10 @@ debug debris, and the two conventions the content depends on.
 two reports — **BALANCE** (outcomes, depth, level, gold, kills, party) and **BUGS** (any exception,
 deduped with the seeds that hit it). Flags: `--runs N`, `--seed S`, `--cls C`, `--gold G`, `--cap N`,
 `--verbose`, `--at <dungeon>` to drop a funded, geared company straight into a named area (the
-Emberworks, the Drowned Quarter, the endless stair) at the level it was cut for, and `--party a,b,c`
-to pin the companions' classes.
+Emberworks, the Drowned Quarter, the endless stair, `road` for the town-to-town road) at the level it
+was cut for, `--party a,b,c` to pin the companions' classes, `--solo` for a company of one, and
+`--registry data/expansions.json` to fold a Library expansion file in so `--at` can enter a written
+dungeon.
 
 Runs **cycle party shapes** rather than always hiring one of each — a balanced four, a cleric behind
 two mages, three mages, three fighters, and so on — and the report prints a **PARTY SHAPES** table so
