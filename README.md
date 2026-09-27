@@ -823,6 +823,7 @@ bottom. Nothing you can pick up is ever red, and nothing but you is drawn `@`.
 | `WASD` / arrow keys | Move |
 | `Y` `U` `B` `N` / numpad | Move diagonally (numpad `5` waits) |
 | `G` | Take what is underfoot — or, with nothing there, look around and see what lies within reach |
+| `F` | Search the walls around you for a hidden door (walking into a wall searches that one too) |
 | `Space` / `X` | End your turn (wait) |
 | `R` | Rest until healed, or until something wakes |
 | `1`–`9` | Activate the matching ability (they fire for whoever holds the reins — the sheet must be theirs) |

@@ -46,6 +46,27 @@ test('searching eventually finds the door in front of you', () => {
   assert.equal(floor.tiles[10][15], T.DOOR_O, 'sixty attempts failed to find one door');
 });
 
+test('the F key searches every wall in reach, and spends the turn', () => {
+  const g = newGame('secret-searchkey');
+  const floor = secretFloor(g);
+  let turns = 0;
+  for (let t = 0; t < 80 && floor.tiles[10][15] === T.SECRET; t++) {
+    g.turn = t;
+    if (g.handleKey('f')) turns++;
+  }
+  assert.equal(floor.tiles[10][15], T.DOOR_O, 'searching the ring never found the door beside us');
+  assert.ok(turns > 0, 'the search never spent a turn');
+});
+
+test('searching plain stone costs nothing and finds nothing', () => {
+  const g = newGame('secret-empty');
+  const floor = secretFloor(g);
+  g.state.player.x = 10;
+  g.state.player.y = 10;   /* no secret anywhere near */
+  assert.equal(g.handleKey('f'), false, 'a search of plain stone cost a turn');
+  assert.equal(floor.tiles[10][15], T.SECRET, 'plain stone opened a door');
+});
+
 test('finding one door does not reveal every other secret on the floor', () => {
   const g = newGame('secret-local');
   const floor = secretFloor(g);

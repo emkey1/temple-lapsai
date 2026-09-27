@@ -47,6 +47,7 @@ The keyboard does everything; the mouse is for pointing at the world.
 | **Arrow keys** / **WASD** / **numpad** | Move a step (eight directions) |
 | **Numpad 1–9** | Move and strike a diagonal in one turn |
 | **`g`** | Take what is under you, or look |
+| **`f`** | **Search the walls around you** for a hidden door (walking into a wall searches that one too) |
 | **`r`** | Rest a turn (slowly mends, out of combat) |
 | **`1`–`9`** | Use the ability in that slot |
 | **Shift + `1`–`4`** | Drink from your belt |
@@ -60,6 +61,17 @@ The keyboard does everything; the mouse is for pointing at the world.
 | **`?`** or **`h`** | The key list |
 | **Hold a direction** | Walk (the autopilot follows a path) |
 | **Esc** | Close a card |
+
+### Hidden doors
+
+Some walls are doors. **Walk into a wall**, or press **`f`** to run your hands
+over every wall you can reach, and a seam may give. A **thief** finds them far
+more often than anyone else; **Fieldcraft** and standing with the Keepers of the
+Coils help; an **Amulet of True Seeing** simply opens them.
+
+The door to a boss's den always gives itself away. On the last floor the air
+tells you which way it lies — *"something breathes to the north-east of the
+stairs"* — and when you come within a couple of paces the seam opens on its own.
 
 ## Your company
 

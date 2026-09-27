@@ -1167,6 +1167,20 @@ export class Game {
     }
     this.questReached(d.id, floorIdx);
     this.log(isRoad ? 'You set out on ' + d.name + '.' : 'You stand at the ' + (floorIdx === 0 ? 'entrance' : 'stairs') + ' of ' + d.name + '.');
+    /* A COLD DRAFT, so the den cannot be missed entirely. On the boss floor the
+     * air tells you which way the god lies; the door still only gives itself
+     * away when you are close. Said on arrival, and only while the seam is shut. */
+    const fl = this.currentFloor;
+    if (!isRoad && fl && fl.isLast && fl.den && fl.up) {
+      const doorX = fl.den.x - 1, doorY = fl.den.y + Math.floor(fl.den.h / 2);
+      if (this.inBounds(doorX, doorY) && fl.tiles[doorY][doorX] === T.SECRET) {
+        const parts = [];
+        const dyD = fl.den.y - fl.up.y, dxD = fl.den.x - fl.up.x;
+        if (dyD < -4) parts.push('north'); else if (dyD > 4) parts.push('south');
+        if (dxD < -4) parts.push('west'); else if (dxD > 4) parts.push('east');
+        this.log('The air moves on this floor. Something breathes to the ' + (parts.length ? parts.join('-') : 'near') + ' of the stairs.');
+      }
+    }
     this.computeVisibility();
     if (this.ui.render) this.ui.render(this);
     if (this.ui.refreshHud) this.ui.refreshHud(this);
@@ -1587,6 +1601,11 @@ export class Game {
        * the key teaches itself the first time someone presses it. */
       if (got) this.uiLog('Looted.');
       else this.lookAround();
+    } else if (k === 'f') {
+      /* SEARCH every wall in reach. Bumping still works; this is the key for
+       * it, so nobody has to guess which of eight walls to walk into. */
+      turn = this.searchAround();
+      if (!turn) this.log('You search the walls around you: plain stone, no seam.');
     } else if (k === ' ' || k === 'x') {
       this.endPlayerTurn(undefined, p);
     } else if (k === 'r') {
@@ -1978,6 +1997,27 @@ export class Game {
     floor.tiles[y][x] = T.DOOR_O;
     this.rememberDoor(x, y);
     this.log('A seam in the stone gives — a hidden door!');
+  }
+
+  /* SEARCH (F): run your hands over every wall you can reach, in one turn. The
+   * same per-tile odds a bump gets, so it is convenience, not a buff — probing
+   * by walking into walls was already free against plain stone and only cost a
+   * turn against a seam. Returns true when there was a seam to try (so the turn
+   * is spent), false when the walls are plain (and searching costs nothing). */
+  searchAround() {
+    const p = this.state.player, floor = this.currentFloor;
+    if (!p || !floor) return false;
+    let seam = false;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const x = p.x + dx, y = p.y + dy;
+        if (!this.inBounds(x, y) || floor.tiles[y][x] !== T.SECRET) continue;
+        seam = true;
+        this.searchSecretAt(x, y);
+      }
+    }
+    return seam;
   }
 
   canFindSecretAt(x, y) {

@@ -181,6 +181,7 @@ const CONTROLS = [
   ]],
   ['Things on the ground', [
     ['G', 'Take what is underfoot. With nothing there, look around instead and see what lies within reach.'],
+    ['F', 'Search the walls around you for a hidden seam. Walking into a wall searches that one too.'],
     ['$ ! ? = &  and other glyphs', 'Loot waiting to be picked up. Coins and treasure are taken automatically as you step on them.'],
     ['GEAR panel', 'Every item lists what it actually does under its name. Identical things stack.'],
   ]],
