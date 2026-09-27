@@ -2,7 +2,9 @@
   "name": "temple-lapsai",
   "version": "2.0.0",
   "description": "A turn-based isometric party dungeon crawler — a 1982 homage grown a world — with optional LLM-driven expansion.",
+  "author": "Mike Miller",
   "type": "module",
+  "main": "desktop/main.js",
   "private": true,
   "scripts": {
     "start": "node server.js",
@@ -11,11 +13,56 @@
     "simulate": "node scripts/simulate.mjs",
     "lint": "node scripts/lint.mjs",
     "check": "npm run lint && npm test",
+    "package": "node scripts/package.mjs",
+    "desktop:start": "electron .",
+    "desktop:build": "electron-builder",
     "serve": "node scripts/serve.mjs start",
     "serve:stop": "node scripts/serve.mjs stop",
     "serve:status": "node scripts/serve.mjs status"
   },
+  "build": {
+    "appId": "com.emkey1.temple-lapsai",
+    "productName": "Temple Lapsai",
+    "asar": false,
+    "npmRebuild": false,
+    "files": [
+      "desktop/**/*",
+      "server.js",
+      "lib/**/*",
+      "public/**/*",
+      "package.json",
+      "LICENSE",
+      "PLAYING.md"
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "mac": {
+      "category": "public.app-category.games",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "category": "Game",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
   }
 }

@@ -11,3 +11,8 @@ config.json
 # tracked, empty file, so every commission showed up as an uncommitted diff —
 # which is how a session of testing came to revert one away.
 data/expansions.json
+
+# Build output: the download bundles and the desktop installers.
+dist/
+dist-desktop/
+

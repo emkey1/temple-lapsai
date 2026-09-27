@@ -52,6 +52,18 @@ rules.
 
 ## Running
 
+**Play it now, in the browser** — no download, no install:
+<https://emkey1.github.io/temple-lapsai/>
+The whole game runs there; the optional Black Library needs the local server, so it shows as unbound.
+
+**Or download and run it.** Grab the launcher bundle from the
+[latest release](https://github.com/emkey1/temple-lapsai/releases/latest): unzip it, double-click
+the launcher for your machine, and the game opens in your browser. It needs **Node.js** installed
+(the only prerequisite). There are also native desktop installers built per-OS — macOS `.dmg`,
+Windows `.exe`, Linux `.AppImage`/`.deb` — which need **nothing** installed first.
+
+**Or run it from source:**
+
 ```sh
 npm start
 # or directly:
@@ -390,6 +402,12 @@ deduped with the seeds that hit it). Flags: `--runs N`, `--seed S`, `--cls C`, `
 Emberworks, the Drowned Quarter, the endless stair) at the level it was cut for — so deep content can
 be tested without clearing the founding three first.
 
+`npm run package` builds the **download bundle** — one zip carrying the game and a launcher for each
+OS — into `dist/`. `npm run desktop:build` builds the **native installers** with Electron into
+`dist-desktop/` (run `npm ci` first; those are the repo's only dependencies, and they are dev-only —
+the game itself still needs nothing installed). `.github/workflows/release.yml` builds both and
+attaches them to a release; `.github/workflows/pages.yml` publishes the game to GitHub Pages.
+
 The server binds to `127.0.0.1` by default; set `HOST=0.0.0.0` if you deliberately want it on the
 network. `POST /api/expand` refuses cross-origin requests and is rate-limited, because it spends
 your API key.
@@ -398,10 +416,12 @@ your API key.
 
 ```
 server.js           HTTP server, static serving, LLM proxy
+desktop/main.js     Electron shell: the server and the game in one window
 lib/expansion.js    Prompt building and validation of everything the oracle returns
 lib/oracle.js       Which model answers the Library, and how to reach it
 lib/dialogue.js     The in-character system prompt for the speaking cast
 scripts/simulate.mjs  The headless robot delver (npm run simulate)
+scripts/package.mjs   Builds the download bundle (npm run package)
 scripts/lint.mjs    The dependency-free lint
 scripts/repack-flare-art.mjs  Packs the upstream Flare sheets into what ships
 public/index.html   Single-page shell

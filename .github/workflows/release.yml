@@ -1,0 +1,72 @@
+# Build the downloadable things and attach them to a release:
+#   - one launcher zip for every platform (needs only Node), and
+#   - native desktop installers (Electron) built per-OS, so there is a
+#     double-click install with no Node prerequisite at all.
+#
+# Triggers when you publish a release, or by hand against an existing tag:
+#   gh workflow run Release --field tag=v2.0
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach artifacts to (e.g. v2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+
+jobs:
+  bundle:
+    name: launcher zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Build the download bundle
+        run: npm run package
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" dist/*.zip --clobber
+
+  desktop:
+    name: desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Install the desktop build tools
+        run: npm ci
+      - name: Build the installer
+        # Unsigned by design: a hobby game has no certificate, and a signed
+        # build would need one in every fork. macOS will warn on first open.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --publish never
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          files=(dist-desktop/*.dmg dist-desktop/*.zip dist-desktop/*.exe dist-desktop/*.AppImage dist-desktop/*.deb)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "electron-builder produced no installers"; exit 1
+          fi
+          printf 'uploading: %s\n' "${files[@]}"
+          gh release upload "$TAG" "${files[@]}" --clobber
