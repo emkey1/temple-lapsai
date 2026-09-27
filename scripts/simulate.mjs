@@ -174,8 +174,11 @@ function dungeonTurn(g, st) {
    * which is exactly the old rule. */
   const stance = st.stance || 'steady';
   const riskMul = stance === 'cautious' ? 1.6 : stance === 'bold' ? 0.6 : 1;
-  const hurt = p.hp < p.maxhp * (bossHere ? 0.12 : 0.28) * riskMul;
-  const laden = p.inventory.length >= PACK_LIMIT - 1 && !bossHere;
+  /* On the boss floor there is nothing to retreat TO: the god is whole again
+   * the moment you climb back down, so a retreat is a reset, not a rest — and
+   * retreating just runs the clock. Commit: fight it out, win or die. */
+  const hurt = !bossHere && p.hp < p.maxhp * 0.28 * riskMul;
+  const laden = !bossHere && p.inventory.length >= PACK_LIMIT - 1;
   if (hurt || laden) st.wantsTown = true;
   if (st.wantsTown) {
     /* A retreat that never finds the way home is a loop, not caution. Give it a
@@ -270,16 +273,20 @@ function dungeonTurn(g, st) {
    *    last floor, a nearby hostile, loot, then the way on. An unreachable one
    *    (behind a wall or a locked seam) is skipped, not searched at. */
   const boss = hostiles(g).find((m) => m.boss);
+  const bossFloor = !!(floor.isLast && boss);
   const cands = [];
-  if (floor.isLast && boss) cands.push({ kind: 'monster', m: boss });
+  if (bossFloor) cands.push({ kind: 'monster', m: boss });
   /* A monster at your heels bars the descent ("Something at your heels..."),
-   * so clear the ones within a step or two before trying the stairs — in the
-   * order that removes the danger fastest. */
-  for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) <= 2), p)) cands.push({ kind: 'monster', m });
-  /* On a floor that is not the last, clear it before moving on: experience is
-   * the only armour that never comes off, and the boss waits whole no matter how
-   * many times you retreat from it. */
-  if (!floor.isLast) for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) > 2), p)) cands.push({ kind: 'monster', m });
+   * so clear the ones within a step or two before trying the stairs. NOT on the
+   * boss floor, though: there the boss is the win, and chasing an add is time
+   * the Demon spends killing a member one at a time. Commit to the god. */
+  if (!bossFloor) {
+    for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) <= 2), p)) cands.push({ kind: 'monster', m });
+    /* On a floor that is not the last, clear it before moving on: experience is
+     * the only armour that never comes off, and the boss waits whole no matter
+     * how many times you retreat from it. */
+    if (!floor.isLast) for (const m of sortTargets(hostiles(g).filter((m) => cheb(m, p) > 2), p)) cands.push({ kind: 'monster', m });
+  }
   for (const it of (floor.items || []).filter((x) => !x.auto)) cands.push({ kind: 'item', x: it.x, y: it.y });
   /* On the last floor the way on is back up — but you ARRIVE on the up-stair,
    * so until the boss is dead that stair is a trap: the bot would step down,
