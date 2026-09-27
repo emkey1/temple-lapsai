@@ -79,10 +79,13 @@
     <h2>THE <span class="acc">LEDGER</span></h2>
     <p class="sub">Everyone the expedition has sent down, and how far they got.</p>
     <div id="ledger-list" class="scrolly"></div>
+    <p class="tiny" id="ledger-note"></p>
     <div class="row">
       <button id="btn-ledger-new">NEW ADVENTURER</button>
+      <button id="btn-ledger-import">IMPORT A SAVE…</button>
       <button id="btn-ledger-close">BACK</button>
     </div>
+    <input type="file" id="ledger-import-file" accept="application/json,.json" class="hidden">
   </div>
 
   <div id="charcreate" class="overlay-card hidden">

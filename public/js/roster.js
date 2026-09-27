@@ -96,6 +96,18 @@ export function readCharacter(store, id) {
   return id ? readJSON(store, slotKey(id)) : null;
 }
 
+/* A file the player imported, made safe to store. Returns { id, data } with a
+ * FRESH id when the one it carries is already in the ledger, so an import never
+ * quietly overwrites a character — or null when the file is not a save. Pure
+ * about time and randomness, so a test can predict the id it will choose. */
+export function planImport(store, payload, now, rand) {
+  const data = payload && payload.character ? payload.character : (payload && payload.state ? payload : null);
+  if (!data || !data.state || typeof data.state !== 'object') return null;
+  const taken = data.id && readLedger(store).chars.some((c) => c.id === data.id);
+  const id = taken || !data.id ? newCharId(now, rand) : data.id;
+  return { id, data: { ...data, id } };
+}
+
 /* Both halves, or the index grows names for records that are not there. */
 export function forgetCharacter(store, id) {
   try { store.removeItem(slotKey(id)); } catch { /* nothing to do about it */ }

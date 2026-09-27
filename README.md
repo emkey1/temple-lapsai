@@ -578,6 +578,9 @@ someone new used to write over whoever went down last.
 - **OTHER ADVENTURERS** opens the ledger — everyone you have sent down, with where they got to,
   what they are carrying and when they were last saved. Play any of them, or erase one (which asks
   twice).
+- **EXPORT** and **IMPORT** move one across by file. Saves are stored per origin, so the browser
+  link and the desktop app keep separate characters; a row's EXPORT downloads a small JSON, and
+  IMPORT A SAVE… reads one back. An import never overwrites — it is filed under a new name.
 - A character who dies is marked **fallen** on the ledger rather than in their own record, because
   the record is deliberately not written on the killing blow. Opening a fallen adventurer raises
   them at the same price the death card charges — half their gold — so a second character is never

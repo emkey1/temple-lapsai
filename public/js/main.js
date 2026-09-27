@@ -33,7 +33,7 @@ import {
 import { itemDescription, abilityHealNote, abilityPowerNote, abilityDamageNote } from './describe.js';
 import {
   LEGACY_SLOT, SLOT_PREFIX, newCharId, summarise, rememberCharacter, readCharacter,
-  forgetCharacter, markFallen, pickLast, playable, adoptLegacySave,
+  forgetCharacter, markFallen, pickLast, playable, adoptLegacySave, planImport,
   readAccounts, recordAccount,
 } from './roster.js';
 
@@ -148,8 +148,11 @@ const els = {
   partyStrip: $('party-strip'),
   ledger: $('ledger'),
   ledgerList: $('ledger-list'),
+  ledgerNote: $('ledger-note'),
   btnLedger: $('btn-ledger'),
   btnLedgerNew: $('btn-ledger-new'),
+  btnLedgerImport: $('btn-ledger-import'),
+  ledgerImportFile: $('ledger-import-file'),
   btnLedgerClose: $('btn-ledger-close'),
 };
 
@@ -4112,6 +4115,7 @@ function whenSaved(ms) {
 }
 
 function renderLedger() {
+  if (els.ledgerNote) els.ledgerNote.textContent = '';
   const chars = playable(localStorage);
   const rows = chars.length ? chars.map((c) => {
     const cls = (CLASSES[c.cls] || {}).name || c.cls;
@@ -4121,6 +4125,7 @@ function renderLedger() {
       (c.fallen ? ' · <b>FALLEN</b>' : '') + '</span>' +
       '<span class="where">' + here + ' · ' + (c.gold || 0) + ' gp · saved ' + whenSaved(c.savedAt) + '</span></span>' +
       '<button data-open="' + esc(c.id) + '">' + (c.fallen ? 'RAISE (half your gold)' : 'PLAY') + '</button>' +
+      '<button class="mini" data-export="' + esc(c.id) + '" title="Download this adventurer as a file">EXPORT</button>' +
       '<button data-forget="' + esc(c.id) + '">ERASE</button>' +
       '</div>';
   }).join('') : '<div class="tiny">Nobody has gone down yet.</div>';
@@ -4144,9 +4149,81 @@ function renderLedger() {
   overlayShow(els.ledger);
 }
 
+/* ---------------- export & import ----------------
+ *
+ * A save lives in the browser's own storage, which is tied to one origin: the
+ * browser link and the desktop app never see each other's characters, and a
+ * second machine sees neither. A file carries one across. */
+
+function setLedgerNote(msg) {
+  if (els.ledgerNote) els.ledgerNote.textContent = msg || '';
+}
+
+function fileSlug(name) {
+  return String(name || 'adventurer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'adventurer';
+}
+
+function exportCharacter(id) {
+  const data = readCharacter(localStorage, id);
+  if (!data) { setLedgerNote('That record is gone from the ledger.'); return; }
+  const entry = playable(localStorage).find((c) => c.id === id);
+  const name = (entry && entry.name) || 'adventurer';
+  const payload = { app: 'temple-lapsai', format: 1, exportedAt: Date.now(), character: data };
+  try {
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'temple-lapsai-' + fileSlug(name) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch { /* fine */ } }, 2000);
+  } catch (e) {
+    setLedgerNote('Could not write the save file.');
+    return;
+  }
+  setLedgerNote('Exported ' + name + '. Keep the file somewhere safe.');
+}
+
+async function importCharacterFile(file) {
+  if (!file) return;
+  let payload = null;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    setLedgerNote('That file is not a Temple Lapsai save.');
+    return;
+  }
+  /* The rule for a file that carries an id already in the ledger — give it a
+   * fresh one — lives in the roster, where it can be tested without a browser. */
+  const planned = planImport(localStorage, payload, Date.now(), Math.random());
+  if (!planned) { setLedgerNote('That file is not a Temple Lapsai save.'); return; }
+  const { id, data } = planned;
+  let summary = { name: 'Imported adventurer', cls: 'fighter', level: 1, gold: 0, floor: 1, where: '' };
+  try {
+    const g = makeGame();
+    g.restore(data.state);
+    const p = g.state.player;
+    const d = g.dungeonById(p.dungeonId);
+    summary = summarise(p, d && d.name) || summary;
+  } catch { /* keep the placeholder; the record is still stored and can be opened */ }
+  try {
+    rememberCharacter(localStorage, id, data, { ...summary, id }, data.saved || Date.now());
+  } catch {
+    setLedgerNote('The browser refused to store the import — storage may be full.');
+    return;
+  }
+  if (data.registry) { try { registry = mergeRegistry(registry, data.registry); persistRegistry(); } catch { /* non-fatal */ } }
+  renderLedger();
+  setLedgerNote('Imported ' + (summary.name || 'an adventurer') + '.');
+}
+
 function ledgerClick(e) {
   const open = e.target.closest('[data-open]');
   if (open) { openCharacter(open.dataset.open); return; }
+  const exp = e.target.closest('[data-export]');
+  if (exp) { exportCharacter(exp.dataset.export); return; }
   const forget = e.target.closest('[data-forget]');
   if (!forget) return;
   const id = forget.dataset.forget;
@@ -4736,6 +4813,11 @@ async function boot() {
   els.btnLedger.onclick = () => renderLedger();
   els.btnLedgerNew.onclick = () => beginCreate();
   els.btnLedgerClose.onclick = () => doRoster();
+  els.btnLedgerImport.onclick = () => els.ledgerImportFile.click();
+  els.ledgerImportFile.onchange = () => {
+    const f = els.ledgerImportFile.files && els.ledgerImportFile.files[0];
+    importCharacterFile(f).finally(() => { els.ledgerImportFile.value = ''; });
+  };
   els.ledgerList.addEventListener('click', ledgerClick);
   /* DRAGGING A NAMEPLATE REORDERS THE COMPANY. The roster decides who
    * stands where on arrival and who inherits the reins, so the player

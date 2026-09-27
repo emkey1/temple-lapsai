@@ -190,6 +190,13 @@ Your adventurer saves itself as you play. **CONTINUE** on the title card picks
 up where you left off; **OTHER ADVENTURERS** manages multiple companies. What
 the Library writes belongs to your save, not to the repo — so commission freely.
 
+Saves live in **your browser**, on the site you are playing on. That means the
+browser link and a downloaded or desktop copy keep their own characters, and a
+second computer sees neither. To carry one across, open **OTHER ADVENTURERS**
+and use **EXPORT** on a row (it downloads a small file) and **IMPORT A SAVE…**
+(it reads one back). Importing never overwrites — the incoming adventurer is
+filed under a new name in the ledger.
+
 ## A few things worth knowing
 
 - **Hunger is not a mechanic, but greed is.** The pack is limited; sell often.

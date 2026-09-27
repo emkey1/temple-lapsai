@@ -12,7 +12,7 @@ import { newGame, savedPlayer, legacyShape } from './helpers.mjs';
 import {
   LEDGER_KEY, LEGACY_SLOT, slotKey, newCharId, summarise,
   readLedger, writeLedger, rememberCharacter, readCharacter, forgetCharacter,
-  markFallen, pickLast, playable, adoptLegacySave,
+  markFallen, pickLast, playable, adoptLegacySave, planImport,
   ACCOUNTS_KEY, readAccounts, recordAccount,
 } from '../public/js/roster.js';
 
@@ -261,4 +261,31 @@ test('closing an account does not touch the live roster', () => {
   /* The character is still playable — an account is only the memory of a run. */
   assert.equal(playable(store).length, 1, 'closing an account erased the live record');
   assert.equal(store.getItem(ACCOUNTS_KEY) !== null, true, 'no account was written at all');
+});
+
+/* ---- export & import ---- */
+
+test('an imported file that clashes with a live record is refiled, not merged over it', () => {
+  const store = fakeStore();
+  put(store, 'live-1', 'Brann');
+  const before = store.getItem(slotKey('live-1'));
+  const incoming = saveOf('Brann', 'thief', 3).data;
+  incoming.id = 'live-1';   /* the same id as the character already here */
+  const planned = planImport(store, { app: 'temple-lapsai', character: incoming }, 1700000000000, 0.5);
+  assert.ok(planned, 'a real save was refused');
+  assert.notEqual(planned.id, 'live-1', 'the import was allowed to overwrite a live record');
+  assert.equal(planned.data.id, planned.id, 'the refiled record kept the old id');
+  assert.ok(planned.data.state, 'the imported state did not survive');
+  assert.equal(store.getItem(slotKey('live-1')), before, 'the live record was disturbed');
+});
+
+test('an imported file keeps its own id when nothing holds it, and junk is refused', () => {
+  const store = fakeStore();
+  const incoming = saveOf('Nyx', 'mage', 2).data;
+  incoming.id = 'free-1';
+  const planned = planImport(store, incoming, 1, 0.1);
+  assert.equal(planned.id, 'free-1', 'a free id was replaced for no reason');
+  /* A file that is not a save at all — a bare payload, a truncated one, prose. */
+  assert.equal(planImport(store, { hello: 'world' }, 1, 0.1), null);
+  assert.equal(planImport(store, { character: { id: 'x' } }, 1, 0.1), null, 'a record with no state was accepted');
 });
