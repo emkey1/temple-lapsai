@@ -62,3 +62,16 @@ test('a save round-trips', () => {
   g2.loadFloor(g2.state.player.floorIdx);
   assert.ok(g2.currentFloor, 'restored game could not load its floor');
 });
+
+test('the endless stair enters on a real floor, not one below zero', () => {
+  /* `known = min(deepest, d.floors - 1)` turned a floors of zero into minus
+   * one, so the endless stair entered on floor -1 — and the index walked
+   * further downhill with every climb, until pickItem's depth went negative
+   * and it dereferenced off the end of its loot pools mid-run. */
+  const g = newGame('endless-entry');
+  const p = g.state.player;
+  p.bossesSlain = { temple: true, upper: true, serpent: true };
+  g.enterDungeon('deep');
+  assert.ok(p.floorIdx >= 0, 'the endless stair entered on floor ' + p.floorIdx);
+  assert.ok((g.currentFloor.items || []).length > 0, 'the floor generated no loot at all');
+});

@@ -1065,7 +1065,14 @@ export class Game {
      * every hand-in into a climb. So when there is a choice to make, the
      * player makes it. */
     const p = this.state.player;
-    const known = Math.min((p.deepest && p.deepest[id]) || 0, d.floors - 1);
+    /* The endless stair has no last floor, so it resumes at your deepest; every
+     * other dungeon caps there. (A floors of zero — the endless, the road —
+     * turned `d.floors - 1` into a NEGATIVE, so entering arrived on floor minus
+     * one, the index walked further downhill with every climb, and pickItem's
+     * depth went negative under it: an exception in the middle of a run.) */
+    const deepest = (p.deepest && p.deepest[id]) || 0;
+    const last = d.floors > 0 ? d.floors - 1 : 0;
+    const known = d.endless ? deepest : Math.min(deepest, last);
     if (known > 0 && this.ui.askDepth) {
       this.ui.askDepth(d, known, (floorIdx) => this.arriveAtDepth(d, floorIdx));
       return;
