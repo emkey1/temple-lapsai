@@ -363,6 +363,107 @@ export const LORE = {
           valueCount: 1
         }
       ]
+    },
+    {
+      id: 'arc-drowned',
+      dungeonId: 'drowned',
+      name: 'The Town the Sea Was Given',
+      beats: [
+        {
+          kind: 'enter',
+          floor: 0,
+          type: 'overlay',
+          title: 'THE LOWER TOWN',
+          text: 'The streets run where they always ran, under green water, and the doors are shut and the lamps are lit behind the shutters. This was not a ruin. This was a town on an ordinary day, and the water came in through the works, and nobody was moved and nobody was asked.'
+        },
+        {
+          kind: 'enter',
+          floor: 1,
+          type: 'overlay',
+          title: 'THE CUSTOMS STEP',
+          text: 'A quay with a tally-house on it, and the tally is still on the wall: what came in, what went out, and the difference, down to the last crate. The clerks were careful to the end. Careful was the only thing left that they could be.'
+        },
+        {
+          kind: 'enter',
+          floor: 2,
+          type: 'overlay',
+          title: 'THE SALT LEDGER',
+          text: 'The counting-house of the lower town, its ledger open to the last page. Every entry is a person, a depth, and a date. The final line is one word and no hand: the sea.'
+        },
+        {
+          kind: 'condition',
+          floor: 2,
+          type: 'narration',
+          text: 'You have walked past more of the drowned at home than at the doors. They are not guarding anything. They are keeping the hours.'
+        },
+        {
+          kind: 'enter',
+          floor: 3,
+          type: 'overlay',
+          title: 'THE SLUICE',
+          text: 'The gates that shut the lower town stand open, and the water in the channel runs the wrong way — inward, gently, the way a thing runs when it is being held and not let go. Something has kept this town full the way a cup is kept full, on purpose, for a long time.'
+        },
+        {
+          kind: 'boss',
+          floor: 3,
+          type: 'narration',
+          text: 'It was the one who worked the sluice. It shut the town, and stayed to keep it shut, and nobody ever came down to tell it the order was finished.'
+        },
+        {
+          kind: 'finish',
+          floor: 3,
+          type: 'overlay',
+          title: 'THE WATER LET GO',
+          text: 'The gates give all the way, and the level begins to fall, and the lamps go out one street at a time as the air takes them — the first quiet the lower town has had in a hundred years. Up on the quay a woman who has been living on the roof of her own house puts down the lamp she has carried since the water came, and does not pick it up again.'
+        },
+        {
+          kind: 'finish',
+          floor: 3,
+          type: 'flag',
+          flag: 'drowned-town-drained',
+          valueCount: 1
+        }
+      ]
+    },
+    {
+      id: 'arc-deep',
+      dungeonId: 'deep',
+      name: 'The Stair That Keeps Going',
+      beats: [
+        {
+          kind: 'enter',
+          floor: 0,
+          type: 'overlay',
+          title: 'THE FIRST LANDING',
+          text: 'Past the serpent’s last door the stair keeps going, and the walls have changed stone since the last flight, and nobody built this and nobody stopped it. There is no bottom to reach. There is only how far you get, and whether you come back up to have it written down.'
+        },
+        {
+          kind: 'enter',
+          floor: 3,
+          type: 'overlay',
+          title: 'THE COUNT GOES ON',
+          text: 'You have gone deeper than the founding three laid end to end, and the writing on the wall is in the same neat hand as the ledger above. It does not describe you. It counts you.'
+        },
+        {
+          kind: 'boss',
+          floor: 4,
+          type: 'narration',
+          text: 'Everything the last three sanctums kept one at a time is down here at once, and has been for longer than the hill. It will not be the first thing on this landing and it will not be the last; the stair does not end, and neither does what walks it.'
+        },
+        {
+          kind: 'enter',
+          floor: 6,
+          type: 'overlay',
+          title: 'DEEPER THAN THE BOOK',
+          text: 'The lamps you pass are lit and the rungs are swept and the water in the sump is warm, and none of it was done for you. Somewhere below, the shift is still on, and has been on a very long time.'
+        },
+        {
+          kind: 'boss',
+          floor: 9,
+          type: 'narration',
+          text: 'Two landings and two gods down, and the stair is exactly as long as it was when you started. The book above writes the depth in the margin, and counts the cost of the ink.'
+        }
+      ]
     }
   ],
   /* THE KEEPER OF THE ACCOUNT. The one voice that is not a place and not a

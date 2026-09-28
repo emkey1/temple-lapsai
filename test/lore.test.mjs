@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { LORE } from '../public/js/lore.js';
 import { WORLD } from '../public/js/world.js';
 import { DialogueSystem, greetingFor } from '../public/js/npc.js';
+import { getDungeon } from '../public/js/base.js';
 import { newGame } from './helpers.mjs';
 
 const dlg = new DialogueSystem();
@@ -25,11 +26,19 @@ test('the world has real content in every category', () => {
 
 test('every dungeon has an arc that runs its whole depth', () => {
   for (const a of LORE.storyArcs) {
-    const floors = new Set(a.beats.filter((b) => b.kind === 'enter').map((b) => b.floor));
-    for (const f of [0, 1, 2, 3]) {
-      assert.ok(floors.has(f), `${a.id} has nothing to say on arriving at floor ${f}`);
-    }
+    const d = getDungeon(a.dungeonId);
+    const enters = new Set(a.beats.filter((b) => b.kind === 'enter').map((b) => b.floor));
     assert.ok(a.beats.some((b) => b.kind === 'boss'), `${a.id} has no boss beat`);
+    if (d && d.endless) {
+      /* The stair that does not stop has no depth to run: it opens once, marks
+       * the gods it keeps throwing up, and is never finished. */
+      assert.ok(enters.size >= 1, `${a.id} says nothing on the endless stair`);
+      continue;
+    }
+    const last = d ? d.floors - 1 : 3;
+    for (let f = 0; f <= last; f++) {
+      assert.ok(enters.has(f), `${a.id} has nothing to say on arriving at floor ${f}`);
+    }
     assert.ok(a.beats.some((b) => b.kind === 'finish'), `${a.id} has no finish beat`);
   }
 });

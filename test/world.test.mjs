@@ -52,8 +52,10 @@ test('every beat is a shape the engine handles', () => {
       if (b.type === 'flag') assert.ok(b.flag, `${arc.id}: flag beat with no flag`);
       if (b.floor !== undefined) {
         const d = getDungeon(arc.dungeonId);
-        assert.ok(Number.isInteger(b.floor) && b.floor >= 0 && b.floor < d.floors,
-          `${arc.id}: floor ${b.floor} is outside 0..${d.floors - 1}`);
+        /* The endless stair has no fixed depth, so its beats may sit on any
+         * landing; a finite dungeon has to keep them inside its own floors. */
+        assert.ok(Number.isInteger(b.floor) && b.floor >= 0 && (d.endless || b.floor < d.floors),
+          `${arc.id}: floor ${b.floor} is outside the dungeon`);
       }
     }
   }
