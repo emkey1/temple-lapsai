@@ -18,6 +18,7 @@
  */
 
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import { Game, initialStats, PACK_LIMIT } from '../public/js/engine.js';
 import { abilitiesFor, getItemTemplate } from '../public/js/base.js';
 import { T, W, H, isTravelable } from '../public/js/mapgen.js';
@@ -559,18 +560,162 @@ function pickDungeon(g, at) {
 const advisorCache = new Map();
 const STANCES = new Set(['cautious', 'steady', 'bold']);
 
+/* ---- what the advisor is shown ----
+ *
+ * It used to be six fields, four of them about whichever member happened to
+ * hold the reins: no party health, no power, no draughts, no gold, no monsters
+ * and no floor — so a vision-capable model was asked to judge a fight it could
+ * not see, and answered with a tic ("bold") rather than a reading. Now it gets
+ * the company, the resources, what is near, and a map. */
+const MAP_GLYPH = { 0: '#', 1: '.', 2: '+', 3: "'", 4: '#', 5: '<', 6: '>', 7: '~', 8: '!', 9: 'D' };
+
+/* The floor around the company as characters: @ the company, M a monster, B the
+ * boss, N a person, * loot, # wall, . floor, + door, < up, > down, ~ water. */
+function advisorGrid(g, rx = 10, ry = 6) {
+  const f = g.currentFloor, p = g.state.player;
+  if (!f || !p) return [];
+  const members = (g.state.party.members || []).filter(Boolean);
+  const mons = (f.monsters || []).filter((m) => m.hp > 0 && !m.submerged);
+  const rows = [];
+  for (let y = p.y - ry; y <= p.y + ry; y++) {
+    let row = '';
+    for (let x = p.x - rx; x <= p.x + rx; x++) {
+      if (x < 0 || y < 0 || x >= W || y >= H) { row += ' '; continue; }
+      const me = members.find((m) => m.x === x && m.y === y && m.hp > 0);
+      const dead = members.find((m) => m.x === x && m.y === y && m.hp <= 0);
+      const mo = mons.find((m) => m.x === x && m.y === y);
+      const np = (f.npcs || []).find((n) => n.x === x && n.y === y);
+      const it = (f.items || []).find((i) => i.x === x && i.y === y);
+      if (me) row += '@';
+      else if (dead) row += 'x';
+      else if (mo) row += mo.boss ? 'B' : 'M';
+      else if (np) row += 'N';
+      else if (it) row += '*';
+      else row += (MAP_GLYPH[f.tiles[y][x]] || '#');
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/* The whole state: who is in the company and how they stand, what is in the
+ * purse and the packs, what is awake and how far off, and where it all is. */
+function advisorState(g) {
+  const p = g.state.player, f = g.currentFloor;
+  const d = g.dungeonById(p.dungeonId) || {};
+  const members = (g.state.party.members || []).filter(Boolean);
+  const leader = members[0] || p;
+  const draughts = members.reduce((n, m) => n + (m.inventory || []).filter((it) => it.kind === 'potion').length, 0);
+  const near = ((f && f.monsters) || []).filter((m) => m.hp > 0 && !m.submerged)
+    .sort((a, b) => cheb(a, p) - cheb(b, p)).slice(0, 6)
+    .map((m) => ({ id: (m.t && m.t.id) || m.id, hp: m.hp, tier: (m.t && m.t.tier) || 1, dist: cheb(m, p), boss: !!m.boss }));
+  return {
+    dungeon: d.name || p.dungeonId,
+    floor: (p.floorIdx || 0) + 1,
+    ofFloors: d.floors || undefined,
+    lastFloor: !!(f && f.isLast),
+    intendedLevel: g.levelBand(d) || undefined,
+    leaderClass: leader.cls,
+    party: members.map((m) => ({
+      cls: m.cls, level: m.level, hp: m.hp, maxhp: m.maxhp,
+      power: m.power, maxpower: (g.derived(m) || {}).maxpower, down: m.hp <= 0,
+    })),
+    gold: g.purse(),
+    potions: draughts,
+    kills: g.state.totalKills || 0,
+    monstersNear: near,
+    map: advisorGrid(g).join('\n'),
+  };
+}
+
+/* ---- a picture, for a model that can see ----
+ *
+ * The same window rendered to a PNG and sent as an image part: a vision model
+ * reads the room's shape at a glance where the character grid has to be spelled
+ * out. Encoded by hand (IHDR/IDAT/IEND over zlib) so the repo stays dependency-
+ * free, and only built when --advisor-image is asked for — plenty of endpoints
+ * refuse image parts outright. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+  const t = Buffer.from(type, 'ascii');
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data])), 0);
+  return Buffer.concat([len, t, data, crc]);
+}
+function encodePng(width, height, rgba) {
+  const stride = width * 4;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) { raw[y * (stride + 1)] = 0; rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride); }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; ihdr[9] = 6;   /* 8-bit, RGBA */
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+const MAP_RGB = {
+  '@': [120, 200, 120], x: [110, 60, 60], M: [205, 70, 60], B: [255, 92, 70],
+  N: [205, 200, 120], '*': [235, 205, 90], '#': [72, 72, 68], '.': [28, 30, 26],
+  '+': [150, 110, 60], "'": [150, 130, 80], '<': [220, 180, 90], '>': [220, 180, 90],
+  '~': [40, 70, 100], '!': [180, 160, 220], D: [70, 45, 45], ' ': [12, 12, 12],
+};
+function advisorMapPng(g, cell = 14) {
+  const rows = advisorGrid(g);
+  const h = rows.length, w = rows[0] ? rows[0].length : 0;
+  if (!w || !h) return null;
+  const Wpx = w * cell, Hpx = h * cell;
+  const buf = Buffer.alloc(Wpx * Hpx * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const rgb = MAP_RGB[rows[y][x]] || [128, 128, 128];
+      for (let py = 0; py < cell; py++) {
+        for (let px = 0; px < cell; px++) {
+          const i = ((y * cell + py) * Wpx + (x * cell + px)) * 4;
+          buf[i] = rgb[0]; buf[i + 1] = rgb[1]; buf[i + 2] = rgb[2]; buf[i + 3] = 255;
+        }
+      }
+    }
+  }
+  return encodePng(Wpx, Hpx, buf);
+}
+
 async function adviseStance(g, opts, fingerprint) {
   const cfg = opts.advisor;
   if (!cfg || !cfg.url) return 'steady';
   if (advisorCache.has(fingerprint)) return advisorCache.get(fingerprint);
-  const p = g.state.player;
+  const state = advisorState(g);
   const ask = 'Choose a stance for this party. Reply with ONE word only — cautious, steady, or bold — and nothing else.\n'
     + 'cautious: turn back to town early. bold: press on regardless.\n'
-    + JSON.stringify({
-      class: p.cls, party: g.state.party.members.map((m) => m.cls), level: p.level,
-      place: p.dungeonId, floor: (p.floorIdx || 0) + 1, hp: p.hp, maxhp: p.maxhp,
-    });
+    + 'The map is the floor around the company: @ company, M monster, B boss, N person, * loot, # wall, . floor, + door, < up, > down, ~ water.\n'
+    + JSON.stringify(state);
   let stance = 'steady';
+  /* The image, when asked for: the same window as a PNG data URL. If the
+   * encoding fails for any reason the text state alone goes instead. */
+  let userContent = ask;
+  if (cfg.image) {
+    try {
+      const png = advisorMapPng(g);
+      if (png) {
+        if (process.env.SIM_SAVE_MAP) fs.writeFileSync(process.env.SIM_SAVE_MAP, png);
+        userContent = [
+          { type: 'text', text: ask },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,' + png.toString('base64') } },
+        ];
+      }
+    } catch { /* fall back to text */ }
+  }
   try {
     const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined;
     const res = await fetch(String(cfg.url).replace(/\/+$/, '') + '/chat/completions', {
@@ -580,7 +725,7 @@ async function adviseStance(g, opts, fingerprint) {
         model: cfg.model || undefined,
         messages: [
           { role: 'system', content: 'You answer with a single lowercase word and no other text.' },
-          { role: 'user', content: ask },
+          { role: 'user', content: userContent },
         ],
         /* A reasoning model thinks before it answers, so the cap is generous:
          * a tiny one truncates the thinking before any stance is spoken. */
@@ -703,7 +848,7 @@ async function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, registry: null, solo: false };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, advisorImage: false, registry: null, solo: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -716,6 +861,7 @@ function parseArgs(argv) {
     else if (a === '--advisor') o.advisor = argv[++i];
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--advisor-key') o.advisorKey = argv[++i];
+    else if (a === '--advisor-image') o.advisorImage = true;
     else if (a === '--registry') o.registry = argv[++i];
     else if (a === '--solo') { o.solo = true; o.party = []; }
     else if (a === '--verbose') o.verbose = true;
@@ -745,7 +891,7 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   /* The advisor is opt-in and its endpoint is only ever given at the call: no
    * default lives in the repo, because the server is the player's own. */
-  const advisor = o.advisor ? { url: o.advisor, model: o.model || null, key: o.advisorKey || null } : null;
+  const advisor = o.advisor ? { url: o.advisor, model: o.model || null, key: o.advisorKey || null, image: !!o.advisorImage } : null;
   /* --registry folds a Library expansion file into the game, so a written
    * dungeon can be entered with --at and played like any other. */
   let registry = null;

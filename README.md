@@ -414,8 +414,12 @@ An **optional LLM advisor** is **off by default** and given **no endpoint in the
 OpenAI-compatible endpoint and lets it set a per-floor **stance** — cautious, steady or bold, which
 scales how readily the company turns back. It is asked **once per floor** and cached by state, so a
 sweep stays fast and identical seeds stay reproducible, and any failure (no server, a timeout, a
-reply with no stance) quietly falls back to the scripted rule. The bot's real tactics — focus fire,
-party healing, boss prep — are all local and need no model at all.
+reply with no stance) quietly falls back to the scripted rule. What it is shown is the whole
+situation: every member's class, level, hit points and power; the purse and the draughts left; what
+is awake nearby and how far off; the floor's place and depth; and a **character map** of the room
+around the company. `--advisor-image` renders that map to a **PNG** and sends it as an image part for
+vision models (encoded by hand, so the repo stays dependency-free). The bot's real tactics — focus
+fire, party healing, boss prep — are all local and need no model at all.
 
 `npm run package` builds the **download bundle** — one zip carrying the game and a launcher for each
 OS — into `dist/`. `npm run desktop:build` builds the **native installers** with Electron into
