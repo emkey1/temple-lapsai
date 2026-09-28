@@ -1414,8 +1414,19 @@ export class Game {
         }
       }
     }
-    if (this.monstersBurning !== false) {
-      for (const m of (floor.monsters || [])) if (m && m.revealed) { this.vis[m.y][m.x] = true; this.seen[m.y][m.x] = true; }
+    /* DETECT EVIL BURNS FOR A TURN, as it says — and it does NOT make a foe
+     * "visible" to the engine. It used to set vis/seen for every revealed
+     * monster, and the monster turn reads vis as having SPOTTED the party: a
+     * creature behind a shut door would aggro through the wall, the company
+     * was locked in a fight it could not reach, and every click-to-walk
+     * cancelled after one step ("we are in combat"). The map already draws a
+     * revealed monster on its own (main.js checks m.revealed), so the engine
+     * grid never needed the lie. Here it goes out two round-ends after the
+     * casting — the round it was cast, and the next one, which is the turn it
+     * promised. (One round-end is too few: the cast's own round ends before
+     * this check and would put the sight out at once.) */
+    for (const m of (floor.monsters || [])) {
+      if (m && m.revealed && this.turn - (m.revealedAt || 0) >= 2) m.revealed = false;
     }
     this.hearTheDen();
   }
@@ -4405,7 +4416,7 @@ export class Game {
   abilityReveal(a) {
     if (a.detectMonsters) {
       const floor = this.currentFloor;
-      if (floor) for (const m of floor.monsters) m.revealed = true;
+      if (floor) for (const m of floor.monsters) { m.revealed = true; m.revealedAt = this.turn; }
       this.log('Unholy eyes burn in the murk — you see them all.');
     }
     this.revealSecrets();

@@ -878,8 +878,13 @@ async function playRun(seed, clsId, opts = {}) {
         const flBefore = p.floorIdx;
         let a = null;
         /* The driver, when asked for: one model-chosen step, up to the budget.
-         * A bad reply or a refused step falls back to the scripted turn. */
-        if (opts.driver === 'llm' && (st.llmCalls || 0) < (opts.llmTurns || 0)) {
+         * A bad reply or a refused step falls back to the scripted turn. With
+         * --llm-boss-only it only takes the reins on a last floor once the god
+         * is awake — the one fight the scripted bot keeps losing, and short
+         * enough that driving it costs a dozen calls instead of thousands. */
+        const bossFight = !!(g.currentFloor && g.currentFloor.isLast
+          && (g.currentFloor.monsters || []).some((m) => m.hp > 0 && m.boss && !m.submerged));
+        if (opts.driver === 'llm' && (st.llmCalls || 0) < (opts.llmTurns || 0) && (!opts.llmBossOnly || bossFight)) {
           const mv = await llmMove(g, opts);
           st.llmCalls = (st.llmCalls || 0) + 1;
           if (mv) { a = 'llm-' + mv; report.llmMoves = [...(report.llmMoves || []).slice(-11), mv]; }
@@ -916,7 +921,7 @@ async function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, advisorImage: false, driver: null, llmTurns: 0, registry: null, solo: false };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, advisorImage: false, driver: null, llmTurns: 0, llmBossOnly: false, registry: null, solo: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -932,6 +937,7 @@ function parseArgs(argv) {
     else if (a === '--advisor-image') o.advisorImage = true;
     else if (a === '--driver') o.driver = argv[++i];
     else if (a === '--llm-turns') o.llmTurns = Math.max(0, parseInt(argv[++i], 10) || 0);
+    else if (a === '--llm-boss-only') o.llmBossOnly = true;
     else if (a === '--registry') o.registry = argv[++i];
     else if (a === '--solo') { o.solo = true; o.party = []; }
     else if (a === '--verbose') o.verbose = true;
@@ -995,7 +1001,7 @@ async function main() {
     const cls = o.cls || CLASSES[i % CLASSES.length];
     const comps = (solo || (o.party && o.party.length === 0)) ? [] : ((o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length]);
     const compName = (solo || comps.length === 0) ? 'solo' : compLabel(comps);
-    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName, advisor, registry, driver: o.driver, llmTurns: o.llmTurns });
+    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName, advisor, registry, driver: o.driver, llmTurns: o.llmTurns, llmBossOnly: !!o.llmBossOnly });
     runs.push(r);
     if (o.verbose) {
       console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town` + (advisor ? '  advisor: ' + [...new Set(r.stances || [])].join(',') : '') + (r.llmMoves && r.llmMoves.length ? '  llm:' + r.llmMoves.join(',') : ''));

@@ -7,7 +7,7 @@ import { CLASSES, XP_FOR_LEVEL, ABILITIES } from '../public/js/base.js';
 import { abilityReach } from '../public/js/contract.js';
 import { validateAbility } from '../lib/expansion.js';
 import { newGame, floorOf } from './helpers.mjs';
-import { W, H } from '../public/js/mapgen.js';
+import { T, W, H } from '../public/js/mapgen.js';
 
 test('armour class descends: armour and DEX both make you harder to hit', () => {
   const g = newGame('ac');
@@ -465,4 +465,36 @@ test('and a company mending says what each of them got', () => {
     const covered = Math.abs(m.x - p.x) + Math.abs(m.y - p.y) <= R;
     assert.equal(line.includes(m.name), covered, m.name + ' was reported wrongly');
   }
+});
+
+test('Detect Evil shows a foe behind a shut door without waking it', () => {
+  /* It used to set vis/seen for every revealed monster, and the monster turn
+   * reads vis as having spotted the party: a creature behind a closed door
+   * aggroed through the wall, the company was locked in a "combat" it could
+   * not reach, and every click-to-walk cancelled after one step. */
+  const g = newGame('detect-evil');
+  const grid = (fill) => Array.from({ length: H }, () => Array.from({ length: W }, () => fill));
+  const tiles = grid(T.WALL);
+  for (let y = 5; y < 15; y++) for (let x = 5; x < 25; x++) tiles[y][x] = T.FLOOR;
+  tiles[10][11] = T.DOOR_C;   /* shut, between the company and the room */
+  g.currentFloor = {
+    w: W, h: H, tiles, rooms: [], items: [], npcs: [],
+    up: { x: 8, y: 10 }, down: null, isLast: false, den: null,
+    monsters: [{ x: 12, y: 10, hp: 5, maxhp: 5, aggro: false, t: { name: 'Goblin', id: 'goblin', props: [], tier: 2 } }],
+  };
+  g.seen = grid(true);
+  g.vis = grid(false);
+  const p = g.state.player; p.x = 10; p.y = 10; p.hp = p.maxhp = 30;
+  const mon = g.currentFloor.monsters[0];
+
+  g.abilityReveal({ detectMonsters: true });
+  assert.equal(mon.revealed, true, 'the foe was not shown at all');
+  assert.equal(g.vis[10][12], false, 'a foe behind a wall was marked visible to the engine');
+  assert.equal(mon.aggro, false, 'the shown foe woke through the wall');
+  assert.equal(g.outOfCombat(), true, 'a foe that cannot reach us put us in combat');
+
+  g.endRound();
+  assert.equal(mon.revealed, true, 'the sight went out the moment it was cast');
+  g.endRound();
+  assert.equal(mon.revealed, false, 'the sight outlived its turn');
 });
