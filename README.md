@@ -421,6 +421,12 @@ around the company. `--advisor-image` renders that map to a **PNG** and sends it
 vision models (encoded by hand, so the repo stays dependency-free). The bot's real tactics — focus
 fire, party healing, boss prep — are all local and need no model at all.
 
+`--driver llm --llm-turns N` goes further and lets the model choose **one step per turn** for the
+member holding the reins (`N`, `NE`, …, `wait`, `pickup`), falling back to the scripted turn on any
+bad reply or refusal. It is a **demonstration, not a way to sweep**: a model answers in seconds and a
+run is thousands of turns, so a full run takes hours — enough to watch the model actually play, not
+enough to measure it.
+
 `npm run package` builds the **download bundle** — one zip carrying the game and a launcher for each
 OS — into `dist/`. `npm run desktop:build` builds the **native installers** with Electron into
 `dist-desktop/` (run `npm ci` first; those are the repo's only dependencies, and they are dev-only —

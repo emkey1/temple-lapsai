@@ -749,6 +749,66 @@ async function adviseStance(g, opts, fingerprint) {
   return stance;
 }
 
+/* ---- the optional oracle DRIVER ----
+ *
+ * The advisor sets a mood once a floor; the driver picks one STEP per turn,
+ * which is what "let the model play it" actually means. Same endpoint, same
+ * no-default rule, and bounded by --llm-turns: a whole run is thousands of
+ * turns and a model answers in about a second, so this is a demonstration, not
+ * a way to sweep. Any bad reply, refusal, or timeout falls straight back to the
+ * scripted turn, so the bot never stalls waiting on a model. */
+const DIR8 = { n: [0, -1], ne: [1, -1], e: [1, 0], se: [1, 1], s: [0, 1], sw: [-1, 1], w: [-1, 0], nw: [-1, -1] };
+const bearingName = (from, to) => {
+  const ns = to.y < from.y ? 'north' : to.y > from.y ? 'south' : '';
+  const ew = to.x > from.x ? 'east' : to.x < from.x ? 'west' : '';
+  return [ns, ew].filter(Boolean).join('-') || 'here';
+};
+
+async function llmMove(g, opts) {
+  const cfg = opts.advisor;
+  if (!cfg || !cfg.url) return null;
+  const p = g.state.player, f = g.currentFloor;
+  const state = advisorState(g);
+  state.monstersNear = ((f && f.monsters) || []).filter((m) => m.hp > 0 && !m.submerged)
+    .sort((a, b) => cheb(a, p) - cheb(b, p)).slice(0, 6)
+    .map((m) => ({
+      id: (m.t && m.t.id) || m.id, hp: m.hp, tier: (m.t && m.t.tier) || 1,
+      dir: bearingName(p, m), dist: cheb(m, p), boss: !!m.boss,
+    }));
+  const ask = 'You drive this party one step at a time. The @ is whoever holds the reins now. '
+    + 'Reply with JSON only: {"move":"E"} — one of N, NE, E, SE, S, SW, W, NW, wait, pickup. '
+    + 'Stepping into a monster attacks it. Go to what matters (loot, stairs, the boss); do not stand and be surrounded.\n'
+    + JSON.stringify(state);
+  try {
+    const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined;
+    const res = await fetch(String(cfg.url).replace(/\/+$/, '') + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cfg.key ? { Authorization: 'Bearer ' + cfg.key } : {}) },
+      body: JSON.stringify({
+        model: cfg.model || undefined,
+        messages: [
+          { role: 'system', content: 'You answer with compact JSON and nothing else.' },
+          { role: 'user', content: ask },
+        ],
+        temperature: 0, max_tokens: 200, stream: false,
+      }),
+      signal,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const msg = ((data.choices || [])[0] || {}).message || {};
+    const text = String((msg.content || '') + ' ' + (msg.reasoning || ''));
+    const m = text.toLowerCase().match(/"move"\s*:\s*"([a-z]+)"/);
+    const move = m ? m[1] : null;
+    if (!move) return null;
+    if (move === 'wait') { g.handleKey(' '); return 'wait'; }
+    if (move === 'pickup') { g.handleKey('g'); return 'pickup'; }
+    const d = DIR8[move];
+    if (!d) return null;
+    return g.handleKey(null, { dx: d[0], dy: d[1] }) ? move : null;
+  } catch { return null; }
+}
+
 async function playRun(seed, clsId, opts = {}) {
   const cap = opts.cap || 4000;
   const g = makeGame(seed, clsId, opts.registry);
@@ -816,7 +876,15 @@ async function playRun(seed, clsId, opts = {}) {
           (report.stances = report.stances || []).push(st.stance);
         }
         const flBefore = p.floorIdx;
-        const a = dungeonTurn(g, st);
+        let a = null;
+        /* The driver, when asked for: one model-chosen step, up to the budget.
+         * A bad reply or a refused step falls back to the scripted turn. */
+        if (opts.driver === 'llm' && (st.llmCalls || 0) < (opts.llmTurns || 0)) {
+          const mv = await llmMove(g, opts);
+          st.llmCalls = (st.llmCalls || 0) + 1;
+          if (mv) { a = 'llm-' + mv; report.llmMoves = [...(report.llmMoves || []).slice(-11), mv]; }
+        }
+        if (!a) a = dungeonTurn(g, st);
         report.actions[a] = (report.actions[a] || 0) + 1;
         if (process.env.SIM_DEBUG && turns % 1000 === 0) {
           console.log('  ' + seed, 't' + turns, 'dun', p.dungeonId, 'fl', flBefore + '->' + p.floorIdx, 'at', p.x + ',' + p.y, 'hp', p.hp + '/' + p.maxhp, 'wt', st.wantsTown, 'act', a, 'goal', st.goal ? goalKey(st.goal) : '-');
@@ -848,7 +916,7 @@ async function playRun(seed, clsId, opts = {}) {
 /* ---- the CLI + the two reports ---- */
 
 function parseArgs(argv) {
-  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, advisorImage: false, registry: null, solo: false };
+  const o = { runs: 24, baseSeed: 'sim', cap: 4000, verbose: false, seed: null, cls: null, gold: 0, at: null, party: null, advisor: null, model: null, advisorKey: null, advisorImage: false, driver: null, llmTurns: 0, registry: null, solo: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') o.runs = Math.max(1, parseInt(argv[++i], 10) || 24);
@@ -862,6 +930,8 @@ function parseArgs(argv) {
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--advisor-key') o.advisorKey = argv[++i];
     else if (a === '--advisor-image') o.advisorImage = true;
+    else if (a === '--driver') o.driver = argv[++i];
+    else if (a === '--llm-turns') o.llmTurns = Math.max(0, parseInt(argv[++i], 10) || 0);
     else if (a === '--registry') o.registry = argv[++i];
     else if (a === '--solo') { o.solo = true; o.party = []; }
     else if (a === '--verbose') o.verbose = true;
@@ -892,6 +962,10 @@ async function main() {
   /* The advisor is opt-in and its endpoint is only ever given at the call: no
    * default lives in the repo, because the server is the player's own. */
   const advisor = o.advisor ? { url: o.advisor, model: o.model || null, key: o.advisorKey || null, image: !!o.advisorImage } : null;
+  if (o.driver === 'llm' && !advisor) {
+    console.error('--driver llm needs --advisor <url> to ask');
+    return 2;
+  }
   /* --registry folds a Library expansion file into the game, so a written
    * dungeon can be entered with --at and played like any other. */
   let registry = null;
@@ -921,10 +995,10 @@ async function main() {
     const cls = o.cls || CLASSES[i % CLASSES.length];
     const comps = (solo || (o.party && o.party.length === 0)) ? [] : ((o.party && o.party.length) ? o.party : COMPOSITIONS[i % COMPOSITIONS.length]);
     const compName = (solo || comps.length === 0) ? 'solo' : compLabel(comps);
-    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName, advisor, registry });
+    const r = await playRun(seed, cls, { cap: o.cap, gold: o.gold, at: o.at, comp: comps, compName, advisor, registry, driver: o.driver, llmTurns: o.llmTurns });
     runs.push(r);
     if (o.verbose) {
-      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town` + (advisor ? '  advisor: ' + [...new Set(r.stances || [])].join(',') : ''));
+      console.log(`  ${r.outcome.padEnd(6)} ${seed.padEnd(14)} ${r.cls.padEnd(8)} ${r.comp.padEnd(24)} depth ${(r.deepest + 1)}  lvl ${String(r.level).padStart(2)}  ${String(r.gold).padStart(5)}g  ${String(r.kills).padStart(3)} kills  ${r.turns} turns  ${r.towns || 0} town` + (advisor ? '  advisor: ' + [...new Set(r.stances || [])].join(',') : '') + (r.llmMoves && r.llmMoves.length ? '  llm:' + r.llmMoves.join(',') : ''));
       if (r.tail && r.outcome !== 'won') console.log('         ' + r.tail.slice(-4).join('  |  ').slice(0, 200));
       console.log('         actions: ' + Object.entries(r.actions).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => k + ' ' + v).join(' · '));
     }
